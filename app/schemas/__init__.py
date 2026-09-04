@@ -18,6 +18,13 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     LogoutRequest,
 )
+from app.schemas.system import (
+    OperationalErrorResponse,
+    OperationalErrorResolveRequest,
+    SystemErrorSummary,
+    ComponentHealth,
+    SystemHealthResponse,
+)
 
 __all__ = [
     "PaginationMeta",
@@ -54,5 +61,11 @@ __all__ = [
     "RefreshTokenRequest",
     "ChangePasswordRequest",
     "LogoutRequest",
+    "OperationalErrorResponse",
+    "OperationalErrorResolveRequest",
+    "SystemErrorSummary",
+    "ComponentHealth",
+    "SystemHealthResponse",
 ]
+
 

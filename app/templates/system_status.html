@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+
+{% block title %}System Status & Quản Lý Lỗi Vận Hành - Nam An Merchant Portal{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+    <!-- Header & Action Row -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-primary text-xs font-bold uppercase tracking-wider mb-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>GIÁM SÁT VẬN HÀNH & SỰ CỐ</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-display font-extrabold text-charcoal tracking-tight">
+                System Status & Nhật Ký Lỗi
+            </h1>
+            <p class="text-sm text-charcoal-muted mt-1">
+                Theo dõi sức khỏe các phân hệ, tự động bắt lỗi và điều phối xử lý sự cố trong vận hành đa kênh.
+            </p>
+        </div>
+
+        <!-- Controls: Trigger Test Error, Auto Refresh, Refresh -->
+        <div class="flex flex-wrap items-center gap-3">
+            <button onclick="triggerSimulatedError()" class="px-4 py-2.5 rounded-full bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-bold transition-all flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                <span>Tạo Lỗi Thử Nghiệm</span>
+            </button>
+
+            <div class="flex items-center space-x-2 bg-white px-3.5 py-2 rounded-full shadow-sm text-xs text-charcoal">
+                <span class="text-gray-400">Tự động làm mới:</span>
+                <select id="auto-refresh-select" onchange="changeAutoRefresh(this.value)" class="bg-transparent font-bold text-primary focus:outline-none cursor-pointer">
+                    <option value="15">15s</option>
+                    <option value="30" selected>30s</option>
+                    <option value="60">60s</option>
+                    <option value="0">Tắt</option>
+                </select>
+            </div>
+
+            <button onclick="loadAllSystemData()" class="px-5 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs tracking-wide shadow-md transition-all flex items-center space-x-1.5">
+                <svg id="refresh-spinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>Làm Mới</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Live Subsystem Health Status Cards -->
+    <div>
+        <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Tình Trạng Kết Nối Các Thành Phần Hạ Tầng</h3>
+        <div id="components-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Dynamic Components Cards loaded via JS -->
+            <div class="p-5 rounded-3xl bg-white shadow-sm animate-pulse h-28"></div>
+            <div class="p-5 rounded-3xl bg-white shadow-sm animate-pulse h-28"></div>
+            <div class="p-5 rounded-3xl bg-white shadow-sm animate-pulse h-28"></div>
+            <div class="p-5 rounded-3xl bg-white shadow-sm animate-pulse h-28"></div>
+        </div>
+    </div>
+
+    <!-- Operational Incident Metric Counters (Tonal Layering, The Living Canvas) -->
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <!-- Metric 1: Total -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm">
+            <span class="text-xs font-bold text-gray-400 uppercase tracking-wider">Tổng Sự Cố</span>
+            <div id="metric-total" class="text-2xl font-display font-extrabold text-charcoal mt-2">--</div>
+            <p class="text-[11px] text-gray-400 mt-1">Ghi nhận từ database</p>
+        </div>
+
+        <!-- Metric 2: Open -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border-l-4 border-amber-500">
+            <span class="text-xs font-bold text-amber-700 uppercase tracking-wider">Chưa Xử Lý (OPEN)</span>
+            <div id="metric-open" class="text-2xl font-display font-extrabold text-amber-600 mt-2">--</div>
+            <p class="text-[11px] text-amber-700/70 mt-1">Cần xem xét ngay</p>
+        </div>
+
+        <!-- Metric 3: Critical -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border-l-4 border-rose-600">
+            <span class="text-xs font-bold text-rose-700 uppercase tracking-wider">Nghiêm Trọng (CRITICAL)</span>
+            <div id="metric-critical" class="text-2xl font-display font-extrabold text-rose-600 mt-2">--</div>
+            <p class="text-[11px] text-rose-700/70 mt-1">Lỗi hệ thống / kết nối</p>
+        </div>
+
+        <!-- Metric 4: Investigating -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border-l-4 border-sky-500">
+            <span class="text-xs font-bold text-sky-700 uppercase tracking-wider">Đang Kiểm Tra</span>
+            <div id="metric-investigating" class="text-2xl font-display font-extrabold text-sky-600 mt-2">--</div>
+            <p class="text-[11px] text-sky-700/70 mt-1">Đang truy vết nguyên nhân</p>
+        </div>
+
+        <!-- Metric 5: Resolved -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border-l-4 border-emerald-600 col-span-2 lg:col-span-1">
+            <span class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Đã Xử Lý (RESOLVED)</span>
+            <div id="metric-resolved" class="text-2xl font-display font-extrabold text-emerald-600 mt-2">--</div>
+            <p class="text-[11px] text-emerald-700/70 mt-1">Đã khắc phục thành công</p>
+        </div>
+    </div>
+
+    <!-- Error Logs Filter & Interactive Table Section -->
+    <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+
+        <!-- Filters Bar (No-Line rule, using soft surface shifts) -->
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-3 flex-1">
+                <!-- Search Box -->
+                <div class="relative min-w-[240px] flex-1">
+                    <input id="filter-search" type="text" placeholder="Tìm theo mã lỗi, nội dung, endpoint..."
+                           onkeyup="if(event.key==='Enter') applyFilters()"
+                           class="w-full pl-10 pr-4 py-2.5 rounded-full bg-surface-low text-xs text-charcoal placeholder-gray-400 focus:bg-white focus:ring-2 focus:ring-primary transition-all">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+
+                <!-- Severity Filter -->
+                <select id="filter-severity" onchange="applyFilters()" class="px-4 py-2.5 rounded-full bg-surface-low text-xs text-charcoal font-medium focus:ring-2 focus:ring-primary cursor-pointer">
+                    <option value="">Tất cả mức độ</option>
+                    <option value="CRITICAL">CRITICAL (Nghiêm trọng)</option>
+                    <option value="ERROR">ERROR (Lỗi)</option>
+                    <option value="WARNING">WARNING (Cảnh báo)</option>
+                    <option value="INFO">INFO (Thông tin)</option>
+                </select>
+
+                <!-- Module Filter -->
+                <select id="filter-module" onchange="applyFilters()" class="px-4 py-2.5 rounded-full bg-surface-low text-xs text-charcoal font-medium focus:ring-2 focus:ring-primary cursor-pointer">
+                    <option value="">Tất cả phân hệ</option>
+                    <option value="CORE">CORE (Lõi)</option>
+                    <option value="SHOPEEFOOD">SHOPEEFOOD</option>
+                    <option value="GRABMART">GRABMART</option>
+                    <option value="SHOPEEMART">SHOPEEMART</option>
+                    <option value="DATABASE">DATABASE</option>
+                    <option value="AUTH">AUTH</option>
+                </select>
+
+                <!-- Status Filter -->
+                <select id="filter-status" onchange="applyFilters()" class="px-4 py-2.5 rounded-full bg-surface-low text-xs text-charcoal font-medium focus:ring-2 focus:ring-primary cursor-pointer">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="OPEN" selected>Chưa xử lý (OPEN)</option>
+                    <option value="INVESTIGATING">Đang kiểm tra (INVESTIGATING)</option>
+                    <option value="RESOLVED">Đã xử lý (RESOLVED)</option>
+                    <option value="IGNORED">Bỏ qua (IGNORED)</option>
+                </select>
+            </div>
+
+            <button onclick="resetFilters()" class="text-xs text-gray-500 hover:text-primary font-medium shrink-0 self-end lg:self-center">
+                Đặt lại bộ lọc
+            </button>
+        </div>
+
+        <!-- Errors List / Table -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100">
+                        <th class="pb-3 pr-4">Mã Lỗi / Tần Suất</th>
+                        <th class="pb-3 px-3">Mức Độ</th>
+                        <th class="pb-3 px-3">Phân Hệ</th>
+                        <th class="pb-3 px-4">Thông Báo Lỗi & Endpoint</th>
+                        <th class="pb-3 px-3">Thời Điểm</th>
+                        <th class="pb-3 px-3">Trạng Thái</th>
+                        <th class="pb-3 pl-3 text-right">Thao Tác</th>
+                    </tr>
+                </thead>
+                <tbody id="errors-table-body" class="divide-y divide-gray-50 font-sans">
+                    <tr>
+                        <td colspan="7" class="py-8 text-center text-gray-400">
+                            Đang tải danh sách sự cố vận hành...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div id="pagination-bar" class="flex items-center justify-between pt-4 border-t border-gray-100 text-xs text-gray-500">
+            <span id="pagination-summary">Hiển thị 0 bản ghi</span>
+            <div class="flex items-center space-x-2">
+                <button id="btn-prev-page" onclick="changePage(-1)" disabled class="px-3.5 py-1.5 rounded-full bg-surface-low disabled:opacity-40 hover:bg-gray-200 transition-colors">
+                    &larr; Trước
+                </button>
+                <span id="current-page-label" class="font-bold text-charcoal">Trang 1</span>
+                <button id="btn-next-page" onclick="changePage(1)" disabled class="px-3.5 py-1.5 rounded-full bg-surface-low disabled:opacity-40 hover:bg-gray-200 transition-colors">
+                    Sau &rarr;
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal: Chi Tiết Sự Cố (Stack Trace & Payload) -->
+<!-- ======================================================================= -->
+<div id="modal-error-detail" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <!-- Modal Header -->
+        <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span id="modal-detail-severity" class="px-2.5 py-0.5 rounded-full text-xs font-bold">ERROR</span>
+                    <span id="modal-detail-module" class="font-mono text-xs text-gray-500 font-bold">CORE</span>
+                </div>
+                <h3 id="modal-detail-title" class="text-lg font-display font-bold text-charcoal mt-1">Chi tiết sự cố</h3>
+            </div>
+            <button onclick="closeDetailModal()" class="w-8 h-8 rounded-full bg-surface-low hover:bg-gray-200 flex items-center justify-center text-gray-500 text-sm">✕</button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6 overflow-y-auto space-y-5 text-xs">
+            <!-- Metadata Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-surface-low">
+                <div>
+                    <span class="text-gray-400 block">HTTP Method / Status:</span>
+                    <span id="modal-detail-http" class="font-mono font-bold text-charcoal">--</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block">Số lần lặp lại:</span>
+                    <span id="modal-detail-count" class="font-bold text-charcoal">1 lần</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block">Thời điểm cuối:</span>
+                    <span id="modal-detail-time" class="text-charcoal font-medium">--</span>
+                </div>
+                <div>
+                    <span class="text-gray-400 block">Client IP:</span>
+                    <span id="modal-detail-ip" class="font-mono text-charcoal">--</span>
+                </div>
+            </div>
+
+            <!-- Endpoint -->
+            <div>
+                <span class="font-bold text-gray-700 block mb-1">Endpoint / Tác Vụ:</span>
+                <div id="modal-detail-endpoint" class="p-3 rounded-xl bg-gray-50 font-mono text-[11px] text-gray-800 break-all select-all">--</div>
+            </div>
+
+            <!-- Error Message -->
+            <div>
+                <span class="font-bold text-gray-700 block mb-1">Thông Điệp Lỗi:</span>
+                <div id="modal-detail-message" class="p-3 rounded-xl bg-rose-50 text-rose-900 font-medium">--</div>
+            </div>
+
+            <!-- Resolution Info (if resolved) -->
+            <div id="modal-resolution-box" class="hidden p-4 rounded-2xl bg-emerald-50 text-emerald-900 space-y-1">
+                <div class="font-bold">Đã xử lý bởi: <span id="modal-detail-resolved-by">--</span> (<span id="modal-detail-resolved-at">--</span>)</div>
+                <div class="text-xs">Ghi chú giải pháp: <span id="modal-detail-notes" class="font-medium">--</span></div>
+            </div>
+
+            <!-- Python Stack Trace -->
+            <div>
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-bold text-gray-700">Python Exception Traceback:</span>
+                    <button onclick="copyStackTrace()" class="text-primary hover:underline font-bold text-[11px]">Sao chép Traceback</button>
+                </div>
+                <pre id="modal-detail-stack" class="p-4 rounded-2xl bg-slate-900 text-emerald-400 font-mono text-[11px] overflow-x-auto max-h-60 select-all"></pre>
+            </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="p-4 bg-gray-50 flex items-center justify-end space-x-3">
+            <button onclick="closeDetailModal()" class="px-5 py-2.5 rounded-full bg-surface-low hover:bg-gray-200 text-xs font-bold">Đóng</button>
+            <button id="modal-btn-resolve-trigger" class="px-5 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white text-xs font-bold">Xử Lý Lỗi Này</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal: Xử Lý Lỗi (Resolve Modal) -->
+<!-- ======================================================================= -->
+<div id="modal-resolve-incident" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-6">
+        <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-primary flex items-center justify-center mb-3">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            </div>
+            <h3 class="text-xl font-display font-bold text-charcoal">Xử Lý & Khắc Phục Sự Cố</h3>
+            <p class="text-xs text-charcoal-muted mt-1">Ghi chú nguyên nhân và giải pháp đã thực hiện để lưu vết kiểm toán.</p>
+        </div>
+
+        <form onsubmit="submitResolveIncident(event)" class="space-y-4">
+            <input type="hidden" id="resolve-error-id">
+
+            <div>
+                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Người xử lý</label>
+                <input id="resolve-by-input" type="text" required class="w-full px-4 py-2.5 rounded-xl bg-surface-low text-xs focus:ring-2 focus:ring-primary focus:bg-white" placeholder="Tên kỹ sư / quản trị viên">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Ghi chú giải pháp / Hành động khắc phục</label>
+                <textarea id="resolve-notes-input" rows="4" required class="w-full px-4 py-3 rounded-xl bg-surface-low text-xs focus:ring-2 focus:ring-primary focus:bg-white" placeholder="Ví dụ: Đã kiểm tra lại kết nối mạng, khởi động lại adapter ShopeeFood và thực hiện đồng bộ lại menu thủ công thành công."></textarea>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-2">
+                <button type="button" onclick="closeResolveModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-xs font-bold hover:bg-gray-200">Hủy bỏ</button>
+                <button type="submit" class="px-6 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md">
+                    Xác Nhận Đã Xử Lý (RESOLVED)
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let currentPage = 1;
+    let autoRefreshTimer = null;
+    let currentDetailError = null;
+
+    // Load System Health Overview
+    async function loadSystemHealth() {
+        try {
+            const res = await authFetch('/api/v1/system/health');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    renderHealthComponents(data.data);
+                }
+            }
+        } catch(e) {
+            console.error("Lỗi khi tải system health:", e);
+        }
+    }
+
+    function renderHealthComponents(h) {
+        const grid = document.getElementById('components-grid');
+        grid.innerHTML = '';
+
+        h.components.forEach(c => {
+            const isUp = c.status === 'UP';
+            const isDegraded = c.status === 'DEGRADED' || c.status === 'CONFIG_REQUIRED';
+            const badgeClass = isUp ? 'bg-emerald-100 text-emerald-800' :
+                               isDegraded ? 'bg-amber-100 text-amber-800' :
+                               'bg-rose-100 text-rose-800';
+
+            const card = document.createElement('div');
+            card.className = "p-5 rounded-3xl bg-white shadow-sm flex flex-col justify-between";
+            card.innerHTML = `
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="font-display font-bold text-sm text-charcoal">${c.name}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[11px] font-bold ${badgeClass}">${c.status}</span>
+                    </div>
+                    <p class="text-xs text-gray-500">${c.details || 'Bình thường'}</p>
+                </div>
+                ${c.latency_ms !== null && c.latency_ms !== undefined ? `
+                    <div class="mt-3 pt-2 border-t border-gray-100 text-[11px] text-gray-400 font-mono">
+                        Latency: <span class="font-bold text-primary">${c.latency_ms} ms</span>
+                    </div>
+                ` : ''}
+            `;
+            grid.appendChild(card);
+        });
+
+        // Summary Counters
+        const sum = h.error_summary;
+        document.getElementById('metric-total').textContent = sum.total_errors;
+        document.getElementById('metric-open').textContent = sum.open_errors;
+        document.getElementById('metric-critical').textContent = sum.critical_errors;
+        document.getElementById('metric-investigating').textContent = sum.investigating_errors;
+        document.getElementById('metric-resolved').textContent = sum.resolved_errors;
+
+        // Header error badge
+        const navBadge = document.getElementById('nav-error-badge');
+        if (navBadge) {
+            const openTotal = sum.open_errors + sum.investigating_errors;
+            if (openTotal > 0) {
+                navBadge.textContent = openTotal;
+                navBadge.classList.remove('hidden');
+            } else {
+                navBadge.classList.add('hidden');
+            }
+        }
+    }
+
+    // Load Errors Table with Filters & Pagination
+    async function loadErrorsTable() {
+        const severity = document.getElementById('filter-severity').value;
+        const module = document.getElementById('filter-module').value;
+        const status = document.getElementById('filter-status').value;
+        const search = document.getElementById('filter-search').value;
+
+        let url = `/api/v1/system/errors?page=${currentPage}&page_size=20`;
+        if (severity) url += `&severity=${encodeURIComponent(severity)}`;
+        if (module) url += `&module=${encodeURIComponent(module)}`;
+        if (status) url += `&status=${encodeURIComponent(status)}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+
+        const tbody = document.getElementById('errors-table-body');
+        try {
+            const res = await authFetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    renderErrorsRows(data.data.items);
+                    renderPagination(data.data.meta);
+                }
+            } else {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-rose-600">Không thể tải danh sách lỗi (HTTP ${res.status})</td></tr>`;
+            }
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-rose-600">Lỗi kết nối khi tải dữ liệu</td></tr>`;
+        }
+    }
+
+    function renderErrorsRows(items) {
+        const tbody = document.getElementById('errors-table-body');
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="py-12 text-center text-gray-400">
+                        <div class="flex flex-col items-center justify-center space-y-2">
+                            <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            </div>
+                            <span class="font-medium text-sm text-charcoal">Không có sự cố nào phù hợp</span>
+                            <span class="text-xs text-gray-400">Hệ thống đang vận hành ổn định trong phạm vi bộ lọc đã chọn</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = '';
+        items.forEach(e => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-surface-low/50 transition-colors group";
+
+            // Severity Color
+            const sevBadge = e.severity === 'CRITICAL' ? 'bg-rose-100 text-rose-800' :
+                             e.severity === 'ERROR' ? 'bg-rose-50 text-rose-700' :
+                             e.severity === 'WARNING' ? 'bg-amber-100 text-amber-800' :
+                             'bg-sky-100 text-sky-800';
+
+            // Status Badge
+            const statusBadge = e.resolution_status === 'RESOLVED' ? 'bg-emerald-100 text-emerald-800' :
+                                e.resolution_status === 'INVESTIGATING' ? 'bg-sky-100 text-sky-800' :
+                                e.resolution_status === 'IGNORED' ? 'bg-gray-100 text-gray-600' :
+                                'bg-amber-100 text-amber-800';
+
+            // Format date
+            const occurredDate = new Date(e.last_occurred_at || e.created_at);
+            const timeStr = occurredDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            const dateStr = occurredDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+
+            tr.innerHTML = `
+                <td class="py-4 pr-4">
+                    <div class="font-mono font-bold text-charcoal flex items-center space-x-1.5">
+                        <span>${e.error_code}</span>
+                        ${e.occurrence_count > 1 ? `<span class="px-1.5 py-0.2 rounded-full bg-gray-200 text-charcoal text-[10px] font-bold">x${e.occurrence_count}</span>` : ''}
+                    </div>
+                    <div class="text-[10px] text-gray-400 font-mono truncate max-w-[120px]">${e.id}</div>
+                </td>
+                <td class="py-4 px-3">
+                    <span class="px-2 py-0.5 rounded-full font-bold text-[11px] ${sevBadge}">${e.severity}</span>
+                </td>
+                <td class="py-4 px-3">
+                    <span class="font-mono font-semibold text-gray-700">${e.module}</span>
+                </td>
+                <td class="py-4 px-4 max-w-xs sm:max-w-md">
+                    <div class="font-medium text-charcoal truncate" title="${e.message}">${e.message}</div>
+                    ${e.endpoint ? `<div class="text-[11px] text-gray-400 font-mono truncate mt-0.5">${e.http_method || ''} ${e.endpoint}</div>` : ''}
+                </td>
+                <td class="py-4 px-3 whitespace-nowrap text-gray-500">
+                    <div>${timeStr}</div>
+                    <div class="text-[10px] text-gray-400">${dateStr}</div>
+                </td>
+                <td class="py-4 px-3 whitespace-nowrap">
+                    <span class="px-2 py-0.5 rounded-full font-bold text-[11px] ${statusBadge}">${e.resolution_status}</span>
+                </td>
+                <td class="py-4 pl-3 text-right whitespace-nowrap space-x-2">
+                    <button onclick='viewErrorDetail(${JSON.stringify(e).replace(/'/g, "&apos;")})' class="px-3 py-1.5 rounded-full bg-surface-low hover:bg-gray-200 text-charcoal font-bold text-[11px] transition-colors">
+                        Chi tiết
+                    </button>
+                    ${e.resolution_status !== 'RESOLVED' ? `
+                        <button onclick="openResolveModal('${e.id}')" class="px-3 py-1.5 rounded-full bg-primary hover:bg-primary-light text-white font-bold text-[11px] transition-colors">
+                            Xử lý
+                        </button>
+                    ` : `
+                        <button onclick="reopenIncident('${e.id}')" class="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold text-[11px] transition-colors">
+                            Mở lại
+                        </button>
+                    `}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderPagination(meta) {
+        if (!meta) return;
+        document.getElementById('pagination-summary').textContent = `Hiển thị ${meta.page_size} / tổng số ${meta.total_items} sự cố`;
+        document.getElementById('current-page-label').textContent = `Trang ${meta.page} / ${meta.total_pages || 1}`;
+        document.getElementById('btn-prev-page').disabled = meta.page <= 1;
+        document.getElementById('btn-next-page').disabled = meta.page >= meta.total_pages;
+    }
+
+    function changePage(delta) {
+        currentPage += delta;
+        if (currentPage < 1) currentPage = 1;
+        loadErrorsTable();
+    }
+
+    function applyFilters() {
+        currentPage = 1;
+        loadErrorsTable();
+    }
+
+    function resetFilters() {
+        document.getElementById('filter-severity').value = '';
+        document.getElementById('filter-module').value = '';
+        document.getElementById('filter-status').value = 'OPEN';
+        document.getElementById('filter-search').value = '';
+        currentPage = 1;
+        loadErrorsTable();
+    }
+
+    // Detail Modal
+    function viewErrorDetail(err) {
+        currentDetailError = err;
+        document.getElementById('modal-detail-title').textContent = `${err.error_code} (#${err.id.substring(0, 8)})`;
+        document.getElementById('modal-detail-severity').textContent = err.severity;
+        document.getElementById('modal-detail-module').textContent = err.module;
+        document.getElementById('modal-detail-message').textContent = err.message;
+        document.getElementById('modal-detail-endpoint').textContent = `${err.http_method || 'N/A'} ${err.endpoint || 'Internal Task'}`;
+        document.getElementById('modal-detail-http').textContent = `${err.http_method || ''} ${err.http_status_code ? ': ' + err.http_status_code : ''}`;
+        document.getElementById('modal-detail-count').textContent = `${err.occurrence_count} lần`;
+        document.getElementById('modal-detail-time').textContent = new Date(err.last_occurred_at || err.created_at).toLocaleString('vi-VN');
+        document.getElementById('modal-detail-ip').textContent = err.client_ip || 'N/A';
+
+        // Stack trace
+        const stackEl = document.getElementById('modal-detail-stack');
+        stackEl.textContent = err.stack_trace || "Không có Python stack trace được ghi nhận cho lỗi này.";
+
+        // Resolution info
+        const resBox = document.getElementById('modal-resolution-box');
+        if (err.resolution_status === 'RESOLVED') {
+            resBox.classList.remove('hidden');
+            document.getElementById('modal-detail-resolved-by').textContent = err.resolved_by || 'Admin';
+            document.getElementById('modal-detail-resolved-at').textContent = new Date(err.resolved_at).toLocaleString('vi-VN');
+            document.getElementById('modal-detail-notes').textContent = err.resolution_notes || 'Không có ghi chú';
+        } else {
+            resBox.classList.add('hidden');
+        }
+
+        const resolveBtn = document.getElementById('modal-btn-resolve-trigger');
+        if (err.resolution_status !== 'RESOLVED') {
+            resolveBtn.classList.remove('hidden');
+            resolveBtn.onclick = () => { closeDetailModal(); openResolveModal(err.id); };
+        } else {
+            resolveBtn.classList.add('hidden');
+        }
+
+        document.getElementById('modal-error-detail').classList.remove('hidden');
+    }
+
+    function closeDetailModal() {
+        document.getElementById('modal-error-detail').classList.add('hidden');
+    }
+
+    function copyStackTrace() {
+        if (currentDetailError && currentDetailError.stack_trace) {
+            navigator.clipboard.writeText(currentDetailError.stack_trace);
+            showToast("Đã sao chép Python Stack Trace vào bộ nhớ tạm", "success");
+        } else {
+            showToast("Không có Stack Trace để sao chép", "info");
+        }
+    }
+
+    // Resolve Modal
+    function openResolveModal(errorId) {
+        document.getElementById('resolve-error-id').value = errorId;
+        const user = TokenManager.getUser();
+        document.getElementById('resolve-by-input').value = user.full_name || user.username || "Quản trị viên";
+        document.getElementById('resolve-notes-input').value = "";
+        document.getElementById('modal-resolve-incident').classList.remove('hidden');
+    }
+
+    function closeResolveModal() {
+        document.getElementById('modal-resolve-incident').classList.add('hidden');
+    }
+
+    async function submitResolveIncident(e) {
+        e.preventDefault();
+        const errorId = document.getElementById('resolve-error-id').value;
+        const resolvedBy = document.getElementById('resolve-by-input').value.trim();
+        const resolutionNotes = document.getElementById('resolve-notes-input').value.trim();
+
+        try {
+            const res = await authFetch(`/api/v1/system/errors/${errorId}/resolve`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    resolved_by: resolvedBy,
+                    resolution_notes: resolutionNotes
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast("Đã cập nhật trạng thái sự cố thành ĐÃ XỬ LÝ (RESOLVED)", "success");
+                closeResolveModal();
+                loadAllSystemData();
+            } else {
+                showToast(data.message || "Không thể cập nhật sự cố", "error");
+            }
+        } catch(err) {
+            showToast("Lỗi kết nối khi xử lý sự cố", "error");
+        }
+    }
+
+    async function reopenIncident(errorId) {
+        if (!confirm("Bạn có chắc chắn muốn mở lại sự cố này để tiếp tục kiểm tra?")) return;
+        try {
+            const res = await authFetch(`/api/v1/system/errors/${errorId}/reopen`, { method: 'POST' });
+            if (res.ok) {
+                showToast("Đã mở lại sự cố (INVESTIGATING)", "info");
+                loadAllSystemData();
+            }
+        } catch(e) {
+            showToast("Lỗi kết nối", "error");
+        }
+    }
+
+    // Trigger Simulated Error for Testing
+    async function triggerSimulatedError() {
+        try {
+            const res = await authFetch('/api/v1/system/test-error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            if (res.ok) {
+                showToast("Đã tạo lỗi thử nghiệm thành công! Kiểm tra bảng sự cố.", "success");
+                loadAllSystemData();
+            } else {
+                const errData = await res.json();
+                showToast(errData.message || "Không thể tạo lỗi thử nghiệm", "error");
+            }
+        } catch(e) {
+            showToast("Lỗi kết nối", "error");
+        }
+    }
+
+    // Auto Refresh Controller
+    function changeAutoRefresh(seconds) {
+        if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+        const s = parseInt(seconds);
+        if (s > 0) {
+            autoRefreshTimer = setInterval(loadAllSystemData, s * 1000);
+            showToast(`Đã bật tự động làm mới mỗi ${s} giây`, "info");
+        } else {
+            showToast("Đã tắt tự động làm mới", "info");
+        }
+    }
+
+    function loadAllSystemData() {
+        const spinner = document.getElementById('refresh-spinner');
+        if (spinner) spinner.classList.add('animate-spin');
+        Promise.all([loadSystemHealth(), loadErrorsTable()]).finally(() => {
+            if (spinner) spinner.classList.remove('animate-spin');
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadAllSystemData();
+        changeAutoRefresh(30);
+    });
+</script>
+{% endblock %}

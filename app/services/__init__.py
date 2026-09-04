@@ -3,6 +3,7 @@ from app.services.order_service import OrderService
 from app.services.inventory_service import InventoryService
 from app.services.product_service import ProductService
 from app.services.auth_service import AuthService, auth_service
+from app.services.error_service import ErrorService, error_service
 
 __all__ = [
     "ChannelRegistry",
@@ -12,5 +13,8 @@ __all__ = [
     "ProductService",
     "AuthService",
     "auth_service",
+    "ErrorService",
+    "error_service",
 ]
+
 

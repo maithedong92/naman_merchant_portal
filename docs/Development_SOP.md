@@ -297,3 +297,35 @@ Mọi biến động liên quan đến an ninh tài khoản bắt buộc phải 
 - `PASSWORD_CHANGED`, `LOGOUT`
 Ghi nhận đầy đủ: `user_id`, `username`, `ip_address`, `user_agent`, thời điểm và chi tiết lỗi.
 
+---
+
+## 11. Quy Chuẩn Giám Sát Sức Khỏe & Quản Lý Sự Cố Vận Hành (System Status & Incident Management SOP)
+
+### 11.1. Tự Động Thu Thập & Bắt Lỗi Vận Hành (Automatic Incident Interception)
+- Toàn bộ các unhandled exceptions (HTTP 500), lỗi tương tác kênh đối tác (`ExternalChannelError`), timeout đồng bộ từ ShopeeFood, GrabMart, ShopeeMart phải được tự động bắt thông qua Global Exception Handlers và lưu vào bảng `operational_error_logs`.
+- Thông tin lưu vết bao gồm: Mã định danh lỗi (`error_code`), Mức độ nghiêm trọng (`severity`: CRITICAL, ERROR, WARNING, INFO), Phân hệ phát sinh (`module`), Thông điệp lỗi, Endpoint, Phương thức HTTP, Mã trạng thái HTTP, Python Exception Traceback, Client IP và Payload.
+
+### 11.2. Khử Trùng Lặp Sự Cố Thông Minh (Incident Deduplication)
+- Nhằm tránh làm tràn ngập (flood) cơ sở dữ liệu khi một lỗi lặp đi lặp lại liên tục (ví dụ mạng chập chờn gửi liên tục 1000 webhook lỗi trong 5 phút):
+  - Hệ thống tự động tính toán `error_hash` dựa trên: `SHA256(module + error_code + message[:150])`.
+  - Nếu một sự cố có cùng `error_hash` và đang ở trạng thái `OPEN` trong vòng 1 giờ gần nhất, hệ thống sẽ **tăng biến đếm `occurrence_count += 1`** và cập nhật thời điểm `last_occurred_at` thay vì tạo hàng ngàn bản ghi thừa thãi.
+
+### 11.3. Khử Dữ Liệu Nhạy Cảm (Payload Sanitization)
+- Trước khi lưu `request_payload` vào nhật ký sự cố, hệ thống bắt buộc phải chạy qua hàm lọc bảo mật (`sanitize_payload`).
+- Toàn bộ các trường mang tính bảo mật (`password`, `token`, `secret`, `access_token`, `refresh_token`, `authorization`, `api_key`, `app_key`, `client_secret`, `partner_key`) đều phải được thay thế bằng chuỗi `****** [REDACTED]`.
+
+### 11.4. Quy Trình Vòng Đời Xử Lý Sự Cố (Incident Resolution Lifecycle)
+1. `OPEN`: Sự cố mới phát sinh từ hệ thống hoặc webhook sàn, chưa có người xử lý.
+2. `INVESTIGATING`: Kỹ sư hoặc quản trị viên đang kiểm tra log, truy vết nguyên nhân hoặc liên hệ kỹ thuật đối tác.
+3. `RESOLVED`: Đã xử lý thành công. Bắt buộc phải có `resolved_by`, thời gian `resolved_at` và `resolution_notes` (ghi chú nguyên nhân và hành động khắc phục).
+4. `IGNORED`: Xác nhận là cảnh báo vô hại / không cần can thiệp.
+
+### 11.5. Trung Tâm Giám Sát & Điều Phối (Admin Dashboard & System Status Portal)
+- Cung cấp trang `/admin` (Tổng quan KPI vận hành) và `/system-status` (Trung tâm giám sát sức khỏe & xử lý sự cố trực quan) tuân thủ triết lý thiết kế **"The Living Canvas"**:
+  - Xem nhịp đập kết nối của PostgreSQL Local và các Adapter kênh bán lẻ.
+  - Bộ lọc sự cố đa chiều theo Mức độ, Phân hệ, Trạng thái, và Từ khóa tìm kiếm.
+  - Xem chi tiết Python Traceback với tính năng copy nhanh.
+  - Modal xử lý sự cố trực tiếp trên giao diện web.
+  - Nút kiểm thử tạo lỗi mô phỏng (`/api/v1/system/test-error`) để diễn tập xử lý sự cố.
+
+

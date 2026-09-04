@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Nam An Market - Unified Merchant Portal{% endblock %}</title>
+
+    <!-- Google Fonts: Plus Jakarta Sans, Work Sans, Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#004d37',
+                            light: '#00674b',
+                            dark: '#003626',
+                            container: '#00674b',
+                        },
+                        surface: {
+                            DEFAULT: '#F5F7FA',
+                            canvas: '#fbf9f8',
+                            low: '#f6f3f2',
+                            lowest: '#ffffff',
+                            high: '#eae8e7',
+                        },
+                        charcoal: {
+                            DEFAULT: '#1b1c1c',
+                            muted: '#3f4944',
+                        },
+                        organic: {
+                            lime: '#b8f649',
+                        }
+                    },
+                    fontFamily: {
+                        display: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        sans: ['"Work Sans"', 'sans-serif'],
+                        mono: ['"Inter"', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Work Sans', sans-serif;
+            background-color: #F5F7FA;
+            color: #1b1c1c;
+        }
+        h1, h2, h3, h4, .font-heading {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        .glass-nav {
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-full flex flex-col bg-[#F5F7FA]">
+
+    <!-- Top Navigation Bar (The Living Canvas - Glassmorphism) -->
+    <header class="glass-nav sticky top-0 z-40 shadow-sm shadow-emerald-950/5">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <!-- Brand & Logo -->
+                <div class="flex items-center space-x-6">
+                    <a href="/admin" class="flex items-center space-x-3 group">
+                        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary to-primary-light flex items-center justify-center text-white font-display font-extrabold text-xl shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform duration-200">
+                            NA
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="font-display font-bold text-xl text-primary tracking-tight">Nam An Market</span>
+                                <span class="text-xs px-2.5 py-0.5 rounded-full bg-organic-lime text-primary font-semibold tracking-wide">PORTAL</span>
+                            </div>
+                            <p class="text-xs text-charcoal-muted tracking-wide">Unified Merchant Platform</p>
+                        </div>
+                    </a>
+
+                    <!-- Navigation Links -->
+                    <nav class="hidden md:flex items-center space-x-1 pl-6">
+                        <a href="/admin" class="px-4 py-2 rounded-full text-sm font-medium transition-colors {% if active_page == 'dashboard' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
+                            Tổng quan
+                        </a>
+                        <a href="/system-status" class="px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'system_status' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
+                            System Status & Lỗi
+                            <span id="nav-error-badge" class="hidden ml-1.5 px-2 py-0.2 text-[11px] font-bold rounded-full bg-rose-500 text-white">0</span>
+                        </a>
+                        <a href="/docs" target="_blank" class="px-4 py-2 rounded-full text-sm font-medium text-charcoal-muted hover:text-primary hover:bg-surface-low transition-colors flex items-center space-x-1">
+                            <span>OpenAPI Docs</span>
+                            <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                        </a>
+                    </nav>
+                </div>
+
+                <!-- Right Action Bar: Status Pill, User Profile, Logout -->
+                <div class="flex items-center space-x-4">
+                    <!-- Live Pulse Indicator -->
+                    <div id="system-status-indicator" class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-xs font-medium">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span id="system-status-text" class="font-mono">ONLINE :2223</span>
+                    </div>
+
+                    <!-- User Account / Log Out -->
+                    <div class="flex items-center space-x-3 pl-2">
+                        <div class="text-right hidden sm:block">
+                            <div id="user-display-name" class="text-sm font-bold text-charcoal">Quản trị viên</div>
+                            <div id="user-role-badge" class="text-[11px] font-mono text-primary font-medium">SUPER_ADMIN</div>
+                        </div>
+                        <button onclick="logoutAdmin()" title="Đăng xuất" class="p-2.5 rounded-full bg-surface-low text-charcoal-muted hover:text-rose-600 hover:bg-rose-50 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-3 pointer-events-none"></div>
+
+    <!-- Global Client Scripts -->
+    <script>
+        // API Base Token Manager
+        const TokenManager = {
+            getToken() {
+                return localStorage.getItem("naman_access_token") || "";
+            },
+            getRefreshToken() {
+                return localStorage.getItem("naman_refresh_token") || "";
+            },
+            setTokens(access, refresh) {
+                localStorage.setItem("naman_access_token", access);
+                if (refresh) localStorage.setItem("naman_refresh_token", refresh);
+            },
+            clear() {
+                localStorage.removeItem("naman_access_token");
+                localStorage.removeItem("naman_refresh_token");
+                localStorage.removeItem("naman_user_profile");
+            },
+            getUser() {
+                try {
+                    return JSON.parse(localStorage.getItem("naman_user_profile") || "{}");
+                } catch(e) {
+                    return {};
+                }
+            },
+            setUser(user) {
+                localStorage.setItem("naman_user_profile", JSON.stringify(user));
+            }
+        };
+
+        // Standard Toast Notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `pointer-events-auto px-5 py-3.5 rounded-2xl shadow-xl flex items-center space-x-3 text-sm font-medium transition-all duration-300 transform translate-y-2 opacity-0 ` +
+                (type === 'error' ? 'bg-rose-900 text-rose-100 shadow-rose-900/20' :
+                 type === 'success' ? 'bg-emerald-900 text-emerald-100 shadow-emerald-900/20' :
+                 'bg-charcoal text-white shadow-charcoal/20');
+            
+            toast.innerHTML = `
+                <span>${message}</span>
+                <button onclick="this.parentElement.remove()" class="opacity-70 hover:opacity-100">✕</button>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Authenticated Fetch Helper
+        async function authFetch(url, options = {}) {
+            options.headers = options.headers || {};
+            const token = TokenManager.getToken();
+            if (token) {
+                options.headers['Authorization'] = `Bearer ${token}`;
+            }
+            options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+
+            let res = await fetch(url, options);
+
+            // Handle 401 Unauthorized
+            if (res.status === 401) {
+                const refresh = TokenManager.getRefreshToken();
+                if (refresh && !url.includes('/auth/refresh') && !url.includes('/auth/login')) {
+                    try {
+                        const refreshRes = await fetch('/api/v1/auth/refresh', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ refresh_token: refresh })
+                        });
+                        if (refreshRes.ok) {
+                            const refData = await refreshRes.json();
+                            if (refData.success && refData.data) {
+                                TokenManager.setTokens(refData.data.access_token, refData.data.refresh_token);
+                                options.headers['Authorization'] = `Bearer ${refData.data.access_token}`;
+                                return await fetch(url, options);
+                            }
+                        }
+                    } catch(e) {}
+                }
+                // Token invalid
+                TokenManager.clear();
+                if (!window.location.pathname.includes('/login')) {
+                    window.location.href = '/admin/login?redirect=' + encodeURIComponent(window.location.pathname);
+                }
+            }
+            return res;
+        }
+
+        // Logout
+        async function logoutAdmin() {
+            try {
+                await authFetch('/api/v1/auth/logout', {
+                    method: 'POST',
+                    body: JSON.stringify({ refresh_token: TokenManager.getRefreshToken() })
+                });
+            } catch(e) {}
+            TokenManager.clear();
+            window.location.href = '/admin/login';
+        }
+
+        // Initialize User Info on Header
+        document.addEventListener('DOMContentLoaded', () => {
+            const user = TokenManager.getUser();
+            if (user && user.full_name) {
+                const nameEl = document.getElementById('user-display-name');
+                const roleEl = document.getElementById('user-role-badge');
+                if (nameEl) nameEl.textContent = user.full_name;
+                if (roleEl) roleEl.textContent = user.role;
+            }
+        });
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -6,6 +6,7 @@ from app.models.inventory import StoreInventory, InventoryStockLog
 from app.models.order import UnifiedOrder, OrderItem, OrderStatusHistory, UnifiedOrderStatus
 from app.models.sync_log import SyncLog, WebhookAuditLog
 from app.models.user import User, UserRole, RefreshToken, AuditSecurityLog
+from app.models.operational_error import OperationalErrorLog, ErrorSeverity, ErrorStatus
 
 __all__ = [
     "TimestampMixin",
@@ -28,4 +29,8 @@ __all__ = [
     "UserRole",
     "RefreshToken",
     "AuditSecurityLog",
+    "OperationalErrorLog",
+    "ErrorSeverity",
+    "ErrorStatus",
 ]
+

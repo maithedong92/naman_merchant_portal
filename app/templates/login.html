@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập Quản Trị - Nam An Market Merchant Portal</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            DEFAULT: '#004d37',
+                            light: '#00674b',
+                            dark: '#003626',
+                        },
+                        surface: {
+                            canvas: '#fbf9f8',
+                            low: '#f6f3f2',
+                            lowest: '#ffffff',
+                        },
+                        charcoal: '#1b1c1c',
+                        organic: {
+                            lime: '#b8f649',
+                        }
+                    },
+                    fontFamily: {
+                        display: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        sans: ['"Work Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="min-h-full flex items-center justify-center bg-[#F5F7FA] px-4 py-12">
+
+    <div class="max-w-md w-full space-y-8">
+        <!-- Logo & Header -->
+        <div class="text-center">
+            <div class="inline-flex w-16 h-16 rounded-3xl bg-gradient-to-br from-primary to-primary-light items-center justify-center text-white font-display font-black text-2xl shadow-xl shadow-primary/25 mb-4">
+                NA
+            </div>
+            <h2 class="text-3xl font-display font-extrabold text-charcoal tracking-tight">Nam An Market</h2>
+            <p class="mt-1 text-sm text-gray-600">Cổng Quản Trị & Điều Phối Đa Kênh (NAM-UMP)</p>
+            <div class="inline-block mt-3 px-3 py-1 bg-emerald-50 text-primary text-xs font-semibold rounded-full">
+                Bảo mật JWT • Cổng chuẩn 2223
+            </div>
+        </div>
+
+        <!-- Login Card -->
+        <div class="bg-white rounded-3xl p-8 sm:p-10 shadow-xl shadow-gray-200/50 space-y-6">
+            <div id="error-alert" class="hidden p-4 rounded-2xl bg-rose-50 text-rose-800 text-sm font-medium"></div>
+
+            <form id="login-form" class="space-y-5" onsubmit="handleLogin(event)">
+                <div>
+                    <label for="username" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Tài khoản / Email</label>
+                    <input id="username" name="username" type="text" required autofocus
+                           value="admin"
+                           class="w-full px-4 py-3.5 rounded-2xl bg-surface-low border-0 focus:bg-white focus:ring-2 focus:ring-primary text-charcoal text-sm transition-all duration-200"
+                           placeholder="Tên đăng nhập hoặc email">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Mật khẩu</label>
+                    <input id="password" name="password" type="password" required
+                           value="NamAn@2024Admin!"
+                           class="w-full px-4 py-3.5 rounded-2xl bg-surface-low border-0 focus:bg-white focus:ring-2 focus:ring-primary text-charcoal text-sm transition-all duration-200"
+                           placeholder="Nhập mật khẩu">
+                </div>
+
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                    <span>Mặc định SuperAdmin: <code class="font-mono text-primary font-bold">admin</code></span>
+                    <span class="text-gray-400">Lockout 5 lần sai</span>
+                </div>
+
+                <button type="submit" id="submit-btn"
+                        class="w-full py-4 px-6 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-sm tracking-wide shadow-lg shadow-primary/25 transition-all duration-200 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center space-x-2">
+                    <span id="btn-text">Đăng Nhập Vào Hệ Thống</span>
+                    <svg id="btn-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                </button>
+            </form>
+        </div>
+
+        <p class="text-center text-xs text-gray-400">
+            © 2026 Nam An Market Inc. Kiến trúc đa kênh độc lập ShopeeFood • GrabMart • ShopeeMart.
+        </p>
+    </div>
+
+    <script>
+        async function handleLogin(e) {
+            e.preventDefault();
+            const errEl = document.getElementById('error-alert');
+            const submitBtn = document.getElementById('submit-btn');
+            const btnText = document.getElementById('btn-text');
+            const btnSpinner = document.getElementById('btn-spinner');
+
+            errEl.classList.add('hidden');
+            submitBtn.disabled = true;
+            btnText.textContent = "Đang xác thực...";
+            btnSpinner.classList.remove('hidden');
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            try {
+                const res = await fetch('/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || "Tài khoản hoặc mật khẩu không chính xác.");
+                }
+
+                // Save tokens and user
+                localStorage.setItem("naman_access_token", data.data.access_token);
+                localStorage.setItem("naman_refresh_token", data.data.refresh_token);
+                localStorage.setItem("naman_user_profile", JSON.stringify(data.data.user));
+
+                // Redirect
+                const urlParams = new URLSearchParams(window.location.search);
+                const redirect = urlParams.get('redirect') || '/admin';
+                window.location.href = redirect;
+            } catch (err) {
+                errEl.textContent = err.message;
+                errEl.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.textContent = "Đăng Nhập Vào Hệ Thống";
+                btnSpinner.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

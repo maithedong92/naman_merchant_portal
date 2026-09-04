@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Tổng Quan Quản Trị - Nam An Merchant Portal{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+
+    <!-- Hero Header with Living Canvas Soft Editorial Style -->
+    <div class="rounded-3xl bg-gradient-to-br from-primary via-primary-light to-emerald-900 p-8 sm:p-10 text-white shadow-xl shadow-primary/15 relative overflow-hidden">
+        <div class="relative z-10 max-w-3xl">
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-semibold tracking-wider mb-4">
+                <span class="w-2 h-2 rounded-full bg-organic-lime"></span>
+                <span>NAM AN UNIFIED MERCHANT PORTAL</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-display font-extrabold tracking-tight leading-tight">
+                Cổng Điều Phối & Quản Trị Đa Kênh Hợp Nhất
+            </h1>
+            <p class="mt-3 text-emerald-100/90 text-sm sm:text-base leading-relaxed">
+                Nền tảng trung tâm quản lý đồng bộ thực đơn, giá bán, tồn kho tức thời và xử lý đơn hàng hợp nhất giữa Nam An Market với các sàn <span class="text-organic-lime font-bold">ShopeeFood, GrabMart, ShopeeMart</span>.
+            </p>
+
+            <div class="mt-6 flex flex-wrap items-center gap-3">
+                <a href="/system-status" class="px-5 py-2.5 rounded-full bg-white text-primary hover:bg-emerald-50 font-display font-bold text-sm tracking-wide shadow-md transition-all">
+                    Kiểm tra System Status & Sự cố
+                </a>
+                <a href="/docs" target="_blank" class="px-5 py-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white font-display font-semibold text-sm backdrop-blur-md transition-all flex items-center space-x-2">
+                    <span>Swagger API</span>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                </a>
+            </div>
+        </div>
+
+        <!-- Ambient decorative shapes -->
+        <div class="absolute -right-16 -bottom-16 w-80 h-80 rounded-full bg-emerald-400/10 blur-3xl pointer-events-none"></div>
+        <div class="absolute right-32 top-10 w-48 h-48 rounded-full bg-organic-lime/10 blur-2xl pointer-events-none"></div>
+    </div>
+
+    <!-- Active Incident Warning Banner (Dynamic) -->
+    <div id="active-incidents-banner" class="hidden rounded-2xl bg-amber-50 p-5 shadow-sm flex items-start justify-between">
+        <div class="flex items-start space-x-3">
+            <div class="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <div>
+                <h4 class="font-display font-bold text-amber-900 text-sm">Hệ thống đang ghi nhận sự cố vận hành cần xử lý</h4>
+                <p id="incidents-banner-text" class="text-xs text-amber-700 mt-0.5">Có lỗi phát sinh trong quá trình đồng bộ hoặc xử lý đơn hàng.</p>
+            </div>
+        </div>
+        <a href="/system-status" class="px-4 py-2 rounded-full bg-amber-800 text-white hover:bg-amber-900 text-xs font-bold shrink-0 transition-colors">
+            Xem & Xử lý ngay
+        </a>
+    </div>
+
+    <!-- Operational KPI Metrics (The "No-Line" Rule & Living Canvas Tonal Layering) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <!-- Metric 1: System Status -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Trạng Thái Hệ Thống</span>
+                <span id="kpi-status-badge" class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">HEALTHY</span>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+                <div id="kpi-uptime" class="text-2xl font-display font-extrabold text-charcoal">--</div>
+                <span class="text-xs text-emerald-600 font-medium">Uptime liên tục</span>
+            </div>
+            <p class="mt-2 text-xs text-gray-400">PostgreSQL Local + Nginx :2222</p>
+        </div>
+
+        <!-- Metric 2: Open Operational Incidents -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Sự Cố Đang Chờ</span>
+                <div class="w-8 h-8 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+                <div id="kpi-open-errors" class="text-2xl font-display font-extrabold text-charcoal">0</div>
+                <a href="/system-status" class="text-xs text-primary font-bold hover:underline">Chi tiết lỗi &rarr;</a>
+            </div>
+            <p id="kpi-critical-errors" class="mt-2 text-xs text-rose-600 font-medium">0 lỗi nghiêm trọng (Critical)</p>
+        </div>
+
+        <!-- Metric 3: Active Retail Channels -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Kênh Bán Đang Bật</span>
+                <div class="w-8 h-8 rounded-full bg-emerald-50 text-primary flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+                <div class="text-2xl font-display font-extrabold text-charcoal">3 Kênh</div>
+                <span class="text-xs text-emerald-600 font-semibold">Tự động nạp</span>
+            </div>
+            <p class="mt-2 text-xs text-gray-400">ShopeeFood • GrabMart • ShopeeMart</p>
+        </div>
+
+        <!-- Metric 4: Multi-Store Outlets -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Chi Nhánh Nam An</span>
+                <div class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                </div>
+            </div>
+            <div class="mt-4 flex items-baseline justify-between">
+                <div class="text-2xl font-display font-extrabold text-charcoal">Multi-Store</div>
+                <span class="text-xs text-blue-600 font-medium">10001, 10002,...</span>
+            </div>
+            <p class="mt-2 text-xs text-gray-400">Kho hàng & ánh xạ độc lập</p>
+        </div>
+    </div>
+
+    <!-- Sales Channels Integration Matrix & Architecture Overview -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- ShopeeFood Card -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 font-bold flex items-center justify-center text-sm">
+                            SF
+                        </div>
+                        <div>
+                            <h3 class="font-display font-bold text-charcoal text-base">ShopeeFood S2S</h3>
+                            <p class="text-xs text-gray-400 font-mono">App ID: 10045</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
+                </div>
+                <p class="text-xs text-charcoal-muted leading-relaxed">
+                    Tích hợp Foody S2S API v7.0.2. Đồng bộ danh mục món ăn, tồn kho, giá bán và nhận webhook đơn hàng thời gian thực qua chữ ký HMAC-SHA256.
+                </p>
+            </div>
+            <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+                <span class="text-gray-400">Adapter: ShopeeFoodChannelAdapter</span>
+                <span class="text-primary font-bold">Port 2223</span>
+            </div>
+        </div>
+
+        <!-- GrabMart Card -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 font-bold flex items-center justify-center text-sm">
+                            GM
+                        </div>
+                        <div>
+                            <h3 class="font-display font-bold text-charcoal text-base">GrabMart POS</h3>
+                            <p class="text-xs text-gray-400 font-mono">Scope: grabmart.partner.pos</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
+                </div>
+                <p class="text-xs text-charcoal-muted leading-relaxed">
+                    Tích hợp GrabMart Partner POS API v1.1.3 qua OAuth2. Đồng bộ menu, cập nhật tồn kho theo thời gian thực và tự động xác nhận đơn hàng.
+                </p>
+            </div>
+            <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+                <span class="text-gray-400">Adapter: GrabMartChannelAdapter</span>
+                <span class="text-primary font-bold">Port 2223</span>
+            </div>
+        </div>
+
+        <!-- ShopeeMart Card -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+            <div>
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 font-bold flex items-center justify-center text-sm">
+                            SM
+                        </div>
+                        <div>
+                            <h3 class="font-display font-bold text-charcoal text-base">ShopeeMart (Fresh)</h3>
+                            <p class="text-xs text-gray-400 font-mono">Shopee Open Platform v2</p>
+                        </div>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
+                </div>
+                <p class="text-xs text-charcoal-muted leading-relaxed">
+                    Tích hợp siêu thị thực phẩm tươi sống ShopeeMart theo bảng đối soát hàng hóa. Đồng bộ giá, tồn theo lô và tiếp nhận thông báo đóng gói đơn.
+                </p>
+            </div>
+            <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+                <span class="text-gray-400">Adapter: ShopeeMartChannelAdapter</span>
+                <span class="text-primary font-bold">Port 2223</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Action / Core Architecture Notice -->
+    <div class="bg-white rounded-3xl p-8 shadow-sm">
+        <h3 class="text-lg font-display font-bold text-charcoal mb-2">Quy Hoạch Hạ Tầng 3 Lớp & Phân Vùng Cổng 2222+</h3>
+        <p class="text-sm text-charcoal-muted mb-6 leading-relaxed">
+            Hệ thống chạy trên kiến trúc an toàn 3 lớp: <strong>Host Nginx</strong> (SSL Termination cổng 80/443) &rarr; <strong>Docker Stack</strong> (Nginx Container cổng 2222 &rarr; FastAPI Backend cổng 2223) &rarr; <strong>PostgreSQL Local</strong> trực tiếp trên máy Host.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <a href="/system-status" class="p-5 rounded-2xl bg-surface-low hover:bg-emerald-50 transition-colors group">
+                <div class="flex items-center justify-between">
+                    <span class="font-display font-bold text-sm text-charcoal group-hover:text-primary">System Status & Logs</span>
+                    <span class="text-xs font-mono text-primary font-bold">/system-status</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Xem nhật ký lỗi vận hành, sự cố đồng bộ và lịch sử xử lý sự cố.</p>
+            </a>
+
+            <a href="/docs" target="_blank" class="p-5 rounded-2xl bg-surface-low hover:bg-emerald-50 transition-colors group">
+                <div class="flex items-center justify-between">
+                    <span class="font-display font-bold text-sm text-charcoal group-hover:text-primary">REST API Documentation</span>
+                    <span class="text-xs font-mono text-primary font-bold">/docs</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Khám phá và chạy thử trực tiếp toàn bộ REST API của Core Platform.</p>
+            </a>
+
+            <div class="p-5 rounded-2xl bg-surface-low">
+                <div class="flex items-center justify-between">
+                    <span class="font-display font-bold text-sm text-charcoal">Cơ Sở Dữ Liệu Local</span>
+                    <span class="text-xs font-mono text-emerald-700 font-bold">5432</span>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">PostgreSQL chạy trực tiếp trên Host để tối ưu I/O và an toàn dữ liệu.</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadDashboardMetrics() {
+        try {
+            const res = await authFetch('/api/v1/system/health');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    const h = data.data;
+                    document.getElementById('kpi-status-badge').textContent = h.status;
+                    if (h.status === 'CRITICAL') {
+                        document.getElementById('kpi-status-badge').className = "px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-bold";
+                    } else if (h.status === 'WARNING') {
+                        document.getElementById('kpi-status-badge').className = "px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold";
+                    }
+
+                    // Uptime
+                    const mins = Math.floor(h.uptime_seconds / 60);
+                    const hrs = Math.floor(mins / 60);
+                    document.getElementById('kpi-uptime').textContent = hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m ${Math.floor(h.uptime_seconds % 60)}s`;
+
+                    // Errors
+                    const errSum = h.error_summary;
+                    document.getElementById('kpi-open-errors').textContent = errSum.open_errors + errSum.investigating_errors;
+                    document.getElementById('kpi-critical-errors').textContent = `${errSum.critical_errors} lỗi nghiêm trọng (Critical)`;
+
+                    // Header badge
+                    const openTotal = errSum.open_errors + errSum.investigating_errors;
+                    const navBadge = document.getElementById('nav-error-badge');
+                    if (navBadge) {
+                        if (openTotal > 0) {
+                            navBadge.textContent = openTotal;
+                            navBadge.classList.remove('hidden');
+                        } else {
+                            navBadge.classList.add('hidden');
+                        }
+                    }
+
+                    // Banner
+                    if (openTotal > 0) {
+                        const banner = document.getElementById('active-incidents-banner');
+                        banner.classList.remove('hidden');
+                        document.getElementById('incidents-banner-text').textContent = `Đang có ${openTotal} sự cố (${errSum.critical_errors} nghiêm trọng) cần được xem xét và xử lý.`;
+                    }
+                }
+            }
+        } catch(e) {
+            console.error("Lỗi khi tải dữ liệu dashboard:", e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDashboardMetrics);
+    setInterval(loadDashboardMetrics, 20000);
+</script>
+{% endblock %}

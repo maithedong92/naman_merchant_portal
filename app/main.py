@@ -10,11 +10,14 @@ from app.core.config import get_settings
 from app.core.database import Base, engine, AsyncSessionLocal
 from app.core.exceptions import AppException
 from app.core.responses import APIResponse
+from app.models.operational_error import ErrorSeverity
 from app.modules.grabmart import GrabMartChannelAdapter, grabmart_webhook_router
 from app.modules.shopeefood import ShopeeFoodChannelAdapter, shopeefood_webhook_router
 from app.modules.shopeemart import ShopeeMartChannelAdapter, shopeemart_webhook_router
 from app.services.channel_registry import channel_registry
 from app.services.auth_service import auth_service
+from app.services.error_service import error_service
+
 
 # Configure logging
 logging.basicConfig(
@@ -91,6 +94,28 @@ app.add_middleware(
 @app.exception_handler(AppException)
 async def app_exception_handler(request: Request, exc: AppException):
     """Handles domain application exceptions with standard JSON schema."""
+    # If this is a 5xx error or an external channel failure, log to operational_error_logs
+    if exc.status_code >= 500:
+        try:
+            async with AsyncSessionLocal() as session:
+                from app.core.exceptions import ExternalChannelError
+                module = "EXTERNAL_CHANNEL"
+                if isinstance(exc, ExternalChannelError) and hasattr(exc, "details") and exc.details:
+                    module = str(exc.details.get("channel", "EXTERNAL")).upper()
+                await error_service.log_error(
+                    db=session,
+                    error_code=exc.error_code,
+                    message=exc.message,
+                    severity=ErrorSeverity.ERROR,
+                    module=module,
+                    endpoint=str(request.url.path),
+                    http_method=request.method,
+                    http_status_code=exc.status_code,
+                    client_ip=request.client.host if request.client else None,
+                )
+        except Exception as log_ex:
+            logger.warning(f"Không thể ghi nhật ký sự cố AppException: {str(log_ex)}")
+
     return JSONResponse(
         status_code=exc.status_code,
         content=APIResponse.fail(
@@ -121,8 +146,27 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Catches any unhandled internal server error."""
+    """Catches any unhandled internal server error and records it in OperationalErrorLog."""
     logger.error(f"Unhandled Exception at {request.url}: {str(exc)}", exc_info=True)
+    import traceback
+    stack = traceback.format_exc()
+    try:
+        async with AsyncSessionLocal() as session:
+            await error_service.log_error(
+                db=session,
+                error_code="INTERNAL_SERVER_ERROR",
+                message=str(exc) or "Lỗi hệ thống không xác định",
+                severity=ErrorSeverity.CRITICAL,
+                module="CORE",
+                stack_trace=stack,
+                endpoint=str(request.url.path),
+                http_method=request.method,
+                http_status_code=500,
+                client_ip=request.client.host if request.client else None,
+            )
+    except Exception as log_ex:
+        logger.warning(f"Không thể ghi nhật ký sự cố Unhandled Exception: {str(log_ex)}")
+
     return JSONResponse(
         status_code=500,
         content=APIResponse.fail(
@@ -132,6 +176,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
+
+from app.web import web_router
+
 # Mount Core API Routers
 app.include_router(api_v1_router)
 
@@ -140,9 +187,12 @@ app.include_router(shopeefood_webhook_router, prefix="/api/v1")
 app.include_router(grabmart_webhook_router, prefix="/api/v1")
 app.include_router(shopeemart_webhook_router, prefix="/api/v1")
 
+# Mount Admin Portal & Web Pages (/admin, /system-status, /admin/login)
+app.include_router(web_router)
 
-@app.get("/", tags=["Root"])
-async def root():
+
+@app.get("/api/info", tags=["Root"])
+async def api_info():
     return APIResponse.ok(
         data={
             "portal": settings.APP_NAME,
@@ -152,3 +202,4 @@ async def root():
         },
         message="Chào mừng bạn đến với Nam An Market Unified Merchant Portal API"
     )
+

@@ -192,6 +192,7 @@ naman_merchant_portal/
 │   ├── models/                    # PostgreSQL SQLAlchemy Models (Core Domain)
 │   │   ├── base.py                # TimestampMixin, UUIDBaseModel
 │   │   ├── user.py                # User, UserRole, RefreshToken, AuditSecurityLog
+│   │   ├── operational_error.py   # OperationalErrorLog, ErrorSeverity, ErrorStatus
 │   │   ├── store.py               # Store (Chi nhánh: 10001, 10004,...), StoreChannelMapping
 │   │   ├── channel.py             # Channel (SHOPEEFOOD, GRABMART, SHOPEEMART)
 │   │   ├── product.py             # Product, Category, ChannelItemMapping
@@ -202,6 +203,7 @@ naman_merchant_portal/
 │   │   ├── common.py              # Pagination, Standard APIResponse
 │   │   ├── auth.py                # Login, RefreshToken, ChangePassword schemas
 │   │   ├── user.py                # UserCreate, UserUpdate, UserResponse schemas
+│   │   ├── system.py              # OperationalError, SystemHealth, ComponentHealth
 │   │   ├── store.py               # Store schemas
 │   │   ├── channel.py             # Channel schemas
 │   │   ├── product.py             # Product & Catalog schemas
@@ -212,6 +214,7 @@ naman_merchant_portal/
 │   │   └── services.py            # Service interfaces
 │   ├── services/                  # Business Logic Core Services
 │   │   ├── auth_service.py        # Xác thực, Quản lý Token, RBAC, Khóa brute-force
+│   │   ├── error_service.py       # Thu thập sự cố, khử trùng lặp, giải quyết lỗi
 │   │   ├── channel_registry.py    # Quản lý & nạp các Channel Adapter động
 │   │   ├── order_service.py       # Xử lý vòng đời đơn hàng hợp nhất
 │   │   ├── inventory_service.py   # Tính toán & điều phối tồn kho
@@ -221,6 +224,7 @@ naman_merchant_portal/
 │   │   └── v1/
 │   │       ├── router.py          # Master router v1
 │   │       ├── health.py          # Liveness & Readiness probes
+│   │       ├── system.py          # System Health, Operational Errors & Incident Resolution
 │   │       ├── auth.py            # Đăng nhập, Gia hạn token, Đổi mật khẩu
 │   │       ├── users.py           # Quản lý người dùng & Nhật ký kiểm toán bảo mật
 │   │       ├── stores.py          # Quản lý chi nhánh
@@ -228,6 +232,14 @@ naman_merchant_portal/
 │   │       ├── products.py        # Quản lý sản phẩm & giá
 │   │       ├── inventory.py       # Quản lý tồn kho & trigger sync
 │   │       └── orders.py          # Xử lý & xem đơn hàng tập trung
+│   ├── templates/                 # Giao diện Web (The Living Canvas Design System)
+│   │   ├── base.html              # Layout chuẩn Glassmorphism, Font, Toast notification
+│   │   ├── admin_dashboard.html   # Trang Tổng Quan Quản Trị (/admin)
+│   │   ├── system_status.html     # Trang Giám Sát System Status & Xử Lý Sự Cố (/system-status)
+│   │   └── login.html             # Trang Đăng Nhập Quản Trị (/admin/login)
+│   ├── web/                       # Web UI Routers (HTML Template Rendering)
+│   │   └── router.py              # Điều hướng /admin, /system-status, /admin/login
+
 
 │   └── modules/                   # Multi-Module Apps (Kênh bán hàng)
 │       ├── shopeefood/            # Module ShopeeFood
@@ -334,10 +346,14 @@ Cài đặt Nginx trực tiếp trên máy Host (nếu chưa có) và áp dụng
 
 ---
 
-### 5.3. Tài Liệu API Tự Động (Swagger & ReDoc)
+### 5.3. Giao Diện Quản Trị & Tài Liệu API
+- **Admin Dashboard Tổng Quan:** [http://localhost:2222/admin](http://localhost:2222/admin) (hoặc trực tiếp `http://localhost:2223/admin`)
+- **System Status & Quản Lý Sự Cố:** [http://localhost:2222/system-status](http://localhost:2222/system-status) (hoặc `http://localhost:2223/system-status`)
+- **Đăng Nhập Quản Trị:** [http://localhost:2222/admin/login](http://localhost:2222/admin/login)
 - **Interactive Swagger UI:** [http://localhost:2222/docs](http://localhost:2222/docs) (hoặc qua domain https://portal.namanmarket.com/docs)
 - **ReDoc Documentation:** [http://localhost:2222/redoc](http://localhost:2222/redoc)
 - **Health Check Endpoint:** [http://localhost:2222/api/v1/health](http://localhost:2222/api/v1/health)
+
 
 ---
 
