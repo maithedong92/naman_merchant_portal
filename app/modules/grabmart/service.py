@@ -16,6 +16,7 @@ class GrabMartClient:
         self.base_url = settings.GRABMART_BASE_URL.rstrip("/")
         self.client_id = settings.GRABMART_CLIENT_ID
         self.client_secret = settings.GRABMART_CLIENT_SECRET
+        self.oauth_url = getattr(settings, "GRABMART_OAUTH_URL", "https://api.grab.com/grabid/v1/oauth2/token")
         self._cached_token: Optional[str] = None
         self._token_expires_at: float = 0
 
@@ -41,7 +42,7 @@ class GrabMartClient:
             self._token_expires_at = now + 3600
             return self._cached_token
 
-        token_url = f"{self.base_url}/grabid/v1/oauth2/token"
+        token_url = self.oauth_url
         payload = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,

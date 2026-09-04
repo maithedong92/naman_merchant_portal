@@ -65,8 +65,9 @@ class Settings(BaseSettings):
     GRABMART_ENABLED: bool = True
     GRABMART_CLIENT_ID: str = ""
     GRABMART_CLIENT_SECRET: str = ""
+    GRABMART_OAUTH_URL: str = "https://api.grab.com/grabid/v1/oauth2/token"
     GRABMART_BASE_URL: str = "https://partner-api.grab.com"
-    GRABMART_SCOPE: str = "grabmart.partner.pos"
+    GRABMART_SCOPE: str = "mart.partner_api"
     GRABMART_COUNTRY: str = "VN"
     GRABMART_CURRENCY: str = "VND"
 
