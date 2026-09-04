@@ -20,7 +20,7 @@ services:
       # Allows the container to access PostgreSQL service on the host machine
       - "host.docker.internal:host-gateway"
     expose:
-      - "8000"
+      - "2223"
     networks:
       - naman_internal_net
 
@@ -32,8 +32,8 @@ services:
     container_name: naman_portal_nginx
     restart: always
     ports:
-      # Expose port 8080 to host machine -> Host-Level Nginx proxy_pass into 127.0.0.1:8080
-      - "127.0.0.1:8080:80"
+      # Expose port 2222 to host machine -> Host-Level Nginx proxy_pass into 127.0.0.1:2222
+      - "127.0.0.1:2222:2222"
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:

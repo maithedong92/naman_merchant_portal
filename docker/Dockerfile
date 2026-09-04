@@ -31,12 +31,12 @@ ENV PATH=/root/.local/bin:$PATH
 COPY app ./app
 COPY pyproject.toml .
 
-# Expose FastAPI internal port
-EXPOSE 8000
+# Expose FastAPI custom internal port (2223)
+EXPOSE 2223
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD curl -f http://localhost:2223/api/v1/health || exit 1
 
-# Start FastAPI application via Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Start FastAPI application via Uvicorn on custom port 2223
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "2223", "--workers", "2"]

@@ -100,16 +100,16 @@ flowchart TD
 
     subgraph Host_Server["MÁY CHỦ VẬT LÝ / VM (HOST SERVER)"]
         subgraph Layer1_Host_Nginx["Lớp 1: Nginx Local Ngoài Cùng (Host-Level Gateway)"]
-            Nginx_Host["Host-Level Nginx Reverse Proxy\n- Public Port: 80 / 443 (SSL/TLS Termination)\n- Wildcard SSL: *.namanmarket.com\n- Rate Limiting, DDoS Shield, Security Headers\n- Reverse Proxy -> 127.0.0.1:8080"]
+            Nginx_Host["Host-Level Nginx Reverse Proxy\n- Public Port: 80 / 443 (SSL/TLS Termination)\n- Wildcard SSL: *.namanmarket.com\n- Rate Limiting, DDoS Shield, Security Headers\n- Reverse Proxy -> 127.0.0.1:2222"]
         end
 
         subgraph Layer2_Docker["Lớp 2: Docker Container Stack (App + Nginx Đóng Gói Cùng Nhau)"]
             subgraph Docker_Nginx["Container Nginx (Nội Bộ)"]
-                Nginx_Doc["Internal Nginx Proxy\n- Port nội bộ: 80 (Expose Host: 127.0.0.1:8080)\n- Buffer Webhook Payload, Gzip, Static Assets\n- Proxy pass -> app:8000"]
+                Nginx_Doc["Internal Nginx Proxy\n- Port nội bộ: 2222 (Expose Host: 127.0.0.1:2222)\n- Buffer Webhook Payload, Gzip, Static Assets\n- Proxy pass -> app:2223"]
             end
 
             subgraph Docker_App["Container FastAPI App"]
-                FastAPI_App["FastAPI Uvicorn ASGI (:8000)\n- Multi-module Monolith Engine\n- Core Services & Channel Adapters\n- Order State Machine"]
+                FastAPI_App["FastAPI Uvicorn ASGI (:2223)\n- Multi-module Monolith Engine\n- Core Services & Channel Adapters\n- Order State Machine"]
             end
         end
 
@@ -119,10 +119,20 @@ flowchart TD
     end
 
     Clients -->|HTTPS :443 (TLS v1.3)| Nginx_Host
-    Nginx_Host -->|proxy_pass http://127.0.0.1:8080| Nginx_Doc
-    Nginx_Doc -->|proxy_pass http://app:8000| FastAPI_App
+    Nginx_Host -->|proxy_pass http://127.0.0.1:2222| Nginx_Doc
+    Nginx_Doc -->|proxy_pass http://app:2223| FastAPI_App
     FastAPI_App -->|TCP host.docker.internal:5432| Local_PG
 ```
+
+#### Bảng Phân Bổ Cổng Dịch Vụ Độc Quyền (Custom Port Allocation Matrix - 2222+):
+> Để tránh xung đột với các ứng dụng khác đang chạy trên máy chủ và trong Docker (tránh các port phổ biến như 80, 443, 3000, 5000, 8000, 8080), toàn bộ các dịch vụ của Nam An Merchant Portal được quy hoạch bắt đầu từ dải **2222**:
+
+| Cổng (Port) | Dịch Vụ / Vai Trò | Môi Trường Lắng Nghe | Mô Tả Chi Tiết |
+| :---: | :--- | :--- | :--- |
+| **2222** | **Container Nginx Reverse Proxy** | Docker (Expose `127.0.0.1:2222`) | Cổng tiếp nhận từ Nginx ngoài cùng của máy host |
+| **2223** | **FastAPI Backend Application** | Container `:2223` / Host Dev | Chạy Uvicorn ASGI backend & Core API |
+| **2224** | **Frontend Web Dashboard** | Container / Host Dev | Giao diện Web Quản trị ("The Living Canvas") |
+| **2225+**| **Auxiliary Services** | Container / Host Dev | Dành riêng cho Background Task Workers / Celery / Flower / Metrics |
 
 #### Phân Định Rõ Ràng Trách Nhiệm Từng Lớp:
 1. **Lớp 1 - Nginx Local Ngoài Cùng (Host-Level Nginx):**
@@ -130,10 +140,10 @@ flowchart TD
    - Đóng vai trò là Public Gateway duy nhất tiếp nhận lưu lượng từ Internet (Domain `portal.namanmarket.com`).
    - Xử lý SSL/TLS Termination (chứng chỉ Wildcard SSL hoặc Let's Encrypt), ép buộc HTTP sang HTTPS.
    - Thiết lập Rate Limiting bảo vệ các endpoint webhook khỏi nghẽn tải hoặc tấn công lặp payload.
-   - `proxy_pass` chuyển tiếp an toàn vào cổng nội bộ máy host `127.0.0.1:8080`.
+   - `proxy_pass` chuyển tiếp an toàn vào cổng nội bộ máy host `127.0.0.1:2222`.
 2. **Lớp 2 - Docker Container Runtime (App + Nginx đóng gói cùng nhau):**
-   - **Container Nginx:** Đóng gói trong Docker cùng stack với backend, lắng nghe cổng 80 (được map ra host `127.0.0.1:8080:80`). Chịu trách nhiệm buffer request body cho các payload đồng bộ lớn từ sàn, nén Gzip, phục vụ assets giao diện và forward về Uvicorn.
-   - **Container FastAPI App:** Chạy mã nguồn backend Python 3.12 (Uvicorn ASGI) trên port 8000 nội bộ.
+   - **Container Nginx:** Đóng gói trong Docker cùng stack với backend, lắng nghe cổng `2222` (được map ra host `127.0.0.1:2222:2222`). Chịu trách nhiệm buffer request body cho các payload đồng bộ lớn từ sàn, nén Gzip, phục vụ assets giao diện và forward về Uvicorn (`app:2223`).
+   - **Container FastAPI App:** Chạy mã nguồn backend Python 3.12 (Uvicorn ASGI) trên cổng tùy chỉnh `:2223` nội bộ.
    - **Kết nối ra ngoài Container:** Cấu hình `extra_hosts: ["host.docker.internal:host-gateway"]` cho phép container gọi trực tiếp các dịch vụ trên host.
 3. **Lớp 3 - Local PostgreSQL Database (Chạy trực tiếp trên Host, KHÔNG chạy trong Docker):**
    - Cơ sở dữ liệu PostgreSQL được cài đặt trực tiếp trên máy chủ Host (hoặc cụm database bare-metal nội bộ của Nam An).
@@ -264,8 +274,8 @@ pip install -r requirements.txt
 copy .env.example .env
 # Chỉnh DATABASE_URL=postgresql+asyncpg://postgres:admin@localhost:5432/naman_merchant_portal
 
-# 4. Khởi chạy FastAPI server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# 4. Khởi chạy FastAPI server trên cổng tùy chỉnh 2223
+uvicorn app.main:app --host 0.0.0.0 --port 2223 --reload
 ```
 
 ---
@@ -276,8 +286,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 ```mermaid
 flowchart LR
-    A["Host Nginx Local (Port 443/80)"] -->|proxy_pass :8080| B["Container Nginx (Docker :8080)"]
-    B -->|proxy_pass :8000| C["Container FastAPI (:8000)"]
+    A["Host Nginx Local (Port 443/80)"] -->|proxy_pass :2222| B["Container Nginx (Docker :2222)"]
+    B -->|proxy_pass :2223| C["Container FastAPI (:2223)"]
     C -->|host.docker.internal:5432| D[("PostgreSQL Local (Host :5432)")]
 ```
 
@@ -290,17 +300,17 @@ Kiểm tra trạng thái các container:
 ```bash
 docker compose ps
 ```
-- Container `naman_portal_app` lắng nghe cổng nội bộ 8000.
-- Container `naman_portal_nginx` mở cổng `127.0.0.1:8080` trên máy Host.
+- Container `naman_portal_app` lắng nghe cổng nội bộ **2223**.
+- Container `naman_portal_nginx` mở cổng **`127.0.0.1:2222`** trên máy Host.
 
 #### Bước 2: Cấu hình Nginx Local Ngoài Cùng trên Máy Host
 Cài đặt Nginx trực tiếp trên máy Host (nếu chưa có) và áp dụng cấu hình từ file mẫu [`docker/nginx/host-nginx.conf.example`](file:///c:/python/naman_merchant_portal/docker/nginx/host-nginx.conf.example):
 
 1. Sao chép cấu hình vào thư mục Nginx của máy Host:
    ```nginx
-   # Cấu hình proxy_pass từ Host Nginx vào cổng Docker Nginx (127.0.0.1:8080):
+   # Cấu hình proxy_pass từ Host Nginx vào cổng Docker Nginx (127.0.0.1:2222):
    location / {
-       proxy_pass http://127.0.0.1:8080;
+       proxy_pass http://127.0.0.1:2222;
        proxy_http_version 1.1;
        proxy_set_header Host $host;
        proxy_set_header X-Real-IP $remote_addr;
@@ -317,9 +327,9 @@ Cài đặt Nginx trực tiếp trên máy Host (nếu chưa có) và áp dụng
 ---
 
 ### 5.3. Tài Liệu API Tự Động (Swagger & ReDoc)
-- **Interactive Swagger UI:** [http://localhost:8080/docs](http://localhost:8080/docs) (hoặc qua domain https://portal.namanmarket.com/docs)
-- **ReDoc Documentation:** [http://localhost:8080/redoc](http://localhost:8080/redoc)
-- **Health Check Endpoint:** [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
+- **Interactive Swagger UI:** [http://localhost:2222/docs](http://localhost:2222/docs) (hoặc qua domain https://portal.namanmarket.com/docs)
+- **ReDoc Documentation:** [http://localhost:2222/redoc](http://localhost:2222/redoc)
+- **Health Check Endpoint:** [http://localhost:2222/api/v1/health](http://localhost:2222/api/v1/health)
 
 ---
 

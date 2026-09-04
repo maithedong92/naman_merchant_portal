@@ -229,18 +229,18 @@ Hệ thống bắt buộc triển khai theo kiến trúc **3 Lớp Phân Tách**
   - Tự động chuyển hướng HTTP -> HTTPS với HTTP Strict Transport Security (HSTS).
   - Áp dụng Rate Limiting bảo vệ các endpoint Webhook từ ShopeeFood, GrabMart, ShopeeMart chống nghẽn đường truyền.
   - Chuyển tiếp (Reverse Proxy) toàn bộ lưu lượng hợp lệ sang cổng nội bộ Docker:
-    `proxy_pass http://127.0.0.1:8080;`
+    `proxy_pass http://127.0.0.1:2222;`
 
 ### 9.2. Lớp 2: Docker Container Stack (App + Nginx Đóng Gói Cùng Nhau)
 - **Vị trí:** Chạy trong môi trường Docker Container độc lập thông qua `docker-compose.yml`.
 - **Thành phần:**
   1. **Container Nginx (Nội bộ):**
-     - Đóng gói cùng stack với backend, mở cổng `127.0.0.1:8080:80` (chỉ cho phép truy cập từ loopback của host).
+     - Đóng gói cùng stack với backend, mở cổng `127.0.0.1:2222:2222` (chỉ cho phép truy cập từ loopback của host).
      - Đảm nhiệm xử lý buffer body cho các request webhook / sync payload lớn (`client_max_body_size 50M`).
      - Nén Gzip các file tĩnh và response JSON.
-     - `proxy_pass http://app:8000;` tới container backend.
+     - `proxy_pass http://app:2223;` tới container backend.
   2. **Container FastAPI App:**
-     - Đóng gói ứng dụng Python 3.12 (Uvicorn ASGI) trên cổng nội bộ `:8000`.
+     - Đóng gói ứng dụng Python 3.12 (Uvicorn ASGI) trên cổng tùy chỉnh nội bộ `:2223`.
      - Chạy đầy đủ Core Platform và các Channel Adapters (`SHOPEEFOOD`, `GRABMART`, `SHOPEEMART`).
   3. **Cơ chế gọi ngược ra Host (Host Gateway):**
      - Container App khai báo `extra_hosts: ["host.docker.internal:host-gateway"]` để kết nối ra các dịch vụ chạy trên máy Host.
@@ -258,3 +258,11 @@ Hệ thống bắt buộc triển khai theo kiến trúc **3 Lớp Phân Tách**
     `postgresql+asyncpg://postgres:admin@localhost:5432/naman_merchant_portal`
   - Môi trường Container (chạy qua Docker):
     `postgresql+asyncpg://postgres:admin@host.docker.internal:5432/naman_merchant_portal`
+
+### 9.4. Quy Chuẩn Cổng Dịch Vụ Không Phổ Biến (Custom Port Range Rule: 2222+)
+- **Nguyên tắc:** Tuyệt đối không sử dụng các cổng mặc định / phổ biến (80, 443, 3000, 5000, 8000, 8080) cho các container và ứng dụng backend/frontend của Nam An Portal để tránh xung đột với các ứng dụng khác đang cùng chạy trên máy chủ.
+- **Quy hoạch dải cổng:**
+  - `2222`: Container Nginx Reverse Proxy (Cổng tiếp nhận từ Nginx ngoài cùng của host).
+  - `2223`: FastAPI Backend Uvicorn ASGI Application.
+  - `2224`: Frontend Web Dashboard Application (The Living Canvas).
+  - `2225+`: Các dịch vụ phụ trợ nội bộ (Celery Worker, Flower, Prometheus Metrics,...).
