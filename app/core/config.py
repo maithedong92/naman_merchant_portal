@@ -20,11 +20,11 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     HOST: str = "0.0.0.0"
-    PORT: int = 2223
+    PORT: int = 3002
     ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:2222",
-        "http://localhost:2223",
-        "http://localhost:2224",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://localhost:3003",
         "https://portal.namanmarket.com"
     ]
 

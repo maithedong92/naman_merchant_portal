@@ -8,19 +8,14 @@ services:
       dockerfile: docker/Dockerfile
     container_name: naman_portal_app
     restart: always
-    environment:
-      - ENVIRONMENT=production
-      - DEBUG=False
-      # Connect to PostgreSQL running locally on the Host machine
-      - DATABASE_URL=postgresql+asyncpg://postgres:admin@host.docker.internal:5432/naman_merchant_portal
     env_file:
-      - path: .env
-        required: false
+      - .env
     extra_hosts:
-      # Allows the container to access PostgreSQL service on the host machine
+      # Allows the container to access services on the host machine if needed
       - "host.docker.internal:host-gateway"
+
     expose:
-      - "2223"
+      - "3002"
     networks:
       - naman_internal_net
 
@@ -32,8 +27,8 @@ services:
     container_name: naman_portal_nginx
     restart: always
     ports:
-      # Expose port 2222 to host machine -> Host-Level Nginx proxy_pass into 127.0.0.1:2222
-      - "127.0.0.1:2222:2222"
+      # Expose port 3001 to host machine -> Host-Level Nginx proxy_pass into 127.0.0.1:3001
+      - "127.0.0.1:3001:3001"
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
     depends_on:
