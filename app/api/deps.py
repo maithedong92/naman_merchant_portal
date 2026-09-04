@@ -64,6 +64,9 @@ async def get_current_user(
     return user
 
 
+get_current_active_user = get_current_user
+
+
 class RoleChecker:
     """RBAC Guard dependency enforcing permitted roles."""
 

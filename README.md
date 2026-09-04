@@ -373,10 +373,16 @@ Cài đặt Nginx trực tiếp trên máy Host (nếu chưa có) và áp dụng
   - Cơ chế chống Brute-force & Account Lockout sau 5 lần sai mật khẩu, mã hóa Bcrypt 12 rounds.
   - Ghi nhật ký kiểm toán bảo mật (`audit_security_logs`) và tự động seed tài khoản SuperAdmin mặc định khi khởi chạy.
 
-- [ ] **Giai đoạn 3: Triển khai Module GrabMart (`app/modules/grabmart`)**
-  - Tích hợp Grab OAuth2 client credentials flow.
-  - Đồng bộ thực đơn theo chuẩn GrabMart POS API v1.1.3.
-  - Xử lý Webhooks tiếp nhận đơn hàng, xác nhận chuẩn bị đơn và cập nhật trạng thái giao hàng.
+- [x] **Giai đoạn 3: Triển khai Module GrabMart (`app/modules/grabmart`)**
+  - Tích hợp Grab OAuth2 client credentials flow với cơ chế tự động refresh token và sandbox simulation.
+  - Xây dựng Webhook đối tác OAuth (`POST /api/v1/grabmart/oauth/token`) phục vụ xác thực ngược từ GrabMart.
+  - Đồng bộ thực đơn theo chuẩn **GrabMart POS API v1.1.3**: cấu trúc `sellingTimes` (lịch bán 7 ngày trong tuần), `categories`, `subcategories`, `items` (giá VND exponent 0, barcode, photos).
+  - Webhook tiếp nhận thực đơn (`GET /api/v1/grabmart/menu`) và cơ chế thông báo cập nhật thực đơn (`POST /partner/v1/merchant/menu/notification`).
+  - Xử lý Webhook tiếp nhận đơn hàng (`POST /api/v1/grabmart/webhooks/order`): chuyển đổi toàn diện sang `UnifiedOrder` và lưu trữ an toàn vào PostgreSQL.
+  - Xử lý Webhook trạng thái đơn (`PUT /api/v1/grabmart/webhooks/order/state`): ánh xạ các trạng thái `DRIVER_ALLOCATED`, `COLLECTED` (`PICKED_UP`), `DELIVERED`, `CANCELLED` vào State Machine.
+  - Đồng bộ tồn kho tức thời: cập nhật trạng thái `AVAILABLE` / `UNAVAILABLE` và quy tắc `maxStock = 0` khi hết hàng theo chuẩn Grab.
+  - Các API điều phối vòng đời đơn: Xác nhận đơn (`prepare`), Báo đơn sẵn sàng (`ready`), và Hủy đơn kèm mã lý do (`cancel`).
+  - Bộ kiểm thử tự động 8 kịch bản unit & integration tests (`tests/test_grabmart.py`) đạt 100% pass.
 - [ ] **Giai đoạn 4: Triển khai Module ShopeeFood (`app/modules/shopeefood`)**
   - Cơ chế tạo chữ ký số HMAC-SHA256 theo chuẩn Foody External API.
   - API đẩy đồng bộ menu theo Sections, Categories, Dish Items.
