@@ -1,0 +1,18 @@
+Hi team,
+SPF gửi app_id và app_key ở UAT environment nhé !
+•	app_id : 10045
+•	app_key : a9756768d72268a6d66ea886031988f0638f03b0036fc63fbe0b86a6aef18546
+Thanks, 
+
+
+Content-Type: application/json Header:
+required ExternalAppType X-Foody-App-Id 
+required uint32 XFoody-ApiVersion: current version is 1 
+required uint32 XFoody-Request-Id: random integer in range (0,10^10) 
+required string X-Foody-Country: VN, TH 
+optional string X-Foody-Language: vi, en, th …(default: en) 
+
+Reply:
+Http status = 200 (other error codes need to be retry)
+Json data in body
+{“result”: result_code, “reply”: //json_format_define_in_s2s//}

@@ -1,0 +1,143 @@
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.api.v1.router import api_v1_router
+from app.core.config import get_settings
+from app.core.database import Base, engine
+from app.core.exceptions import AppException
+from app.core.responses import APIResponse
+from app.modules.grabmart import GrabMartChannelAdapter, grabmart_webhook_router
+from app.modules.shopeefood import ShopeeFoodChannelAdapter, shopeefood_webhook_router
+from app.services.channel_registry import channel_registry
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("naman_portal")
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application Lifespan:
+    1. Initialize Database Schema tables.
+    2. Register Channel Adapters (ShopeeFood, GrabMart) into Central Registry.
+    3. Clean up on shutdown.
+    """
+    logger.info("=== Khởi động Nam An Unified Merchant Portal ===")
+    
+    # Auto-create tables in development
+    if settings.DEBUG:
+        logger.info("Đang khởi tạo cấu trúc cơ sở dữ liệu PostgreSQL...")
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("✅ Đã sẵn sàng cơ sở dữ liệu PostgreSQL.")
+        except Exception as ex:
+            logger.warning(f"Lưu ý: Không thể kết nối tới PostgreSQL trong startup ({str(ex)}). Tiếp tục khởi động...")
+
+    # Register decoupled channel adapters
+    logger.info("Đang đăng ký các Channel Adapters vào Registry...")
+    if settings.SHOPEEFOOD_ENABLED:
+        channel_registry.register(ShopeeFoodChannelAdapter())
+    if settings.GRABMART_ENABLED:
+        channel_registry.register(GrabMartChannelAdapter())
+
+    logger.info(f"✅ Các kênh bán lẻ đã đăng ký: {channel_registry.list_channels()}")
+    
+    yield
+    
+    logger.info("=== Đang tắt hệ thống Nam An Merchant Portal ===")
+    await engine.dispose()
+
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description="Hệ thống Cổng Quản Trị Đa Kênh & Đồng Bộ Đơn Hàng Hợp Nhất của Nam An Market (ShopeeFood, GrabMart, Shopee,...)",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan
+)
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Global Exception Handlers conforming to Development SOP
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    """Handles domain application exceptions with standard JSON schema."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=APIResponse.fail(
+            message=exc.message,
+            error_code=exc.error_code,
+            data=exc.details
+        ).model_dump()
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handles Pydantic request validation errors."""
+    errors = []
+    for err in exc.errors():
+        loc = " -> ".join([str(x) for x in err.get("loc", [])])
+        errors.append({"field": loc, "message": err.get("msg")})
+    
+    return JSONResponse(
+        status_code=422,
+        content=APIResponse.fail(
+            message="Dữ liệu yêu cầu không hợp lệ.",
+            error_code="VALIDATION_ERROR",
+            data=errors
+        ).model_dump()
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catches any unhandled internal server error."""
+    logger.error(f"Unhandled Exception at {request.url}: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content=APIResponse.fail(
+            message="Đã xảy ra lỗi nội bộ trên máy chủ. Vui lòng liên hệ quản trị viên.",
+            error_code="INTERNAL_SERVER_ERROR"
+        ).model_dump()
+    )
+
+
+# Mount Core API Routers
+app.include_router(api_v1_router)
+
+# Mount Channel Webhook Routers under /api/v1
+app.include_router(shopeefood_webhook_router, prefix="/api/v1")
+app.include_router(grabmart_webhook_router, prefix="/api/v1")
+
+
+@app.get("/", tags=["Root"])
+async def root():
+    return APIResponse.ok(
+        data={
+            "portal": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "docs": "/docs",
+            "channels": channel_registry.list_channels()
+        },
+        message="Chào mừng bạn đến với Nam An Market Unified Merchant Portal API"
+    )
