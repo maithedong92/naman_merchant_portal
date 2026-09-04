@@ -5,6 +5,19 @@ from app.schemas.product import CategoryCreate, CategoryResponse, ProductCreate,
 from app.schemas.inventory import StoreInventoryResponse, InventoryStockUpdateItem, InventoryBatchUpdateRequest
 from app.schemas.order import UnifiedOrderResponse, OrderItemResponse, OrderStatusHistoryResponse, OrderStatusUpdateSchema, OrderFilterParams
 from app.schemas.sync import SyncTriggerRequest, SyncResult
+from app.schemas.user import (
+    UserCreate,
+    UserUpdate,
+    UserResponse,
+    AuditSecurityLogResponse,
+)
+from app.schemas.auth import (
+    LoginRequest,
+    TokenResponse,
+    RefreshTokenRequest,
+    ChangePasswordRequest,
+    LogoutRequest,
+)
 
 __all__ = [
     "PaginationMeta",
@@ -32,4 +45,14 @@ __all__ = [
     "OrderFilterParams",
     "SyncTriggerRequest",
     "SyncResult",
+    "UserCreate",
+    "UserUpdate",
+    "UserResponse",
+    "AuditSecurityLogResponse",
+    "LoginRequest",
+    "TokenResponse",
+    "RefreshTokenRequest",
+    "ChangePasswordRequest",
+    "LogoutRequest",
 ]
+

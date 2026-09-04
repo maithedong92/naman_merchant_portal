@@ -266,3 +266,34 @@ Hệ thống bắt buộc triển khai theo kiến trúc **3 Lớp Phân Tách**
   - `2223`: FastAPI Backend Uvicorn ASGI Application.
   - `2224`: Frontend Web Dashboard Application (The Living Canvas).
   - `2225+`: Các dịch vụ phụ trợ nội bộ (Celery Worker, Flower, Prometheus Metrics,...).
+
+---
+
+## 10. Quy Chuẩn Xác Thực & Phân Quyền Bảo Mật (Auth & RBAC SOP)
+
+### 10.1. Cơ Chế Xác Thực JWT & Quản Lý Vòng Đời Token
+- **Access Token:** Ký thuật toán `HS256`, thời hạn 60 phút. Chứa các claims: `sub` (User ID), `username`, `role`, `store_id`, `is_superuser`, `type="access"`.
+- **Refresh Token & Token Rotation:**
+  - Thời hạn 7 ngày. Khi sử dụng refresh token để lấy token mới, hệ thống tự động **thu hồi (revoke) refresh token cũ** và cấp phát cặp Access/Refresh Token mới (Token Rotation).
+  - **Phát hiện tái sử dụng Token (Token Reuse Detection):** Nếu phát hiện một refresh token đã bị thu hồi được gửi lên, hệ thống sẽ ngay lập tức vô hiệu hóa toàn bộ các phiên đăng nhập đang hoạt động của người dùng đó để chống tấn công đánh cắp token.
+  - Token refresh được băm SHA-256 trước khi lưu trong cơ sở dữ liệu (`refresh_tokens.token_hash`), không bao giờ lưu token gốc dạng plaintext.
+
+### 10.2. Mã Hóa Mật Khẩu & Chống Tấn Công Brute-Force
+- **Mã Hóa:** Sử dụng thuật toán `bcrypt` với chi phí `rounds=12`.
+- **Khóa Tài Khoản Tạm Thời (Account Lockout):** Nhập sai mật khẩu liên tiếp `MAX_FAILED_LOGIN_ATTEMPTS=5` lần sẽ kích hoạt khóa tài khoản tạm thời trong `ACCOUNT_LOCKOUT_MINUTES=15` phút.
+- **Chống Timing Attack:** Nếu tài khoản không tồn tại, hệ thống vẫn thực thi hàm verify mật khẩu giả lập với độ trễ tương đương để ngăn chặn dò quét username.
+
+### 10.3. Hệ Thống Phân Quyền Dựa Trên Vai Trò (Role-Based Access Control - RBAC)
+Hệ thống xác lập 4 vai trò quản trị rõ ràng:
+1. `SUPER_ADMIN`: Toàn quyền quản trị hệ thống, quản lý tài khoản người dùng, cấu hình kênh đối tác, truy cập dữ liệu tất cả chi nhánh.
+2. `STORE_MANAGER`: Quản lý kho, cập nhật tồn kho theo lô, thiết lập ánh xạ hàng hóa, quản lý đơn hàng tại chi nhánh được phân công (`store_id`).
+3. `STAFF`: Nhân viên xử lý đơn hàng tại chi nhánh (`store_id`), tiếp nhận đơn, chuyển trạng thái chế biến/chuẩn bị hàng.
+4. `READ_ONLY`: Chỉ đọc báo cáo doanh thu, tra cứu lịch sử đơn hàng và tồn kho mà không có quyền thay đổi dữ liệu.
+
+### 10.4. Kiểm Toán Bảo Mật (Security Audit Logging)
+Mọi biến động liên quan đến an ninh tài khoản bắt buộc phải được ghi lại trong bảng `audit_security_logs`:
+- `LOGIN_SUCCESS`, `LOGIN_FAILED`, `ACCOUNT_LOCKED`
+- `REFRESH_TOKEN_SUCCESS`, `REFRESH_TOKEN_FAILED`, `REFRESH_TOKEN_REUSE_DETECTED`
+- `PASSWORD_CHANGED`, `LOGOUT`
+Ghi nhận đầy đủ: `user_id`, `username`, `ip_address`, `user_agent`, thời điểm và chi tiết lỗi.
+

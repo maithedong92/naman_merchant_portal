@@ -191,6 +191,7 @@ naman_merchant_portal/
 │   │   └── responses.py           # Standardized API response format
 │   ├── models/                    # PostgreSQL SQLAlchemy Models (Core Domain)
 │   │   ├── base.py                # TimestampMixin, UUIDBaseModel
+│   │   ├── user.py                # User, UserRole, RefreshToken, AuditSecurityLog
 │   │   ├── store.py               # Store (Chi nhánh: 10001, 10004,...), StoreChannelMapping
 │   │   ├── channel.py             # Channel (SHOPEEFOOD, GRABMART, SHOPEEMART)
 │   │   ├── product.py             # Product, Category, ChannelItemMapping
@@ -199,6 +200,8 @@ naman_merchant_portal/
 │   │   └── sync_log.py            # SyncLog, WebhookAuditLog
 │   ├── schemas/                   # Pydantic v2 Validation Schemas
 │   │   ├── common.py              # Pagination, Standard APIResponse
+│   │   ├── auth.py                # Login, RefreshToken, ChangePassword schemas
+│   │   ├── user.py                # UserCreate, UserUpdate, UserResponse schemas
 │   │   ├── store.py               # Store schemas
 │   │   ├── channel.py             # Channel schemas
 │   │   ├── product.py             # Product & Catalog schemas
@@ -208,19 +211,24 @@ naman_merchant_portal/
 │   │   ├── channel_adapter.py     # BaseChannelAdapter (Contract cho mọi channel)
 │   │   └── services.py            # Service interfaces
 │   ├── services/                  # Business Logic Core Services
+│   │   ├── auth_service.py        # Xác thực, Quản lý Token, RBAC, Khóa brute-force
 │   │   ├── channel_registry.py    # Quản lý & nạp các Channel Adapter động
 │   │   ├── order_service.py       # Xử lý vòng đời đơn hàng hợp nhất
 │   │   ├── inventory_service.py   # Tính toán & điều phối tồn kho
 │   │   └── product_service.py     # Quản lý hàng hóa & catalog
 │   ├── api/                       # REST API Endpoints
+│   │   ├── deps.py                # FastAPI Security Dependencies (OAuth2, RBAC Guards)
 │   │   └── v1/
 │   │       ├── router.py          # Master router v1
 │   │       ├── health.py          # Liveness & Readiness probes
+│   │       ├── auth.py            # Đăng nhập, Gia hạn token, Đổi mật khẩu
+│   │       ├── users.py           # Quản lý người dùng & Nhật ký kiểm toán bảo mật
 │   │       ├── stores.py          # Quản lý chi nhánh
 │   │       ├── channels.py        # Quản lý kênh bán lẻ
 │   │       ├── products.py        # Quản lý sản phẩm & giá
 │   │       ├── inventory.py       # Quản lý tồn kho & trigger sync
 │   │       └── orders.py          # Xử lý & xem đơn hàng tập trung
+
 │   └── modules/                   # Multi-Module Apps (Kênh bán hàng)
 │       ├── shopeefood/            # Module ShopeeFood
 │       │   ├── __init__.py
@@ -339,11 +347,16 @@ Cài đặt Nginx trực tiếp trên máy Host (nếu chưa có) và áp dụng
   - Dọn dẹp code cũ, chuẩn hóa cấu trúc tài liệu tích hợp vào `docs/channels/`.
   - Khởi tạo repository, `.gitignore`, `README.md` và `Development_SOP.md`.
   - Thiết kế kiến trúc Multi-Module Monolith (Core + Decoupled Channel Modules).
-- [x] **Giai đoạn 2: Xây Dựng Core Module (Core Platform)**
+- [x] **Giai đoạn 2: Xây Dựng Core Module & Bảo Mật (Core Platform & Security)**
   - Cấu hình FastAPI, Async SQLAlchemy 2.0 & PostgreSQL Engine.
   - Xây dựng Domain Models chuẩn: Stores, Channels, Products, Inventories, Orders, Sync Logs.
   - Xây dựng Base Channel Adapter Interface & Service Registry (`ChannelRegistry`).
   - Triển khai Core REST API endpoints cho đơn hàng, sản phẩm và tồn kho.
+  - Triển khai Xác thực & Bảo mật: JWT Access/Refresh Token (Token Rotation, SHA-256 hash, Invalidation on reuse).
+  - Triển khai Phân quyền RBAC 4 cấp (`SUPER_ADMIN`, `STORE_MANAGER`, `STAFF`, `READ_ONLY`) kết hợp Store-scoping authorization.
+  - Cơ chế chống Brute-force & Account Lockout sau 5 lần sai mật khẩu, mã hóa Bcrypt 12 rounds.
+  - Ghi nhật ký kiểm toán bảo mật (`audit_security_logs`) và tự động seed tài khoản SuperAdmin mặc định khi khởi chạy.
+
 - [ ] **Giai đoạn 3: Triển khai Module GrabMart (`app/modules/grabmart`)**
   - Tích hợp Grab OAuth2 client credentials flow.
   - Đồng bộ thực đơn theo chuẩn GrabMart POS API v1.1.3.

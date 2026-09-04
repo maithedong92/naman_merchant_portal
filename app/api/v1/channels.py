@@ -3,10 +3,12 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user, require_super_admin
 from app.core.database import get_db
 from app.core.exceptions import ConflictError
 from app.core.responses import APIResponse
 from app.models.channel import Channel
+from app.models.user import User
 from app.schemas.channel import ChannelCreate, ChannelResponse
 from app.services.channel_registry import channel_registry
 
@@ -14,7 +16,10 @@ router = APIRouter(prefix="/channels", tags=["Sales Channels"])
 
 
 @router.get("", response_model=APIResponse[List[ChannelResponse]])
-async def list_channels(db: AsyncSession = Depends(get_db)):
+async def list_channels(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """List all registered e-commerce and delivery channels."""
     stmt = select(Channel).order_by(Channel.code)
     res = await db.execute(stmt)
@@ -23,10 +28,15 @@ async def list_channels(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=APIResponse[ChannelResponse], status_code=201)
-async def create_channel(payload: ChannelCreate, db: AsyncSession = Depends(get_db)):
+async def create_channel(
+    payload: ChannelCreate,
+    current_admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db)
+):
     """Register a new channel (e.g. SHOPEEFOOD, GRABMART)."""
     code_upper = payload.code.upper()
     existing = await db.execute(select(Channel).where(Channel.code == code_upper))
+
     if existing.scalar_one_or_none():
         raise ConflictError(f"Kênh với mã '{code_upper}' đã tồn tại.")
 
@@ -46,9 +56,12 @@ async def create_channel(payload: ChannelCreate, db: AsyncSession = Depends(get_
 
 
 @router.get("/registered-adapters", response_model=APIResponse[List[str]])
-async def get_registered_adapters():
+async def get_registered_adapters(
+    current_user: User = Depends(get_current_user)
+):
     """Returns list of active channel adapters loaded in current memory registry."""
     return APIResponse.ok(
         data=channel_registry.list_channels(),
         message="Danh sách các adapter đã được nạp vào Registry"
     )
+

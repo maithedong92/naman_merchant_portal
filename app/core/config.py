@@ -37,9 +37,21 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 20
     DB_ECHO: bool = False
 
-    # Security
+    # Security & Authentication
     INTERNAL_API_SECRET: str = "naman_secure_internal_secret_change_me"
     WEBHOOK_TIMEOUT_SECONDS: int = 15
+    JWT_SECRET_KEY: str = "naman_portal_jwt_secret_key_change_in_production_super_secure_32_bytes"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    MAX_FAILED_LOGIN_ATTEMPTS: int = 5
+    ACCOUNT_LOCKOUT_MINUTES: int = 15
+
+    # Initial SuperAdmin Seed Account
+    INITIAL_ADMIN_USERNAME: str = "admin"
+    INITIAL_ADMIN_PASSWORD: str = "NamAn@2024Admin!"
+    INITIAL_ADMIN_EMAIL: str = "admin@namanmarket.com"
+    INITIAL_ADMIN_FULL_NAME: str = "Nam An System Administrator"
 
     # ShopeeFood Module Settings
     SHOPEEFOOD_ENABLED: bool = True

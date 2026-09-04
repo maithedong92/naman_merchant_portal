@@ -7,13 +7,14 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
-from app.core.database import Base, engine
+from app.core.database import Base, engine, AsyncSessionLocal
 from app.core.exceptions import AppException
 from app.core.responses import APIResponse
 from app.modules.grabmart import GrabMartChannelAdapter, grabmart_webhook_router
 from app.modules.shopeefood import ShopeeFoodChannelAdapter, shopeefood_webhook_router
 from app.modules.shopeemart import ShopeeMartChannelAdapter, shopeemart_webhook_router
 from app.services.channel_registry import channel_registry
+from app.services.auth_service import auth_service
 
 # Configure logging
 logging.basicConfig(
@@ -29,20 +30,26 @@ async def lifespan(app: FastAPI):
     """
     Application Lifespan:
     1. Initialize Database Schema tables.
-    2. Register Channel Adapters (ShopeeFood, GrabMart) into Central Registry.
-    3. Clean up on shutdown.
+    2. Seed initial SuperAdmin account if none exists.
+    3. Register Channel Adapters (ShopeeFood, GrabMart, ShopeeMart) into Central Registry.
+    4. Clean up on shutdown.
     """
     logger.info("=== Khởi động Nam An Unified Merchant Portal ===")
     
-    # Auto-create tables in development
+    # Auto-create tables in development and seed initial admin
     if settings.DEBUG:
         logger.info("Đang khởi tạo cấu trúc cơ sở dữ liệu PostgreSQL...")
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("✅ Đã sẵn sàng cơ sở dữ liệu PostgreSQL.")
+
+            # Seed default SuperAdmin
+            async with AsyncSessionLocal() as session:
+                await auth_service.seed_initial_superadmin(session)
         except Exception as ex:
             logger.warning(f"Lưu ý: Không thể kết nối tới PostgreSQL trong startup ({str(ex)}). Tiếp tục khởi động...")
+
 
     # Register decoupled channel adapters
     logger.info("Đang đăng ký các Channel Adapters vào Registry...")

@@ -55,3 +55,23 @@ class ExternalChannelError(AppException):
             status_code=502,
             details={"channel": channel, "raw_response": raw_response}
         )
+
+
+class UnauthorizedError(AppException):
+    def __init__(self, message: str = "Xác thực không hợp lệ hoặc phiên đăng nhập đã hết hạn.", details: Optional[Any] = None):
+        super().__init__(
+            message=message,
+            error_code="UNAUTHORIZED",
+            status_code=401,
+            details=details
+        )
+
+
+class ForbiddenError(AppException):
+    def __init__(self, message: str = "Bạn không có quyền thực hiện hành động này.", details: Optional[Any] = None):
+        super().__init__(
+            message=message,
+            error_code="FORBIDDEN",
+            status_code=403,
+            details=details
+        )

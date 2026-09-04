@@ -4,10 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import get_current_user, require_super_admin
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.responses import APIResponse
 from app.models.store import Store, StoreChannelMapping
+from app.models.user import User
 from app.schemas.store import (
     StoreChannelMappingCreate,
     StoreChannelMappingResponse,
@@ -20,7 +22,10 @@ router = APIRouter(prefix="/stores", tags=["Stores & Outlets"])
 
 
 @router.get("", response_model=APIResponse[List[StoreResponse]])
-async def list_stores(db: AsyncSession = Depends(get_db)):
+async def list_stores(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """List all physical stores / outlets of Nam An Market."""
     stmt = select(Store).options(selectinload(Store.channel_mappings)).order_by(Store.code)
     res = await db.execute(stmt)
@@ -29,9 +34,14 @@ async def list_stores(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("", response_model=APIResponse[StoreResponse], status_code=201)
-async def create_store(payload: StoreCreate, db: AsyncSession = Depends(get_db)):
+async def create_store(
+    payload: StoreCreate,
+    current_admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db)
+):
     """Create a new store (e.g. 10001 - Thảo Điền)."""
     existing = await db.execute(select(Store).where(Store.code == payload.code))
+
     if existing.scalar_one_or_none():
         raise ConflictError(f"Cửa hàng với mã '{payload.code}' đã tồn tại.")
 
@@ -46,7 +56,11 @@ async def create_store(payload: StoreCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/{store_id}", response_model=APIResponse[StoreResponse])
-async def get_store(store_id: str, db: AsyncSession = Depends(get_db)):
+async def get_store(
+    store_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Get single store details including channel partner mappings."""
     stmt = select(Store).where((Store.id == store_id) | (Store.code == store_id)).options(
         selectinload(Store.channel_mappings)
@@ -62,6 +76,7 @@ async def get_store(store_id: str, db: AsyncSession = Depends(get_db)):
 async def map_store_to_channel(
     store_id: str,
     payload: StoreChannelMappingCreate,
+    current_admin: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """

@@ -2,8 +2,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user, require_store_manager
 from app.core.database import get_db
 from app.core.responses import APIResponse
+from app.models.user import User
 from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.product import (
     CategoryCreate,
@@ -17,16 +19,24 @@ router = APIRouter(prefix="/products", tags=["Catalog & Products"])
 
 
 @router.get("/categories", response_model=APIResponse[List[CategoryResponse]])
-async def list_categories(db: AsyncSession = Depends(get_db)):
+async def list_categories(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """List all product categories in hierarchical order."""
     categories = await ProductService.list_categories(db)
     return APIResponse.ok(data=categories)
 
 
 @router.post("/categories", response_model=APIResponse[CategoryResponse], status_code=201)
-async def create_category(payload: CategoryCreate, db: AsyncSession = Depends(get_db)):
+async def create_category(
+    payload: CategoryCreate,
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db)
+):
     """Create a new product category."""
     category = await ProductService.create_category(payload, db)
+
     return APIResponse.ok(data=category, message="Tạo danh mục thành công")
 
 
@@ -36,6 +46,7 @@ async def list_products(
     page_size: int = Query(20, ge=1, le=100),
     category_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """List products with pagination and category / keyword search."""
@@ -61,14 +72,23 @@ async def list_products(
 
 
 @router.post("", response_model=APIResponse[ProductResponse], status_code=201)
-async def create_product(payload: ProductCreate, db: AsyncSession = Depends(get_db)):
+async def create_product(
+    payload: ProductCreate,
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db)
+):
     """Create a new master product SKU."""
     product = await ProductService.create_product(payload, db)
     return APIResponse.ok(data=product, message="Tạo sản phẩm thành công")
 
 
 @router.get("/{product_id}", response_model=APIResponse[ProductResponse])
-async def get_product(product_id: str, db: AsyncSession = Depends(get_db)):
+async def get_product(
+    product_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Get product details by UUID."""
     product = await ProductService.get_product_by_id(product_id, db)
     return APIResponse.ok(data=product)
+
