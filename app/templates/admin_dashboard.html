@@ -65,7 +65,7 @@
                 <div id="kpi-uptime" class="text-2xl font-display font-extrabold text-charcoal">--</div>
                 <span class="text-xs text-emerald-600 font-medium">Uptime liên tục</span>
             </div>
-            <p class="mt-2 text-xs text-gray-400">PostgreSQL Local + Nginx :2222</p>
+            <p class="mt-2 text-xs text-gray-400">PostgreSQL UMP + Nginx :3001</p>
         </div>
 
         <!-- Metric 2: Open Operational Incidents -->
@@ -138,7 +138,7 @@
             </div>
             <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
                 <span class="text-gray-400">Adapter: ShopeeFoodChannelAdapter</span>
-                <span class="text-primary font-bold">Port 2223</span>
+                <span class="text-primary font-bold">Port 3002</span>
             </div>
         </div>
 
@@ -152,7 +152,7 @@
                         </div>
                         <div>
                             <h3 class="font-display font-bold text-charcoal text-base">GrabMart POS</h3>
-                            <p class="text-xs text-gray-400 font-mono">Scope: grabmart.partner.pos</p>
+                            <p class="text-xs text-gray-400 font-mono">Scope: mart.partner_api</p>
                         </div>
                     </div>
                     <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
@@ -163,7 +163,7 @@
             </div>
             <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
                 <span class="text-gray-400">Adapter: GrabMartChannelAdapter</span>
-                <span class="text-primary font-bold">Port 2223</span>
+                <span class="text-primary font-bold">Port 3002</span>
             </div>
         </div>
 
@@ -188,16 +188,16 @@
             </div>
             <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
                 <span class="text-gray-400">Adapter: ShopeeMartChannelAdapter</span>
-                <span class="text-primary font-bold">Port 2223</span>
+                <span class="text-primary font-bold">Port 3002</span>
             </div>
         </div>
     </div>
 
     <!-- Quick Action / Core Architecture Notice -->
     <div class="bg-white rounded-3xl p-8 shadow-sm">
-        <h3 class="text-lg font-display font-bold text-charcoal mb-2">Quy Hoạch Hạ Tầng 3 Lớp & Phân Vùng Cổng 2222+</h3>
+        <h3 class="text-lg font-display font-bold text-charcoal mb-2">Quy Hoạch Hạ Tầng 3 Lớp & Phân Vùng Cổng 3001+</h3>
         <p class="text-sm text-charcoal-muted mb-6 leading-relaxed">
-            Hệ thống chạy trên kiến trúc an toàn 3 lớp: <strong>Host Nginx</strong> (SSL Termination cổng 80/443) &rarr; <strong>Docker Stack</strong> (Nginx Container cổng 2222 &rarr; FastAPI Backend cổng 2223) &rarr; <strong>PostgreSQL Local</strong> trực tiếp trên máy Host.
+            Hệ thống chạy trên kiến trúc an toàn 3 lớp: <strong>Host Nginx</strong> (SSL Termination cổng 80/443) &rarr; <strong>Docker Stack</strong> (Nginx Container cổng 3001 &rarr; FastAPI Backend cổng 3002) &rarr; <strong>PostgreSQL UMP</strong> (Cụm Database tập trung).
         </p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
