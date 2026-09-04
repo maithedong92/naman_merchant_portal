@@ -13,15 +13,15 @@ Hệ thống là một **Modular Monolith** kết hợp với kiến trúc **Por
    - Nắm giữ toàn bộ dữ liệu nghiệp vụ chuẩn (Canonical Domain Models): Stores (Chi nhánh), Channels (Kênh), Unified Products (Hàng hóa), Inventories (Tồn kho), Orders (Đơn hàng), Sync Logs (Nhật ký đồng bộ).
    - Core định nghĩa các **Ports / Interfaces** trừu tượng (`BaseChannelAdapter`, `IMenuSyncService`, `IOrderService`).
 2. **Channel Modules là các Adapter cắm ngoài (Pluggable Adapters):**
-   - Mỗi kênh bán lẻ (`shopeefood`, `grabmart`, `shopee`,...) là một module độc lập hoàn toàn nằm trong thư mục `app/modules/<channel_name>/`.
+   - Mỗi kênh bán lẻ (`shopeefood`, `grabmart`, `shopeemart`,...) là một module độc lập hoàn toàn nằm trong thư mục `app/modules/<channel_name>/`.
    - Mỗi channel module tự quản lý:
      - DTO/Schemas riêng biệt theo tài liệu API của sàn đó.
      - Cơ chế xác thực (OAuth2 token, HMAC-SHA256 signature, API Key).
      - Router tiếp nhận Webhook riêng (`/api/v1/<channel_name>/webhooks/...`).
      - Logic chuyển đổi 2 chiều (Bidirectional Mapping): Từ Canonical Model của Core sang Channel Payload, và từ Webhook Payload của sàn sang Canonical Order Model.
 3. **Quy tắc biên giới (Strict Boundary Rules):**
-   - ❌ **CẤM:** Module `shopeefood` import trực tiếp bất kỳ class, function hoặc schema nào từ module `grabmart` (và ngược lại).
-   - ❌ **CẤM:** Lưu logic đặc thù của một sàn (ví dụ: công thức tính signature của Foody hay token Grab) vào bên trong `app/core/` hay `app/models/`.
+   - ❌ **CẤM:** Các module `shopeefood`, `grabmart`, `shopeemart` tuyệt đối không import trực tiếp bất kỳ class, function hoặc schema nào của nhau (Zero module-to-module dependencies).
+   - ❌ **CẤM:** Lưu logic đặc thù của một sàn (ví dụ: công thức tính signature của Foody/Shopee hay token Grab) vào bên trong `app/core/` hay `app/models/`.
    - ✅ **ĐÚNG:** Mọi giao tiếp giữa các module hoặc giữa Core và Module đều phải thông qua **Core Interfaces** (`BaseChannelAdapter`) hoặc thông qua **Service Registry / Event Bus**.
 
 ---

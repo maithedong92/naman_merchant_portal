@@ -57,11 +57,12 @@ class Settings(BaseSettings):
     GRABMART_COUNTRY: str = "VN"
     GRABMART_CURRENCY: str = "VND"
 
-    # Shopee E-Commerce Module Settings
-    SHOPEE_ENABLED: bool = False
-    SHOPEE_PARTNER_ID: str = ""
-    SHOPEE_PARTNER_KEY: str = ""
-    SHOPEE_BASE_URL: str = "https://partner.shopeemobile.com"
+    # ShopeeMart / Shopee Open Platform Settings
+    SHOPEEMART_ENABLED: bool = True
+    SHOPEEMART_PARTNER_ID: str = ""
+    SHOPEEMART_PARTNER_KEY: str = ""
+    SHOPEEMART_SHOP_ID: str = ""
+    SHOPEEMART_BASE_URL: str = "https://partner.shopeemobile.com"
 
 
 @lru_cache()

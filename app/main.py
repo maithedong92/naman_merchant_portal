@@ -12,6 +12,7 @@ from app.core.exceptions import AppException
 from app.core.responses import APIResponse
 from app.modules.grabmart import GrabMartChannelAdapter, grabmart_webhook_router
 from app.modules.shopeefood import ShopeeFoodChannelAdapter, shopeefood_webhook_router
+from app.modules.shopeemart import ShopeeMartChannelAdapter, shopeemart_webhook_router
 from app.services.channel_registry import channel_registry
 
 # Configure logging
@@ -49,6 +50,8 @@ async def lifespan(app: FastAPI):
         channel_registry.register(ShopeeFoodChannelAdapter())
     if settings.GRABMART_ENABLED:
         channel_registry.register(GrabMartChannelAdapter())
+    if settings.SHOPEEMART_ENABLED:
+        channel_registry.register(ShopeeMartChannelAdapter())
 
     logger.info(f"✅ Các kênh bán lẻ đã đăng ký: {channel_registry.list_channels()}")
     
@@ -128,6 +131,7 @@ app.include_router(api_v1_router)
 # Mount Channel Webhook Routers under /api/v1
 app.include_router(shopeefood_webhook_router, prefix="/api/v1")
 app.include_router(grabmart_webhook_router, prefix="/api/v1")
+app.include_router(shopeemart_webhook_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])

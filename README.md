@@ -10,7 +10,7 @@
 **Nam An Market** là chuỗi siêu thị cao cấp chuyên cung cấp thực phẩm sạch, thực phẩm hữu cơ và hàng nhập khẩu chất lượng cao với nhiều chi nhánh (Thảo Điền, An Phú,...). Để mở rộng kênh tiếp cận khách hàng trực tuyến, Nam An kết nối với nhiều nền tảng bán hàng và giao nhận nhanh hàng đầu như:
 - **ShopeeFood** (Foody External API v7.0+)
 - **GrabMart** (GrabMart Partner POS API v1.1.3+)
-- **Shopee E-Commerce** (Shopee Open Platform)
+- **ShopeeMart / Shopee Fresh** (Shopee Open Platform API v2)
 - Các kênh tiềm năng trong tương lai (TikTok Shop, GrabFood, Baemin, Tiki,...)
 
 Mỗi kênh bán lẻ có quy tắc phân loại danh mục (category taxonomy), định dạng menu (regular menu, service hours, modifiers), cơ chế định danh món/SKU, giao thức chữ ký bảo mật (HMAC-SHA256, OAuth2, App ID/Key) và vòng đời đơn hàng (order lifecycle) hoàn toàn khác nhau.
@@ -26,22 +26,22 @@ Mỗi kênh bán lẻ có quy tắc phân loại danh mục (category taxonomy),
 
 Hệ thống được thiết kế theo mô hình **Multi-Module Monolith (Clean Architecture & Hexagonal/Ports-and-Adapters Pattern)**:
 - **Core Module là trung tâm:** Nắm giữ toàn bộ dữ liệu nghiệp vụ chuẩn (Canonical Domain Models: Stores, Channels, Unified Products, Orders, Inventory, Sync Logs), State Machine xử lý đơn hàng và Base Interface / Abstraction Layer.
-- **Các App Kênh (Channel Modules: ShopeeFood, GrabMart, Shopee) hoàn toàn độc lập:** Mỗi module là một "app" tự quản lý schema đối tác, cơ chế xác thực, client gọi API sàn và router webhook riêng biệt.
-- **Nguyên tắc "Không chồng lấn" (Zero Coupling Between Modules):** Module ShopeeFood tuyệt đối không phụ thuộc hay import trực tiếp từ Module GrabMart và ngược lại. Tất cả giao tiếp thông qua **Core Interfaces & Event Bus**. Khi cần thêm một kênh bán hàng mới, đội ngũ phát triển chỉ cần cắm thêm (plug-in) adapter mới mà không gây ảnh hưởng đến các kênh đang hoạt động ổn định.
+- **Các App Kênh (Channel Modules: ShopeeFood, GrabMart, ShopeeMart) hoàn toàn độc lập:** Mỗi module là một "app" tự quản lý schema đối tác, cơ chế xác thực, client gọi API sàn và router webhook riêng biệt.
+- **Nguyên tắc "Không chồng lấn" (Zero Coupling Between Modules):** Module ShopeeFood tuyệt đối không phụ thuộc hay import trực tiếp từ Module GrabMart/ShopeeMart và ngược lại. Tất cả giao tiếp thông qua **Core Interfaces & Event Bus**. Khi cần thêm một kênh bán hàng mới, đội ngũ phát triển chỉ cần cắm thêm (plug-in) adapter mới mà không gây ảnh hưởng đến các kênh đang hoạt động ổn định.
 
 ```mermaid
 flowchart TD
     subgraph External_Channels["Đối Tác Bán Hàng (External Channels)"]
         SF["ShopeeFood API\n(Foody Partner API)"]
         GM["GrabMart API\n(Grab Partner POS)"]
-        SP["Shopee E-Commerce API"]
+        SM["ShopeeMart API\n(Shopee Open Platform v2)"]
         Future["Future Channels\n(TikTok Shop, Tiki,...)"]
     end
 
     subgraph Channel_Adapters["Multi-Module Channel Adapters (Độc lập, không chồng lấn)"]
         SF_Mod["app.modules.shopeefood\n- Signature HMAC-SHA256\n- Foody Menu Formatter\n- Order Webhooks"]
         GM_Mod["app.modules.grabmart\n- OAuth2.0 Token Flow\n- Grab POS Menu Sync\n- Order Push Webhooks"]
-        SP_Mod["app.modules.shopee\n- Shopee Open API Adapter"]
+        SM_Mod["app.modules.shopeemart\n- Shopee Open API v2 Sign\n- Batch Stock Update\n- Order Webhooks & Ship"]
     end
 
     subgraph Core_Platform["Core Platform (FastAPI + PostgreSQL)"]
@@ -74,11 +74,11 @@ flowchart TD
 
     SF <-->|Webhooks / S2S API| SF_Mod
     GM <-->|Webhooks / POS API| GM_Mod
-    SP <-->|Open API| SP_Mod
+    SM <-->|Webhooks / Open API v2| SM_Mod
 
     SF_Mod -->|Implements| Adapter_Port
     GM_Mod -->|Implements| Adapter_Port
-    SP_Mod -->|Implements| Adapter_Port
+    SM_Mod -->|Implements| Adapter_Port
 
     Core_Registry --> Core_Services
     Core_Services --> PostgreSQL_DB
@@ -106,11 +106,11 @@ flowchart TD
 naman_merchant_portal/
 ├── docs/
 │   ├── design.md                  # Triết lý Design System "The Living Canvas"
-│   └── Development_SOP.md         # Quy chuẩn phát triển (SOP), Code Conventions
-├── grabmart/
-│   └── docs/                      # Tài liệu tích hợp GrabMart Partner API v1.1.3
-├── shopeefood/
-│   └── docs/                      # Tài liệu tích hợp ShopeeFood (Foody API v7.0) & Certs
+│   ├── Development_SOP.md         # Quy chuẩn phát triển (SOP), Code Conventions
+│   └── channels/                  # Tài liệu & Đặc tả API tích hợp các sàn
+│       ├── grabmart/              # GrabMart Partner POS API v1.1.3 Integration Guide
+│       ├── shopeefood/            # ShopeeFood (Foody S2S API v7.0) Specs & Mappings
+│       └── shopeemart/            # ShopeeMart (Shopee Open Platform v2) Working Sheet
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                    # Entrypoint ứng dụng FastAPI (Lifespan, Middleware, Router)
@@ -123,7 +123,7 @@ naman_merchant_portal/
 │   ├── models/                    # PostgreSQL SQLAlchemy Models (Core Domain)
 │   │   ├── base.py                # TimestampMixin, UUIDBaseModel
 │   │   ├── store.py               # Store (Chi nhánh: 10001, 10004,...), StoreChannelMapping
-│   │   ├── channel.py             # Channel (SHOPEEFOOD, GRABMART, SHOPEE)
+│   │   ├── channel.py             # Channel (SHOPEEFOOD, GRABMART, SHOPEEMART)
 │   │   ├── product.py             # Product, Category, ChannelItemMapping
 │   │   ├── inventory.py           # Inventory, StoreStockLevel
 │   │   ├── order.py               # UnifiedOrder, OrderItem, OrderStatusHistory
@@ -155,16 +155,22 @@ naman_merchant_portal/
 │   └── modules/                   # Multi-Module Apps (Kênh bán hàng)
 │       ├── shopeefood/            # Module ShopeeFood
 │       │   ├── __init__.py
-│       │   ├── adapter.py         # ShopeeFoodChannelAdapter (Implements BaseChannelAdapter)
+│       │   ├── adapter.py         # ShopeeFoodChannelAdapter
 │       │   ├── router.py          # Webhook receivers (/api/v1/shopeefood/webhooks/...)
 │       │   ├── schemas.py         # DTO riêng của ShopeeFood
 │       │   └── service.py         # Logic gọi Foody External API (HMAC-SHA256)
-│       └── grabmart/              # Module GrabMart
+│       ├── grabmart/              # Module GrabMart
+│       │   ├── __init__.py
+│       │   ├── adapter.py         # GrabMartChannelAdapter
+│       │   ├── router.py          # Webhook receivers (/api/v1/grabmart/webhooks/...)
+│       │   ├── schemas.py         # DTO riêng của GrabMart POS API
+│       │   └── service.py         # Logic gọi Grab OAuth2 & POS API
+│       └── shopeemart/            # Module ShopeeMart (Shopee Fresh / Supermarket)
 │           ├── __init__.py
-│           ├── adapter.py         # GrabMartChannelAdapter (Implements BaseChannelAdapter)
-│           ├── router.py          # Webhook receivers (/api/v1/grabmart/webhooks/...)
-│           ├── schemas.py         # DTO riêng của GrabMart POS API
-│           └── service.py         # Logic gọi Grab OAuth2 & POS API
+│           ├── adapter.py         # ShopeeMartChannelAdapter
+│           ├── router.py          # Webhook receivers (/api/v1/shopeemart/webhooks/...)
+│           ├── schemas.py         # DTO riêng của Shopee Open Platform v2
+│           └── service.py         # Logic gọi Shopee Open API v2 (HMAC-SHA256)
 ├── .env.example                   # Mẫu biến môi trường
 ├── .gitignore                     # Cấu hình bỏ qua git
 ├── pyproject.toml                 # Cấu hình project & dependencies
@@ -239,13 +245,13 @@ Truy cập tài liệu API tự động:
 ## 6. Lộ Trình Phát Triển (Roadmap)
 
 - [x] **Giai đoạn 1: Chuẩn bị Kiến Trúc & Quy Chuẩn (Foundation)**
-  - Dọn dẹp code cũ, chuẩn hóa tài liệu tích hợp vào `docs/`.
+  - Dọn dẹp code cũ, chuẩn hóa cấu trúc tài liệu tích hợp vào `docs/channels/`.
   - Khởi tạo repository, `.gitignore`, `README.md` và `Development_SOP.md`.
-  - Thiết kế kiến trúc Multi-Module Monolith (Core + Channel Modules).
+  - Thiết kế kiến trúc Multi-Module Monolith (Core + Decoupled Channel Modules).
 - [x] **Giai đoạn 2: Xây Dựng Core Module (Core Platform)**
   - Cấu hình FastAPI, Async SQLAlchemy 2.0 & PostgreSQL Engine.
   - Xây dựng Domain Models chuẩn: Stores, Channels, Products, Inventories, Orders, Sync Logs.
-  - Xây dựng Base Channel Adapter Interface & Service Registry.
+  - Xây dựng Base Channel Adapter Interface & Service Registry (`ChannelRegistry`).
   - Triển khai Core REST API endpoints cho đơn hàng, sản phẩm và tồn kho.
 - [ ] **Giai đoạn 3: Triển khai Module GrabMart (`app/modules/grabmart`)**
   - Tích hợp Grab OAuth2 client credentials flow.
@@ -255,7 +261,12 @@ Truy cập tài liệu API tự động:
   - Cơ chế tạo chữ ký số HMAC-SHA256 theo chuẩn Foody External API.
   - API đẩy đồng bộ menu theo Sections, Categories, Dish Items.
   - Webhooks nhận đơn hàng và cập nhật tình trạng tồn món tức thì.
-- [ ] **Giai đoạn 5: Frontend Portal (The Living Canvas UI)**
+- [ ] **Giai đoạn 5: Triển khai Module ShopeeMart (`app/modules/shopeemart`)**
+  - Tích hợp Shopee Open Platform API v2 (HMAC-SHA256 signing, OAuth2 shop authorization).
+  - Ánh xạ mã hàng hóa theo file đối soát `[Nam An Market x Shopee Mart] Working sheet`.
+  - Đồng bộ tồn kho khả dụng theo lô SKU (`v2.product.update_stock`) và giá bán (`v2.product.update_price`).
+  - Tiếp nhận Webhook đơn hàng ShopeeMart, cập nhật trạng thái đóng gói giao hàng (`v2.logistics.ship_order`) và xử lý hủy đơn.
+- [ ] **Giai đoạn 6: Frontend Portal (The Living Canvas UI)**
   - Xây dựng giao diện Web Quản trị theo triết lý "The Living Canvas" (`docs/design.md`).
   - Kanban board hiển thị đơn hàng thời gian thực (WebSockets/SSE).
   - Bảng điều khiển tồn kho đa chi nhánh và cảnh báo lệch tồn.
