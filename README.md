@@ -85,18 +85,77 @@ flowchart TD
     Web_Dashboard <-->|REST API / WebSockets| Core_API
 ```
 
+### 2.2. Kiến Trúc Hạ Tầng & Triển Khai 3 Lớp (3-Tier Deployment Architecture)
+
+Hệ thống triển khai theo mô hình mạng **3 lớp bảo vệ độc lập**, tối ưu giữa bảo mật biên và hiệu năng cơ sở dữ liệu:
+
+```mermaid
+flowchart TD
+    subgraph Clients["Khách Hàng & Đối Tác (Internet)"]
+        SF_Hook["ShopeeFood Webhooks"]
+        GM_Hook["GrabMart Webhooks"]
+        SM_Hook["ShopeeMart Webhooks"]
+        Admin_Browser["Trình duyệt Quản Trị Viên (Admin)"]
+    end
+
+    subgraph Host_Server["MÁY CHỦ VẬT LÝ / VM (HOST SERVER)"]
+        subgraph Layer1_Host_Nginx["Lớp 1: Nginx Local Ngoài Cùng (Host-Level Gateway)"]
+            Nginx_Host["Host-Level Nginx Reverse Proxy\n- Public Port: 80 / 443 (SSL/TLS Termination)\n- Wildcard SSL: *.namanmarket.com\n- Rate Limiting, DDoS Shield, Security Headers\n- Reverse Proxy -> 127.0.0.1:8080"]
+        end
+
+        subgraph Layer2_Docker["Lớp 2: Docker Container Stack (App + Nginx Đóng Gói Cùng Nhau)"]
+            subgraph Docker_Nginx["Container Nginx (Nội Bộ)"]
+                Nginx_Doc["Internal Nginx Proxy\n- Port nội bộ: 80 (Expose Host: 127.0.0.1:8080)\n- Buffer Webhook Payload, Gzip, Static Assets\n- Proxy pass -> app:8000"]
+            end
+
+            subgraph Docker_App["Container FastAPI App"]
+                FastAPI_App["FastAPI Uvicorn ASGI (:8000)\n- Multi-module Monolith Engine\n- Core Services & Channel Adapters\n- Order State Machine"]
+            end
+        end
+
+        subgraph Layer3_Local_DB["Lớp 3: Local Database (PostgreSQL Chạy Trực Tiếp Trên Host)"]
+            Local_PG["PostgreSQL Database (Local Host Service)\n- Host Port: 5432 (Localhost / Host Gateway)\n- KHÔNG CHẠY TRONG DOCKER\n- Tối ưu I/O đĩa cứng, sao lưu độc lập\n- ACID Transactions an toàn cho Đơn hàng & Tồn kho"]
+        end
+    end
+
+    Clients -->|HTTPS :443 (TLS v1.3)| Nginx_Host
+    Nginx_Host -->|proxy_pass http://127.0.0.1:8080| Nginx_Doc
+    Nginx_Doc -->|proxy_pass http://app:8000| FastAPI_App
+    FastAPI_App -->|TCP host.docker.internal:5432| Local_PG
+```
+
+#### Phân Định Rõ Ràng Trách Nhiệm Từng Lớp:
+1. **Lớp 1 - Nginx Local Ngoài Cùng (Host-Level Nginx):**
+   - Chạy trực tiếp trên Host OS (không qua container).
+   - Đóng vai trò là Public Gateway duy nhất tiếp nhận lưu lượng từ Internet (Domain `portal.namanmarket.com`).
+   - Xử lý SSL/TLS Termination (chứng chỉ Wildcard SSL hoặc Let's Encrypt), ép buộc HTTP sang HTTPS.
+   - Thiết lập Rate Limiting bảo vệ các endpoint webhook khỏi nghẽn tải hoặc tấn công lặp payload.
+   - `proxy_pass` chuyển tiếp an toàn vào cổng nội bộ máy host `127.0.0.1:8080`.
+2. **Lớp 2 - Docker Container Runtime (App + Nginx đóng gói cùng nhau):**
+   - **Container Nginx:** Đóng gói trong Docker cùng stack với backend, lắng nghe cổng 80 (được map ra host `127.0.0.1:8080:80`). Chịu trách nhiệm buffer request body cho các payload đồng bộ lớn từ sàn, nén Gzip, phục vụ assets giao diện và forward về Uvicorn.
+   - **Container FastAPI App:** Chạy mã nguồn backend Python 3.12 (Uvicorn ASGI) trên port 8000 nội bộ.
+   - **Kết nối ra ngoài Container:** Cấu hình `extra_hosts: ["host.docker.internal:host-gateway"]` cho phép container gọi trực tiếp các dịch vụ trên host.
+3. **Lớp 3 - Local PostgreSQL Database (Chạy trực tiếp trên Host, KHÔNG chạy trong Docker):**
+   - Cơ sở dữ liệu PostgreSQL được cài đặt trực tiếp trên máy chủ Host (hoặc cụm database bare-metal nội bộ của Nam An).
+   - **Lý do kiến trúc:**
+     - Tối đa hóa hiệu năng I/O đĩa cứng cho các truy vấn giao dịch tồn kho và đơn hàng đa kênh với tần suất cao.
+     - Tách biệt hoàn toàn vòng đời dữ liệu (Data Lifecycle) khỏi vòng đời container (Container Lifecycle), giúp việc build, restart, cập nhật container App & Nginx không gây rủi ro downtime database.
+     - Tích hợp trực tiếp với các tiến trình sao lưu nội bộ (pg_dump, WAL archiving) và kết nối với các cơ sở dữ liệu nội bộ khác (Arito, Haravan) mà không bị giới hạn bởi lớp mạng ảo của Docker.
+
 ---
 
 ## 3. Công Nghệ Sử Dụng (Tech Stack)
 
 | Thành phần | Công nghệ lựa chọn | Lý do & Vai trò |
 | :--- | :--- | :--- |
-| **Backend Framework** | **FastAPI** (Python 3.12) | Hiệu năng cao (Asynchronous ASGI), tự động sinh OpenAPI/Swagger, dependency injection mạnh mẽ, Pydantic v2 validation nhanh chóng. |
-| **Database** | **PostgreSQL** (v15+) | RDBMS mạnh mẽ, hỗ trợ Transaction ACID an toàn cho quản lý đơn hàng & tồn kho, hỗ trợ JSONB cho dữ liệu payload động từ các sàn. |
+| **Cổng Biên (Public Gateway)** | **Host-Level Nginx (Local)** | Chạy trực tiếp trên Host, SSL/TLS Termination, firewall, rate limiting webhook và reverse proxy vào Docker. |
+| **Container Reverse Proxy** | **Nginx Container (Alpine)** | Đóng gói cùng app trong Docker, buffer request, nén gzip, proxy pass uvicorn. |
+| **Backend Framework** | **FastAPI** (Python 3.12) | Đóng gói trong Docker, Asynchronous ASGI, OpenAPI tự động, Pydantic v2 validation. |
+| **Cơ Sở Dữ Liệu (Local DB)** | **PostgreSQL (Local Host)** | **Chạy trực tiếp trên Host (không trong Docker)**, tối ưu I/O, ACID an toàn cho Đơn hàng & Tồn kho. |
 | **ORM & Migrations** | **SQLAlchemy 2.0 (Async) + Alembic** | Async/Await native với asyncpg, quản lý schema versioning chặt chẽ, type safety. |
-| **HTTP Client** | **HTTPX (Async)** | Gọi API ngoại vi non-blocking, hỗ trợ connection pooling và retry timeout cho các API đối tác. |
-| **Frontend** | **React / Next.js + Tailwind CSS** | Áp dụng triệt để Design System **"The Living Canvas"** (tại `docs/design.md`), Soft Editorial UI, No-Line rule, Tonal Layering. |
-| **Quản lý Cấu hình** | **Pydantic-Settings** | Load `.env` an toàn theo kiểu dữ liệu, tách biệt môi trường Development / Staging / Production. |
+| **HTTP Client** | **HTTPX (Async)** | Non-blocking API calls tới ShopeeFood, GrabMart, ShopeeMart. |
+| **Frontend** | **React / Next.js + Tailwind CSS** | Triết lý **"The Living Canvas"** (`docs/design.md`), Soft Editorial UI, No-Line rule. |
+| **Quản lý Cấu hình** | **Pydantic-Settings** | Phân định kết nối DB local dev (`localhost:5432`) và container (`host.docker.internal:5432`). |
 
 ---
 
@@ -171,6 +230,13 @@ naman_merchant_portal/
 │           ├── router.py          # Webhook receivers (/api/v1/shopeemart/webhooks/...)
 │           ├── schemas.py         # DTO riêng của Shopee Open Platform v2
 │           └── service.py         # Logic gọi Shopee Open API v2 (HMAC-SHA256)
+├── docker/                        # Hạ tầng triển khai Docker & Nginx
+│   ├── Dockerfile                 # Đóng gói FastAPI backend (Multi-stage Python 3.12)
+│   └── nginx/
+│       ├── conf.d/
+│       │   └── default.conf       # Cấu hình Nginx bên trong Docker (buffer request, proxy app:8000)
+│       └── host-nginx.conf.example# Cấu hình mẫu Nginx Local ngoài cùng trên máy Host
+├── docker-compose.yml             # Docker stack chạy App + Nginx nội bộ (kết nối Local DB)
 ├── .env.example                   # Mẫu biến môi trường
 ├── .gitignore                     # Cấu hình bỏ qua git
 ├── pyproject.toml                 # Cấu hình project & dependencies
@@ -181,64 +247,79 @@ naman_merchant_portal/
 
 ---
 
-## 5. Hướng Dẫn Cài Đặt & Chạy Dự Án (Quick Start)
+## 5. Hướng Dẫn Cài Đặt & Triển Khai (Deployment Guide)
 
-### 5.1. Yêu Cầu Tiên Quyết (Prerequisites)
-- **Python:** Phiên bản 3.10 trở lên (khuyến nghị Python 3.12).
-- **PostgreSQL:** Phiên bản 14 trở lên.
-- **Git** đã được cài đặt và cấu hình.
+### 5.1. Chế Độ 1: Chạy Trực Tiếp Trên Máy Host (Local Development)
 
-### 5.2. Cài Đặt Môi Trường
+Phù hợp cho lập trình viên phát triển và kiểm thử cục bộ:
 ```bash
-# 1. Clone repository
-git clone https://github.com/maithedong92/naman_merchant_portal.git
-cd naman_merchant_portal
-
-# 2. Tạo môi trường ảo virtualenv
+# 1. Tạo môi trường ảo virtualenv
 python -m venv venv
+.\venv\Scripts\Activate.ps1  # Windows
 
-# Kích hoạt trên Windows:
-.\venv\Scripts\Activate.ps1
-# Kích hoạt trên macOS/Linux:
-source venv/bin/activate
-
-# 3. Cài đặt các thư viện phụ thuộc
+# 2. Cài đặt thư viện phụ thuộc
 pip install -r requirements.txt
-```
 
-### 5.3. Cấu Hình Biến Môi Trường (.env)
-Tạo file `.env` từ file mẫu `.env.example`:
-```bash
+# 3. Cấu hình .env kết nối Local PostgreSQL
 copy .env.example .env
-```
-Điền các tham số kết nối PostgreSQL và thông tin xác thực tích hợp:
-```ini
-ENVIRONMENT=development
-DEBUG=True
-PORT=8000
+# Chỉnh DATABASE_URL=postgresql+asyncpg://postgres:admin@localhost:5432/naman_merchant_portal
 
-# PostgreSQL Database
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/naman_portal_db
-
-# ShopeeFood Partner Credentials (UAT / Production)
-SHOPEEFOOD_APP_ID=10045
-SHOPEEFOOD_APP_KEY=a9756768d72268a6d66ea886031988f0638f03b0036fc63fbe0b86a6aef18546
-SHOPEEFOOD_BASE_URL=https://gexternalapi.deliverynow.vn
-
-# GrabMart Partner Credentials
-GRABMART_CLIENT_ID=your_grab_client_id
-GRABMART_CLIENT_SECRET=your_grab_client_secret
-GRABMART_BASE_URL=https://partner-api.grab.com
-```
-
-### 5.4. Chạy Ứng Dụng Backend
-```bash
+# 4. Khởi chạy FastAPI server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-Truy cập tài liệu API tự động:
-- **Interactive Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc Documentation:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-- **Health Check Endpoint:** [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
+
+---
+
+### 5.2. Chế Độ 2: Đóng Gói App + Nginx Bằng Docker (Production / Staging)
+
+Ở chế độ này, **App Backend và Nginx nội bộ được đóng gói cùng nhau trong Docker**, kết nối trực tiếp ra **PostgreSQL Local chạy trên máy Host**:
+
+```mermaid
+flowchart LR
+    A["Host Nginx Local (Port 443/80)"] -->|proxy_pass :8080| B["Container Nginx (Docker :8080)"]
+    B -->|proxy_pass :8000| C["Container FastAPI (:8000)"]
+    C -->|host.docker.internal:5432| D[("PostgreSQL Local (Host :5432)")]
+```
+
+#### Bước 1: Khởi động stack Docker (App + Nginx Container)
+File `docker-compose.yml` đã được định cấu hình sẵn với `extra_hosts` để truy cập Local DB máy host:
+```bash
+docker compose up -d --build
+```
+Kiểm tra trạng thái các container:
+```bash
+docker compose ps
+```
+- Container `naman_portal_app` lắng nghe cổng nội bộ 8000.
+- Container `naman_portal_nginx` mở cổng `127.0.0.1:8080` trên máy Host.
+
+#### Bước 2: Cấu hình Nginx Local Ngoài Cùng trên Máy Host
+Cài đặt Nginx trực tiếp trên máy Host (nếu chưa có) và áp dụng cấu hình từ file mẫu [`docker/nginx/host-nginx.conf.example`](file:///c:/python/naman_merchant_portal/docker/nginx/host-nginx.conf.example):
+
+1. Sao chép cấu hình vào thư mục Nginx của máy Host:
+   ```nginx
+   # Cấu hình proxy_pass từ Host Nginx vào cổng Docker Nginx (127.0.0.1:8080):
+   location / {
+       proxy_pass http://127.0.0.1:8080;
+       proxy_http_version 1.1;
+       proxy_set_header Host $host;
+       proxy_set_header X-Real-IP $remote_addr;
+       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       proxy_set_header X-Forwarded-Proto https;
+   }
+   ```
+2. Kiểm tra và tải lại Nginx Host:
+   ```bash
+   nginx -t
+   nginx -s reload
+   ```
+
+---
+
+### 5.3. Tài Liệu API Tự Động (Swagger & ReDoc)
+- **Interactive Swagger UI:** [http://localhost:8080/docs](http://localhost:8080/docs) (hoặc qua domain https://portal.namanmarket.com/docs)
+- **ReDoc Documentation:** [http://localhost:8080/redoc](http://localhost:8080/redoc)
+- **Health Check Endpoint:** [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
 
 ---
 

@@ -1,0 +1,95 @@
+# ==============================================================================
+# Host-Level Nginx Configuration (Lớp Nginx Local Ngoài Cùng trên Host Machine)
+# Đặt file này trong thư mục Nginx của máy Host (ví dụ: /etc/nginx/conf.d/ hoặc nginx/conf.d/)
+# ==============================================================================
+
+# Rate limiting zone for webhook protection
+limit_req_zone $binary_remote_addr zone=naman_webhook_limit:10m rate=30r/s;
+
+# 1. HTTP Redirect to HTTPS
+server {
+    listen 80;
+    listen [::]:80;
+    server_name portal.namanmarket.com;
+
+    # Allow ACME Challenge for SSL renewal
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# 2. HTTPS Public Gateway
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name portal.namanmarket.com;
+
+    # SSL Certificates (Nam An Wildcard or Let's Encrypt on Host)
+    ssl_certificate /etc/nginx/ssl/star_namanmarket_com_cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/star_namanmarket_com.key;
+
+    # SSL Security Protocols & Ciphers
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384";
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # Security Headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Max payload size (supports product catalog and images)
+    client_max_body_size 50M;
+
+    # Logging
+    access_log /var/log/nginx/naman_portal_access.log;
+    error_log /var/log/nginx/naman_portal_error.log warn;
+
+    # Webhook endpoints with rate limit protection
+    location /api/v1/shopeefood/webhooks/ {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8080;
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/grabmart/webhooks/ {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8080;
+        include /etc/nginx/proxy_params;
+    }
+
+    location /api/v1/shopeemart/webhooks/ {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:8080;
+        include /etc/nginx/proxy_params;
+    }
+
+    # Reverse proxy all requests to Docker Nginx container exposed on port 8080
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+
+        # WebSockets support
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}

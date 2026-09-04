@@ -214,3 +214,47 @@ Trước khi tạo Pull Request, lập trình viên bắt buộc kiểm tra:
 - [ ] Các thao tác I/O đều là `async / await`.
 - [ ] File migration của Alembic (nếu có thay đổi database) đã được test upgrade và downgrade.
 - [ ] Swagger Docs (`/docs`) hiển thị đầy đủ mô tả cho endpoint mới.
+
+---
+
+## 9. Quy Chuẩn Hạ Tầng & Triển Khai 3 Lớp (Infrastructure & Deployment SOP)
+
+Hệ thống bắt buộc triển khai theo kiến trúc **3 Lớp Phân Tách** nhằm đảm bảo an ninh mạng biên và hiệu năng cơ sở dữ liệu:
+
+### 9.1. Lớp 1: Host-Level Nginx Local (Ngoài Cùng trên Máy Host)
+- **Vị trí:** Chạy như một System Service trực tiếp trên Host OS (không qua Docker).
+- **Trách nhiệm:**
+  - Lắng nghe cổng công khai `:80` và `:443` cho domain `portal.namanmarket.com`.
+  - Chịu trách nhiệm **SSL/TLS Termination** bằng chứng chỉ số hợp lệ (Wildcard `*.namanmarket.com` hoặc Let's Encrypt).
+  - Tự động chuyển hướng HTTP -> HTTPS với HTTP Strict Transport Security (HSTS).
+  - Áp dụng Rate Limiting bảo vệ các endpoint Webhook từ ShopeeFood, GrabMart, ShopeeMart chống nghẽn đường truyền.
+  - Chuyển tiếp (Reverse Proxy) toàn bộ lưu lượng hợp lệ sang cổng nội bộ Docker:
+    `proxy_pass http://127.0.0.1:8080;`
+
+### 9.2. Lớp 2: Docker Container Stack (App + Nginx Đóng Gói Cùng Nhau)
+- **Vị trí:** Chạy trong môi trường Docker Container độc lập thông qua `docker-compose.yml`.
+- **Thành phần:**
+  1. **Container Nginx (Nội bộ):**
+     - Đóng gói cùng stack với backend, mở cổng `127.0.0.1:8080:80` (chỉ cho phép truy cập từ loopback của host).
+     - Đảm nhiệm xử lý buffer body cho các request webhook / sync payload lớn (`client_max_body_size 50M`).
+     - Nén Gzip các file tĩnh và response JSON.
+     - `proxy_pass http://app:8000;` tới container backend.
+  2. **Container FastAPI App:**
+     - Đóng gói ứng dụng Python 3.12 (Uvicorn ASGI) trên cổng nội bộ `:8000`.
+     - Chạy đầy đủ Core Platform và các Channel Adapters (`SHOPEEFOOD`, `GRABMART`, `SHOPEEMART`).
+  3. **Cơ chế gọi ngược ra Host (Host Gateway):**
+     - Container App khai báo `extra_hosts: ["host.docker.internal:host-gateway"]` để kết nối ra các dịch vụ chạy trên máy Host.
+
+### 9.3. Lớp 3: Local Database (PostgreSQL Chạy Trực Tiếp Trên Host)
+- **Vị trí:** Cài đặt và vận hành trực tiếp trên máy chủ Host (Local PostgreSQL Instance, Port `5432`).
+- **Quy tắc tuyệt đối:**
+  - ❌ **CẤM:** Không đóng gói cơ sở dữ liệu PostgreSQL vào chung container hoặc Docker compose của ứng dụng App.
+  - ✅ **Lý do:**
+    - Tối ưu hóa tối đa hiệu năng I/O đĩa cứng cho các tác vụ cập nhật tồn kho và tiếp nhận đơn hàng với tần suất cao.
+    - Đảm bảo tính toàn vẹn dữ liệu (ACID): Việc cập nhật, dừng hoặc rebuild container App/Nginx không bao giờ gây ảnh hưởng đến trạng thái và kết nối của database.
+    - Quản lý sao lưu dữ liệu tập trung (pg_dump, streaming replication, WAL logs) theo quy chuẩn hạ tầng của Nam An Market.
+- **Quy ước kết nối (`DATABASE_URL`):**
+  - Môi trường Local Dev (chạy python trực tiếp trên host):
+    `postgresql+asyncpg://postgres:admin@localhost:5432/naman_merchant_portal`
+  - Môi trường Container (chạy qua Docker):
+    `postgresql+asyncpg://postgres:admin@host.docker.internal:5432/naman_merchant_portal`
