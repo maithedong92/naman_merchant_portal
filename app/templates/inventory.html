@@ -1,0 +1,558 @@
+{% extends "base.html" %}
+
+{% block title %}Quản Lý Thực Đơn & Tồn Kho Đa Kênh - Nam An Merchant Portal{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-primary text-xs font-semibold tracking-wide mb-2">
+                <span class="w-2 h-2 rounded-full bg-primary"></span>
+                <span>OMNI-CHANNEL REAL-TIME MENU & STOCK SYNC</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-display font-extrabold text-charcoal tracking-tight">
+                Quản Lý Thực Đơn & Tồn Kho Đa Kênh
+            </h1>
+            <p class="text-xs sm:text-sm text-charcoal-muted mt-1">
+                Kiểm soát số lượng tồn kho khả dụng và bật/tắt món tức thì trên <strong>ShopeeFood & GrabMart</strong> cho từng chi nhánh Nam An Market.
+            </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center gap-2.5">
+            <button onclick="triggerSyncAll()" class="px-4 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md shadow-primary/20 flex items-center space-x-2 transition-all">
+                <svg id="sync-all-spinner" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>⚡ Đồng Bộ Tồn Kho Đa Sàn</span>
+            </button>
+            <button onclick="seedSampleCatalog()" class="px-4 py-2.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold text-xs transition-colors flex items-center space-x-1.5" title="Khởi tạo danh mục & sản phẩm mẫu">
+                <span>🌱 Khởi Tạo Dữ Liệu Mẫu</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Store Branch Selector Tabs (4 branches) -->
+    <div class="bg-white rounded-3xl p-3 shadow-sm border border-gray-100 flex flex-wrap items-center gap-2">
+        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 hidden sm:inline">Chi Nhánh:</span>
+        <button type="button" onclick="switchStoreBranch('10001')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-primary text-white shadow-sm flex items-center space-x-2" data-store="10001">
+            <span>📍 21 Thảo Điền (10001)</span>
+        </button>
+        <button type="button" onclick="switchStoreBranch('10004')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2" data-store="10004">
+            <span>📍 46 Hưng Phúc, Q.7 (10004)</span>
+        </button>
+        <button type="button" onclick="switchStoreBranch('10005')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2" data-store="10005">
+            <span>📍 17 Mai Chí Thọ (10005)</span>
+        </button>
+        <button type="button" onclick="switchStoreBranch('10006')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2" data-store="10006">
+            <span>📍 303 Nguyễn Văn Trỗi (10006)</span>
+        </button>
+    </div>
+
+    <!-- 4 KPI Summary Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <!-- KPI 1: Total SKUs -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Tổng Mặt Hàng</span>
+                <span class="text-sm">🏷️</span>
+            </div>
+            <div id="kpi-total-skus" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-charcoal">0</div>
+            <p class="text-[11px] text-gray-400 mt-1">Sản phẩm trong thực đơn</p>
+        </div>
+
+        <!-- KPI 2: In Stock -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-emerald-400 transition-all" onclick="filterByStatus('IN_STOCK')">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Đang Mở Bán</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            </div>
+            <div id="kpi-in-stock" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-emerald-700">0</div>
+            <p class="text-[11px] text-gray-400 mt-1">Còn hàng trên các sàn</p>
+        </div>
+
+        <!-- KPI 3: Out of Stock -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-rose-400 transition-all" onclick="filterByStatus('OUT_OF_STOCK')">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-rose-700 uppercase tracking-wider">Tạm Hết Hàng</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+            </div>
+            <div id="kpi-out-of-stock" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-rose-600">0</div>
+            <p class="text-[11px] text-gray-400 mt-1">Đã tắt món trên sàn</p>
+        </div>
+
+        <!-- KPI 4: Low Stock Alert -->
+        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-amber-400 transition-all" onclick="filterByStatus('LOW_STOCK')">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-amber-700 uppercase tracking-wider">Tồn Kho Thấp</span>
+                <span class="text-sm">⚠️</span>
+            </div>
+            <div id="kpi-low-stock" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-amber-600">0</div>
+            <p class="text-[11px] text-gray-400 mt-1">Dưới 5 đơn vị khả dụng</p>
+        </div>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <!-- Search Bar -->
+            <div class="relative flex-1 min-w-[260px]">
+                <input type="text" id="inventory-search" oninput="debounceSearch()" placeholder="Tìm theo tên sản phẩm, mã SKU, mã vạch..." class="w-full pl-10 pr-4 py-2.5 rounded-full bg-surface-low text-xs text-charcoal border-none focus:ring-2 focus:ring-primary">
+                <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </div>
+
+            <!-- Status Filter Dropdown -->
+            <div class="flex items-center space-x-2">
+                <span class="text-xs font-bold text-gray-500">Trạng thái:</span>
+                <select id="filter-inventory-status" onchange="onFilterChange()" class="px-4 py-2 rounded-full bg-surface-low text-xs text-charcoal font-semibold border-none focus:ring-2 focus:ring-primary cursor-pointer">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="IN_STOCK">Đang mở bán (Còn hàng)</option>
+                    <option value="OUT_OF_STOCK">Tạm ngưng (Hết hàng)</option>
+                    <option value="LOW_STOCK">Tồn kho thấp (&le; 5)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Category Pills -->
+        <div class="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2" id="category-pills-container">
+            <button type="button" onclick="setCategoryFilter('')" class="cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm" data-cat="">
+                Tất cả danh mục
+            </button>
+            <!-- Dynamically populated categories -->
+        </div>
+    </div>
+
+    <!-- Products & Inventory Table -->
+    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100">
+                        <th class="pb-3 pr-3">Sản Phẩm</th>
+                        <th class="pb-3 px-3">Mã SKU / Barcode</th>
+                        <th class="pb-3 px-3">Danh Mục</th>
+                        <th class="pb-3 px-3 text-right">Giá Niêm Yết</th>
+                        <th class="pb-3 px-3 text-center">Tồn Khả Dụng</th>
+                        <th class="pb-3 px-3">Đồng Bộ Sàn</th>
+                        <th class="pb-3 pl-3 text-center">Thao Tác Bật/Tắt Món</th>
+                    </tr>
+                </thead>
+                <tbody id="inventory-table-body" class="divide-y divide-gray-50">
+                    <!-- Populated dynamically -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="inventory-pagination" class="pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs text-charcoal-muted">
+            <div>
+                Hiển thị <span id="inv-page-range" class="font-bold text-charcoal">0 - 0</span> trong tổng số <span id="inv-total-count" class="font-bold text-charcoal">0</span> mặt hàng
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="btn-prev-inv" onclick="changeInventoryPage(-1)" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 transition-colors">
+                    &larr; Trang trước
+                </button>
+                <span id="inv-current-page" class="font-bold text-primary px-2">Trang 1 / 1</span>
+                <button id="btn-next-inv" onclick="changeInventoryPage(1)" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 transition-colors">
+                    Trang sau &rarr;
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Quick Edit Stock Modal -->
+<div id="modal-quick-stock" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-6">
+        <div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-primary flex items-center justify-center mb-3">
+                <span class="text-xl">📦</span>
+            </div>
+            <h3 class="text-xl font-display font-bold text-charcoal">Điều Chỉnh Số Lượng Tồn Kho</h3>
+            <p class="text-xs text-charcoal-muted mt-1" id="modal-product-title">Tên sản phẩm</p>
+        </div>
+
+        <form onsubmit="submitQuickStockUpdate(event)" class="space-y-4">
+            <input type="hidden" id="modal-sku-input">
+
+            <div>
+                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Số lượng tồn kho khả dụng mới</label>
+                <input type="number" id="modal-stock-input" min="0" step="1" required class="w-full px-4 py-2.5 rounded-xl bg-surface-low text-sm font-bold text-charcoal focus:ring-2 focus:ring-primary focus:bg-white">
+                <p class="text-[11px] text-gray-400 mt-1">Nếu nhập = 0, món sẽ tự động chuyển sang trạng thái "Hết hàng".</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-emerald-50 text-primary text-xs flex items-center space-x-2">
+                <input type="checkbox" id="modal-sync-channels" checked class="rounded text-primary focus:ring-primary">
+                <label for="modal-sync-channels" class="font-medium cursor-pointer">Tự động đẩy tồn kho sang ShopeeFood & GrabMart</label>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-2">
+                <button type="button" onclick="closeQuickStockModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-xs font-bold hover:bg-gray-200">Hủy</button>
+                <button type="submit" id="btn-save-stock" class="px-6 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md">
+                    Lưu & Đồng Bộ Ngay
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let currentStoreCode = "10001";
+    let currentCategoryId = "";
+    let currentStatus = "";
+    let currentSearch = "";
+    let currentPage = 1;
+    let pageSize = 15;
+    let searchTimer = null;
+
+    function formatVND(val) {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
+    }
+
+    // Switch Branch Tab
+    function switchStoreBranch(storeCode) {
+        currentStoreCode = storeCode;
+        currentPage = 1;
+
+        document.querySelectorAll('.store-tab-pill').forEach(btn => {
+            if (btn.getAttribute('data-store') === storeCode) {
+                btn.className = "store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-primary text-white shadow-sm flex items-center space-x-2";
+            } else {
+                btn.className = "store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2";
+            }
+        });
+
+        loadInventoryOverview();
+    }
+
+    function setCategoryFilter(catId) {
+        currentCategoryId = catId;
+        currentPage = 1;
+
+        document.querySelectorAll('.cat-pill').forEach(btn => {
+            if (btn.getAttribute('data-cat') === catId) {
+                btn.className = "cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm";
+            } else {
+                btn.className = "cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50";
+            }
+        });
+
+        loadInventoryOverview();
+    }
+
+    function filterByStatus(status) {
+        currentStatus = status;
+        document.getElementById('filter-inventory-status').value = status;
+        currentPage = 1;
+        loadInventoryOverview();
+    }
+
+    function onFilterChange() {
+        currentStatus = document.getElementById('filter-inventory-status').value;
+        currentPage = 1;
+        loadInventoryOverview();
+    }
+
+    function debounceSearch() {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+            currentSearch = document.getElementById('inventory-search').value.trim();
+            currentPage = 1;
+            loadInventoryOverview();
+        }, 400);
+    }
+
+    function changeInventoryPage(delta) {
+        currentPage += delta;
+        if (currentPage < 1) currentPage = 1;
+        loadInventoryOverview();
+    }
+
+    // Load Overview Data
+    async function loadInventoryOverview() {
+        let url = `/api/v1/inventory/overview?store_code=${encodeURIComponent(currentStoreCode)}&page=${currentPage}&page_size=${pageSize}`;
+        if (currentCategoryId) url += `&category_id=${encodeURIComponent(currentCategoryId)}`;
+        if (currentStatus) url += `&status=${encodeURIComponent(currentStatus)}`;
+        if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
+
+        const tbody = document.getElementById('inventory-table-body');
+        try {
+            const res = await authFetch(url);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    renderSummary(json.data.summary);
+                    renderTable(json.data.paginated.items);
+                    renderPagination(json.data.paginated.meta);
+                }
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-rose-600">Không thể tải dữ liệu tồn kho.</td></tr>';
+            }
+        } catch(e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-rose-600">Lỗi kết nối khi tải tồn kho.</td></tr>';
+        }
+    }
+
+    function renderSummary(sum) {
+        if (!sum) return;
+        document.getElementById('kpi-total-skus').textContent = sum.total_skus;
+        document.getElementById('kpi-in-stock').textContent = sum.in_stock_count;
+        document.getElementById('kpi-out-of-stock').textContent = sum.out_of_stock_count;
+        document.getElementById('kpi-low-stock').textContent = sum.low_stock_count;
+    }
+
+    function renderTable(items) {
+        const tbody = document.getElementById('inventory-table-body');
+        tbody.innerHTML = '';
+
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="py-12 text-center text-gray-400">
+                        <div class="text-3xl mb-2">🌿</div>
+                        <p class="font-bold text-charcoal">Không tìm thấy mặt hàng nào</p>
+                        <p class="text-xs mt-1">Bấm "Khởi Tạo Dữ Liệu Mẫu" ở góc trên nếu chưa có danh mục sản phẩm.</p>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-surface-low/50 transition-colors";
+
+            const isOutOfStock = Boolean(item.is_out_of_stock) || Number(item.available_stock) <= 0;
+            const statusBadge = isOutOfStock
+                ? '<span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-rose-100 text-rose-800">TẠM HẾT HÀNG</span>'
+                : '<span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800">ĐANG MỞ BÁN</span>';
+
+            const toggleBtn = isOutOfStock
+                ? `<button onclick="toggleItemStock('${item.sku}', false)" class="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-all shadow-xs flex items-center space-x-1">
+                     <span>✅ Bật Bán Lại</span>
+                   </button>`
+                : `<button onclick="toggleItemStock('${item.sku}', true)" class="px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] transition-all shadow-xs flex items-center space-x-1">
+                     <span>🛑 Tắt Món (Hết)</span>
+                   </button>`;
+
+            const syncTime = item.last_synced_at ? new Date(item.last_synced_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'}) : 'Chưa đồng bộ';
+
+            tr.innerHTML = `
+                <td class="py-3.5 pr-3">
+                    <div class="flex items-center space-x-3">
+                        <img src="${item.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80'}" alt="${item.name}" class="w-10 h-10 rounded-xl object-cover border border-gray-100 shrink-0">
+                        <div>
+                            <div class="font-bold text-charcoal font-display text-xs">${item.name}</div>
+                            <div class="text-[11px] text-gray-400 mt-0.5">ĐVT: ${item.unit}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="py-3.5 px-3 font-mono">
+                    <div class="font-bold text-charcoal">${item.sku}</div>
+                    <div class="text-[10px] text-gray-400">${item.barcode || 'N/A'}</div>
+                </td>
+                <td class="py-3.5 px-3">
+                    <span class="px-2.5 py-1 rounded-lg bg-surface-low text-charcoal font-medium text-[11px]">${item.category_name}</span>
+                </td>
+                <td class="py-3.5 px-3 text-right font-mono font-bold text-charcoal">
+                    ${formatVND(item.base_price)}
+                </td>
+                <td class="py-3.5 px-3 text-center">
+                    <div class="inline-flex items-center space-x-2">
+                        <span class="font-mono font-extrabold ${isOutOfStock ? 'text-rose-600' : 'text-primary'} text-sm">${item.available_stock}</span>
+                        <button onclick="openQuickStockModal('${item.sku}', '${item.name.replace(/'/g, "\\'")}', ${item.available_stock})" class="p-1 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-charcoal transition-colors" title="Chỉnh sửa tồn kho">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                        </button>
+                    </div>
+                </td>
+                <td class="py-3.5 px-3">
+                    <div class="flex items-center space-x-1.5">
+                        <span class="w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
+                        <span class="text-[11px] text-gray-500">${syncTime}</span>
+                    </div>
+                </td>
+                <td class="py-3.5 pl-3 text-center whitespace-nowrap space-y-1">
+                    <div class="flex items-center justify-center space-x-2">
+                        ${statusBadge}
+                        ${toggleBtn}
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderPagination(meta) {
+        const bar = document.getElementById('inventory-pagination');
+        if (!meta || meta.total_items === 0) {
+            bar.classList.add('hidden');
+            return;
+        }
+        bar.classList.remove('hidden');
+
+        const start = (meta.page - 1) * meta.page_size + 1;
+        const end = Math.min(meta.page * meta.page_size, meta.total_items);
+
+        document.getElementById('inv-page-range').textContent = `${start} - ${end}`;
+        document.getElementById('inv-total-count').textContent = meta.total_items;
+        document.getElementById('inv-current-page').textContent = `Trang ${meta.page} / ${meta.total_pages || 1}`;
+
+        document.getElementById('btn-prev-inv').disabled = meta.page <= 1;
+        document.getElementById('btn-next-inv').disabled = meta.page >= meta.total_pages;
+    }
+
+    // 1-Click Toggle Item Status
+    async function toggleItemStock(sku, makeOutOfStock) {
+        try {
+            const res = await authFetch('/api/v1/inventory/toggle', {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    store_code: currentStoreCode,
+                    sku: sku,
+                    is_out_of_stock: makeOutOfStock,
+                    sync_to_channels: true
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                const actionText = makeOutOfStock ? "TẮT MÓN (HẾT HÀNG)" : "MỞ BÁN LẠI (CÒN HÀNG)";
+                showToast(`Đã chuyển SKU ${sku} sang '${actionText}' và đồng bộ lên sàn thành công!`, 'success');
+                loadInventoryOverview();
+            } else {
+                showToast(data.message || 'Không thể đổi trạng thái tồn kho', 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi cập nhật trạng thái', 'error');
+        }
+    }
+
+    // Quick Stock Modal Flow
+    function openQuickStockModal(sku, name, currentStock) {
+        document.getElementById('modal-sku-input').value = sku;
+        document.getElementById('modal-product-title').textContent = `${name} (SKU: ${sku})`;
+        document.getElementById('modal-stock-input').value = currentStock;
+        document.getElementById('modal-quick-stock').classList.remove('hidden');
+    }
+
+    function closeQuickStockModal() {
+        document.getElementById('modal-quick-stock').classList.add('hidden');
+    }
+
+    async function submitQuickStockUpdate(e) {
+        e.preventDefault();
+        const sku = document.getElementById('modal-sku-input').value;
+        const newStock = parseFloat(document.getElementById('modal-stock-input').value);
+        const syncChannels = document.getElementById('modal-sync-channels').checked;
+
+        const btn = document.getElementById('btn-save-stock');
+        btn.disabled = true;
+        btn.textContent = "Đang lưu...";
+
+        try {
+            const res = await authFetch('/api/v1/inventory/quick-update', {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    store_code: currentStoreCode,
+                    sku: sku,
+                    new_stock: newStock,
+                    sync_to_channels: syncChannels
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(`Đã cập nhật tồn kho SKU ${sku} thành ${newStock} đơn vị!`, 'success');
+                closeQuickStockModal();
+                loadInventoryOverview();
+            } else {
+                showToast(data.message || 'Lỗi khi cập nhật tồn kho', 'error');
+            }
+        } catch(err) {
+            showToast('Lỗi kết nối khi lưu tồn kho', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Lưu & Đồng Bộ Ngay";
+        }
+    }
+
+    // Trigger Sync All
+    async function triggerSyncAll() {
+        const spinner = document.getElementById('sync-all-spinner');
+        spinner.classList.add('animate-spin');
+
+        try {
+            const res = await authFetch(`/api/v1/inventory/sync-all?store_code=${encodeURIComponent(currentStoreCode)}`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(`Đã đồng bộ toàn bộ tồn kho chi nhánh ${currentStoreCode} sang ShopeeFood & GrabMart!`, 'success');
+                loadInventoryOverview();
+            } else {
+                showToast(data.message || 'Lỗi khi đồng bộ toàn bộ', 'error');
+            }
+        } catch(e) {
+            showToast('Lỗi kết nối khi đồng bộ', 'error');
+        } finally {
+            spinner.classList.remove('animate-spin');
+        }
+    }
+
+    // Seed Sample Catalog
+    async function seedSampleCatalog() {
+        if (!confirm("Khởi tạo danh mục sản phẩm và tồn kho mẫu cho 4 chi nhánh Nam An Market?")) return;
+
+        try {
+            const res = await authFetch('/api/v1/inventory/seed', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast("Khởi tạo danh mục & tồn kho mẫu thành công!", 'success');
+                loadCategories();
+                loadInventoryOverview();
+            } else {
+                showToast(data.message || 'Lỗi khi nạp dữ liệu mẫu', 'error');
+            }
+        } catch(e) {
+            showToast('Lỗi kết nối khi nạp dữ liệu', 'error');
+        }
+    }
+
+    // Load Categories for filter pills
+    async function loadCategories() {
+        try {
+            const res = await authFetch('/api/v1/products/categories');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    const container = document.getElementById('category-pills-container');
+                    let html = `
+                        <button type="button" onclick="setCategoryFilter('')" class="cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${currentCategoryId === '' ? 'bg-primary text-white shadow-sm' : 'bg-surface-low text-charcoal hover:bg-emerald-50'}" data-cat="">
+                            Tất cả danh mục
+                        </button>
+                    `;
+                    data.data.forEach(c => {
+                        html += `
+                            <button type="button" onclick="setCategoryFilter('${c.id}')" class="cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${currentCategoryId === c.id ? 'bg-primary text-white shadow-sm' : 'bg-surface-low text-charcoal hover:bg-emerald-50'}" data-cat="${c.id}">
+                                ${c.name}
+                            </button>
+                        `;
+                    });
+                    container.innerHTML = html;
+                }
+            }
+        } catch(e) {
+            console.error(e);
+        }
+    }
+
+    // Init
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCategories();
+        loadInventoryOverview();
+    });
+</script>
+{% endblock %}

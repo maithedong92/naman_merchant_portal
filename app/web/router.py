@@ -83,6 +83,22 @@ async def reports_analytics_page(request: Request):
     )
 
 
+@web_router.get("/inventory", response_class=HTMLResponse)
+@web_router.get("/admin/inventory", response_class=HTMLResponse)
+async def inventory_page(request: Request):
+    """Serve Omni-Channel Real-time Inventory & Menu Management page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="inventory.html",
+        context={
+            "request": request,
+            "active_page": "inventory",
+            "app_name": settings.APP_NAME,
+            "app_version": settings.APP_VERSION,
+        }
+    )
+
+
 @web_router.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_page(request: Request):
     """Serve Admin Login page."""
