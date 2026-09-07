@@ -1,0 +1,703 @@
+{% extends "base.html" %}
+
+{% block title %}Báo Cáo Phân Tích & Đối Soát Doanh Thu - Nam An Merchant Portal{% endblock %}
+
+{% block extra_head %}
+<!-- Chart.js for High-performance Interactive Visualizations -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-primary text-xs font-semibold tracking-wide mb-2">
+                <span class="w-2 h-2 rounded-full bg-primary"></span>
+                <span>FINANCIAL RECONCILIATION & OMNI-CHANNEL ANALYTICS</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-display font-extrabold text-charcoal tracking-tight">
+                Báo Cáo Phân Tích & Đối Soát Doanh Thu
+            </h1>
+            <p class="text-xs sm:text-sm text-charcoal-muted mt-1">
+                Theo dõi tăng trưởng doanh số, tỷ trọng doanh thu giữa các sàn (ShopeeFood, GrabMart, ShopeeMart) và đối soát dòng tiền chi tiết cho từng chi nhánh.
+            </p>
+        </div>
+
+        <!-- Export CSV Button -->
+        <div class="flex items-center space-x-3">
+            <button onclick="exportReconciliationCsv()" class="px-5 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md shadow-primary/20 flex items-center space-x-2 transition-all">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                <span>Xuất Báo Cáo Excel / CSV</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Multi-Dimensional Filter Bar -->
+    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <!-- Quick Date Range Pills -->
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" onclick="setQuickRange('today')" class="range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50" data-range="today">
+                    Hôm nay
+                </button>
+                <button type="button" onclick="setQuickRange('last_7_days')" class="range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm" data-range="last_7_days">
+                    7 ngày qua
+                </button>
+                <button type="button" onclick="setQuickRange('last_30_days')" class="range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50" data-range="last_30_days">
+                    30 ngày qua
+                </button>
+                <button type="button" onclick="setQuickRange('all_time')" class="range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50" data-range="all_time">
+                    Tất cả
+                </button>
+            </div>
+
+            <!-- Custom Date Range Inputs -->
+            <div class="flex items-center space-x-2">
+                <input type="date" id="filter-from-date" onchange="onCustomDateChange()" class="px-3.5 py-2 rounded-xl bg-surface-low text-xs text-charcoal border-none focus:ring-2 focus:ring-primary">
+                <span class="text-xs text-gray-400">đến</span>
+                <input type="date" id="filter-to-date" onchange="onCustomDateChange()" class="px-3.5 py-2 rounded-xl bg-surface-low text-xs text-charcoal border-none focus:ring-2 focus:ring-primary">
+            </div>
+        </div>
+
+        <div class="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Channel Filter -->
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-xs font-bold text-gray-500">Sàn:</span>
+                    <select id="filter-channel-code" onchange="onFilterChange()" class="px-4 py-2 rounded-full bg-surface-low text-xs text-charcoal font-semibold border-none focus:ring-2 focus:ring-primary cursor-pointer">
+                        <option value="">Tất cả các sàn</option>
+                        <option value="SHOPEEFOOD">ShopeeFood</option>
+                        <option value="GRABMART">GrabMart</option>
+                        <option value="SHOPEEMART">ShopeeMart</option>
+                    </select>
+                </div>
+
+                <!-- Store Filter -->
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-xs font-bold text-gray-500">Chi nhánh:</span>
+                    <select id="filter-store-code" onchange="onFilterChange()" class="px-4 py-2 rounded-full bg-surface-low text-xs text-charcoal font-semibold border-none focus:ring-2 focus:ring-primary cursor-pointer">
+                        <option value="">Tất cả 4 chi nhánh Nam An</option>
+                        <option value="10001">21 Thảo Điền, TP. Thủ Đức (10001)</option>
+                        <option value="10004">46 Hưng Phúc, Q.7 (10004)</option>
+                        <option value="10005">17 Mai Chí Thọ, TP. Thủ Đức (10005)</option>
+                        <option value="10006">303 Nguyễn Văn Trỗi, Tân Bình (10006)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <button onclick="loadAllReportData()" class="px-4 py-2 rounded-full bg-surface-low hover:bg-emerald-50 text-xs font-bold text-primary flex items-center space-x-1.5 transition-colors">
+                    <svg id="refresh-spinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Làm mới số liệu</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4 Main Financial KPI Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- KPI 1: Gross Revenue -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Doanh Thu Gộp (Gross)</span>
+                <span class="w-8 h-8 rounded-full bg-emerald-50 text-primary flex items-center justify-center font-bold text-sm">💰</span>
+            </div>
+            <div id="kpi-gross-revenue" class="mt-3 text-2xl sm:text-3xl font-display font-extrabold text-primary">0 ₫</div>
+            <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+                <span>Tiền hàng: <strong id="kpi-subtotal" class="text-charcoal">0 ₫</strong></span>
+                <span>Phí ship: <strong id="kpi-delivery-fee" class="text-charcoal">0 ₫</strong></span>
+            </div>
+        </div>
+
+        <!-- KPI 2: Estimated Net Payout -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Thực Nhận Ước Tính (Net)</span>
+                <span class="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">🏦</span>
+            </div>
+            <div id="kpi-net-payout" class="mt-3 text-2xl sm:text-3xl font-display font-extrabold text-blue-700">0 ₫</div>
+            <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+                <span>Hoa hồng sàn (~20%): <strong id="kpi-commission" class="text-rose-600">0 ₫</strong></span>
+            </div>
+        </div>
+
+        <!-- KPI 3: Orders Volume & Completion -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Sản Lượng Đơn Hàng</span>
+                <span class="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-sm">📦</span>
+            </div>
+            <div class="mt-3 flex items-baseline space-x-2">
+                <span id="kpi-total-orders" class="text-2xl sm:text-3xl font-display font-extrabold text-charcoal">0</span>
+                <span class="text-xs text-gray-400">đơn</span>
+                <span id="kpi-completion-rate" class="ml-auto px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">100% HT</span>
+            </div>
+            <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+                <span>Giao thành công: <strong id="kpi-completed-orders" class="text-emerald-700">0</strong></span>
+                <span>Đang xử lý: <strong id="kpi-active-orders" class="text-amber-600">0</strong></span>
+            </div>
+        </div>
+
+        <!-- KPI 4: AOV & Cancellation Rate -->
+        <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Giá Trị Đơn TB (AOV)</span>
+                <span class="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm">📊</span>
+            </div>
+            <div id="kpi-aov" class="mt-3 text-2xl sm:text-3xl font-display font-extrabold text-purple-700">0 ₫</div>
+            <div class="mt-2 text-xs text-gray-400 flex items-center justify-between">
+                <span>Số đơn hủy: <strong id="kpi-cancelled-orders" class="text-rose-600">0</strong></span>
+                <span>Tỷ lệ hủy: <strong id="kpi-cancellation-rate" class="text-rose-600">0%</strong></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row: Trend Line + Channel Doughnut + Store Comparison -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Daily Revenue Trend (7 cols) -->
+        <div class="lg:col-span-7 bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-base font-display font-bold text-charcoal">Xu Hướng Doanh Thu Theo Ngày</h3>
+                    <p class="text-xs text-gray-400">Biểu đồ đối soát doanh số và số lượng đơn hàng</p>
+                </div>
+            </div>
+            <div class="relative h-64 w-full">
+                <canvas id="chart-daily-trend"></canvas>
+            </div>
+        </div>
+
+        <!-- Channel Revenue Share Doughnut (5 cols) -->
+        <div class="lg:col-span-5 bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h3 class="text-base font-display font-bold text-charcoal">Tỷ Trọng Doanh Thu Theo Sàn</h3>
+                    <p class="text-xs text-gray-400">ShopeeFood vs GrabMart vs ShopeeMart</p>
+                </div>
+            </div>
+            <div class="relative h-64 w-full flex items-center justify-center">
+                <canvas id="chart-channel-share"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Store Comparison Breakdown Cards -->
+    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+        <h3 class="text-base font-display font-bold text-charcoal mb-1">Hiệu Suất Theo 4 Chi Nhánh Nam An</h3>
+        <p class="text-xs text-gray-400 mb-4">So sánh doanh thu và tỷ trọng đóng góp của từng cửa hàng</p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="store-performance-cards">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <!-- Financial Reconciliation Ledger Table -->
+    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <h3 class="text-base font-display font-bold text-charcoal">Sổ Đối Soát Dòng Tiền Đơn Hàng Chi Tiết</h3>
+                <p class="text-xs text-gray-400">Bóc tách chi tiết tiền hàng, chiết khấu, phí vận chuyển và thực nhận ước tính</p>
+            </div>
+
+            <!-- Search in Reconciliation -->
+            <div class="relative min-w-[240px]">
+                <input type="text" id="reconcile-search" oninput="debounceReconcileSearch()" placeholder="Tìm mã đơn, tên khách..." class="w-full pl-9 pr-4 py-2 rounded-full bg-surface-low text-xs text-charcoal border-none focus:ring-2 focus:ring-primary">
+                <svg class="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            </div>
+        </div>
+
+        <!-- Table Container -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100">
+                        <th class="pb-3 pr-3">Mã Đơn / Mã Sàn</th>
+                        <th class="pb-3 px-3">Sàn / Chi Nhánh</th>
+                        <th class="pb-3 px-3">Thời Gian</th>
+                        <th class="pb-3 px-3 text-right">Tiền Hàng</th>
+                        <th class="pb-3 px-3 text-right">Chiết Khấu</th>
+                        <th class="pb-3 px-3 text-right">Phí Ship</th>
+                        <th class="pb-3 px-3 text-right">Thực Thu</th>
+                        <th class="pb-3 px-3 text-right">Thực Nhận (Ước tính)</th>
+                        <th class="pb-3 pl-3 text-center">Trạng Thái</th>
+                    </tr>
+                </thead>
+                <tbody id="reconcile-table-body" class="divide-y divide-gray-50">
+                    <!-- Populated dynamically -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Bar -->
+        <div id="reconcile-pagination" class="pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs text-charcoal-muted">
+            <div>
+                Hiển thị <span id="rec-page-range" class="font-bold text-charcoal">0 - 0</span> trong tổng số <span id="rec-total-count" class="font-bold text-charcoal">0</span> đơn hàng
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="btn-prev-rec" onclick="changeReconcilePage(-1)" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 transition-colors">
+                    &larr; Trang trước
+                </button>
+                <span id="rec-current-page" class="font-bold text-primary px-2">Trang 1 / 1</span>
+                <button id="btn-next-rec" onclick="changeReconcilePage(1)" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 transition-colors">
+                    Trang sau &rarr;
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // State management
+    let reportFilters = {
+        from_date: null,
+        to_date: null,
+        channel_code: '',
+        store_code: '',
+        search: '',
+        page: 1,
+        page_size: 15
+    };
+
+    let searchDebounceTimer = null;
+    let trendChartInstance = null;
+    let channelChartInstance = null;
+
+    // Helper: format Currency
+    function formatVND(val) {
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
+    }
+
+    // Set quick date range
+    function setQuickRange(type) {
+        document.querySelectorAll('.range-pill').forEach(btn => {
+            if (btn.getAttribute('data-range') === type) {
+                btn.className = "range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm";
+            } else {
+                btn.className = "range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50";
+            }
+        });
+
+        const today = new Date();
+        const toStr = today.toISOString().split('T')[0];
+
+        if (type === 'today') {
+            reportFilters.from_date = toStr;
+            reportFilters.to_date = toStr;
+        } else if (type === 'last_7_days') {
+            const past7 = new Date();
+            past7.setDate(past7.getDate() - 6);
+            reportFilters.from_date = past7.toISOString().split('T')[0];
+            reportFilters.to_date = toStr;
+        } else if (type === 'last_30_days') {
+            const past30 = new Date();
+            past30.setDate(past30.getDate() - 29);
+            reportFilters.from_date = past30.toISOString().split('T')[0];
+            reportFilters.to_date = toStr;
+        } else if (type === 'all_time') {
+            reportFilters.from_date = null;
+            reportFilters.to_date = null;
+        }
+
+        document.getElementById('filter-from-date').value = reportFilters.from_date || '';
+        document.getElementById('filter-to-date').value = reportFilters.to_date || '';
+        reportFilters.page = 1;
+
+        loadAllReportData();
+    }
+
+    function onCustomDateChange() {
+        reportFilters.from_date = document.getElementById('filter-from-date').value || null;
+        reportFilters.to_date = document.getElementById('filter-to-date').value || null;
+        reportFilters.page = 1;
+
+        // Deselect quick pills
+        document.querySelectorAll('.range-pill').forEach(btn => {
+            btn.className = "range-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50";
+        });
+
+        loadAllReportData();
+    }
+
+    function onFilterChange() {
+        reportFilters.channel_code = document.getElementById('filter-channel-code').value;
+        reportFilters.store_code = document.getElementById('filter-store-code').value;
+        reportFilters.page = 1;
+        loadAllReportData();
+    }
+
+    function debounceReconcileSearch() {
+        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            reportFilters.search = document.getElementById('reconcile-search').value.trim();
+            reportFilters.page = 1;
+            loadReconciliationData();
+        }, 400);
+    }
+
+    function changeReconcilePage(delta) {
+        reportFilters.page += delta;
+        if (reportFilters.page < 1) reportFilters.page = 1;
+        loadReconciliationData();
+    }
+
+    // Export CSV
+    function exportReconciliationCsv() {
+        let url = `/api/v1/reports/export?`;
+        if (reportFilters.from_date) url += `&from_date=${encodeURIComponent(reportFilters.from_date)}`;
+        if (reportFilters.to_date) url += `&to_date=${encodeURIComponent(reportFilters.to_date)}`;
+        if (reportFilters.channel_code) url += `&channel_code=${encodeURIComponent(reportFilters.channel_code)}`;
+        if (reportFilters.store_code) url += `&store_code=${encodeURIComponent(reportFilters.store_code)}`;
+
+        const token = TokenManager.getToken();
+        if (token) {
+            // Download with token using fetch blob
+            authFetch(url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = `naman_doi_soat_${new Date().toISOString().slice(0, 10)}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    showToast("Đã tải xuống tệp đối soát thành công!", "success");
+                })
+                .catch(err => {
+                    showToast("Lỗi khi tải tệp đối soát", "error");
+                });
+        } else {
+            window.location.href = url;
+        }
+    }
+
+    // Load Analytics
+    async function loadAnalyticsData() {
+        let url = `/api/v1/reports/analytics?`;
+        if (reportFilters.from_date) url += `&from_date=${encodeURIComponent(reportFilters.from_date)}`;
+        if (reportFilters.to_date) url += `&to_date=${encodeURIComponent(reportFilters.to_date)}`;
+        if (reportFilters.channel_code) url += `&channel_code=${encodeURIComponent(reportFilters.channel_code)}`;
+        if (reportFilters.store_code) url += `&store_code=${encodeURIComponent(reportFilters.store_code)}`;
+
+        try {
+            const res = await authFetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    renderAnalytics(data.data);
+                }
+            }
+        } catch(e) {
+            console.error("Lỗi khi tải analytics:", e);
+        }
+    }
+
+    function renderAnalytics(data) {
+        const sum = data.summary;
+
+        // KPI values
+        document.getElementById('kpi-gross-revenue').textContent = formatVND(sum.total_gross_revenue);
+        document.getElementById('kpi-subtotal').textContent = formatVND(sum.total_subtotal);
+        document.getElementById('kpi-delivery-fee').textContent = formatVND(sum.total_delivery_fees);
+
+        document.getElementById('kpi-net-payout').textContent = formatVND(sum.estimated_net_payout);
+        document.getElementById('kpi-commission').textContent = `-${formatVND(sum.estimated_commission)}`;
+
+        document.getElementById('kpi-total-orders').textContent = sum.total_orders;
+        document.getElementById('kpi-completion-rate').textContent = `${sum.completion_rate}% HT`;
+        document.getElementById('kpi-completed-orders').textContent = sum.completed_orders;
+        document.getElementById('kpi-active-orders').textContent = sum.active_orders;
+
+        document.getElementById('kpi-aov').textContent = formatVND(sum.average_order_value);
+        document.getElementById('kpi-cancelled-orders').textContent = sum.cancelled_orders;
+        document.getElementById('kpi-cancellation-rate').textContent = `${sum.cancellation_rate}%`;
+
+        // Render Charts
+        renderTrendChart(data.daily_trends || []);
+        renderChannelChart(data.channels || []);
+        renderStorePerformance(data.stores || []);
+    }
+
+    // Chart: Daily Revenue Trend
+    function renderTrendChart(trends) {
+        const ctx = document.getElementById('chart-daily-trend').getContext('2d');
+        if (trendChartInstance) trendChartInstance.destroy();
+
+        const labels = trends.map(t => {
+            const parts = t.date.split('-');
+            return `${parts[2]}/${parts[1]}`;
+        });
+        const revenues = trends.map(t => t.revenue);
+        const orders = trends.map(t => t.order_count);
+
+        trendChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        type: 'line',
+                        label: 'Doanh Thu (VNĐ)',
+                        data: revenues,
+                        borderColor: '#1B4D3E',
+                        backgroundColor: 'rgba(27, 77, 62, 0.1)',
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.35,
+                        yAxisID: 'y'
+                    },
+                    {
+                        type: 'bar',
+                        label: 'Số Lượng Đơn',
+                        data: orders,
+                        backgroundColor: 'rgba(217, 119, 6, 0.7)',
+                        borderRadius: 6,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 12, font: { family: 'Inter', size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (context.dataset.type === 'line') {
+                                    return ` Doanh thu: ${formatVND(context.raw)}`;
+                                }
+                                return ` Số đơn: ${context.raw} đơn`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 10 } } },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        ticks: {
+                            font: { family: 'Inter', size: 10 },
+                            callback: function(val) { return val >= 1000000 ? (val/1000000) + 'M' : (val/1000) + 'k'; }
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        ticks: { stepSize: 1, font: { family: 'Inter', size: 10 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // Chart: Channel Share Doughnut
+    function renderChannelChart(channels) {
+        const ctx = document.getElementById('chart-channel-share').getContext('2d');
+        if (channelChartInstance) channelChartInstance.destroy();
+
+        const labels = channels.map(c => c.channel_name || c.channel_code);
+        const dataVals = channels.map(c => c.revenue);
+        const colors = [
+            '#EE4D2D', // ShopeeFood Orange
+            '#00B14F', // GrabMart Green
+            '#0D5CB6', // ShopeeMart Blue
+            '#9CA3AF'
+        ];
+
+        channelChartInstance = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: dataVals,
+                    backgroundColor: colors.slice(0, labels.length),
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { family: 'Inter', size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.label}: ${formatVND(context.raw)}`;
+                            }
+                        }
+                    }
+                },
+                cutout: '68%'
+            }
+        });
+    }
+
+    // Store Performance Cards
+    function renderStorePerformance(stores) {
+        const container = document.getElementById('store-performance-cards');
+        if (!stores || stores.length === 0) {
+            container.innerHTML = '<div class="col-span-4 text-center text-xs text-gray-400 py-4">Chưa có số liệu chi nhánh.</div>';
+            return;
+        }
+
+        let html = '';
+        stores.forEach(s => {
+            html += `
+                <div class="p-4 rounded-2xl bg-surface-low border border-gray-100 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="font-bold text-xs text-charcoal font-display">${s.store_name}</span>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white text-primary shadow-xs">${s.share_percentage}%</span>
+                        </div>
+                        <p class="text-[11px] font-mono text-gray-400">Mã: #${s.store_code}</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-gray-200/60 flex items-baseline justify-between">
+                        <span class="text-xs text-gray-500">${s.order_count} đơn</span>
+                        <span class="text-sm font-display font-extrabold text-primary">${formatVND(s.revenue)}</span>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    // Load Reconciliation Table
+    async function loadReconciliationData() {
+        let url = `/api/v1/reports/reconciliation?page=${reportFilters.page}&page_size=${reportFilters.page_size}`;
+        if (reportFilters.from_date) url += `&from_date=${encodeURIComponent(reportFilters.from_date)}`;
+        if (reportFilters.to_date) url += `&to_date=${encodeURIComponent(reportFilters.to_date)}`;
+        if (reportFilters.channel_code) url += `&channel_code=${encodeURIComponent(reportFilters.channel_code)}`;
+        if (reportFilters.store_code) url += `&store_code=${encodeURIComponent(reportFilters.store_code)}`;
+        if (reportFilters.search) url += `&search=${encodeURIComponent(reportFilters.search)}`;
+
+        const tbody = document.getElementById('reconcile-table-body');
+        try {
+            const res = await authFetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data) {
+                    renderReconciliationTable(data.data.items);
+                    renderReconciliationPagination(data.data.meta);
+                }
+            } else {
+                tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-rose-600">Không thể tải dữ liệu đối soát</td></tr>';
+            }
+        } catch(e) {
+            tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-rose-600">Lỗi kết nối khi tải đối soát</td></tr>';
+        }
+    }
+
+    function renderReconciliationTable(items) {
+        const tbody = document.getElementById('reconcile-table-body');
+        tbody.innerHTML = '';
+
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="py-8 text-center text-gray-400">
+                        Không có đơn hàng nào trong phạm vi bộ lọc đối soát đã chọn.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        items.forEach(o => {
+            const tr = document.createElement('tr');
+            tr.className = "hover:bg-surface-low/60 transition-colors";
+
+            // Status Badge
+            const statusBadge = o.status === 'DELIVERED' ? 'bg-emerald-100 text-emerald-800' :
+                                o.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' :
+                                o.status === 'READY' ? 'bg-purple-100 text-purple-800' :
+                                o.status === 'ACCEPTED' ? 'bg-blue-100 text-blue-800' :
+                                'bg-amber-100 text-amber-800';
+
+            // Channel Badge
+            const channelBadge = o.channel_code === 'SHOPEEFOOD' ? '<span class="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] font-bold">ShopeeFood</span>' :
+                                 o.channel_code === 'GRABMART' ? '<span class="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">GrabMart</span>' :
+                                 '<span class="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-bold">ShopeeMart</span>';
+
+            const timeFormatted = o.order_time ? new Date(o.order_time).toLocaleString('vi-VN') : 'N/A';
+
+            tr.innerHTML = `
+                <td class="py-3.5 pr-3">
+                    <div class="font-mono font-bold text-charcoal text-xs">${o.order_code}</div>
+                    <div class="text-[11px] text-gray-400 font-mono">#${o.display_order_id || o.channel_order_id}</div>
+                </td>
+                <td class="py-3.5 px-3 whitespace-nowrap">
+                    <div class="mb-1">${channelBadge}</div>
+                    <div class="text-[11px] text-gray-600 truncate max-w-[140px]">${o.store_name}</div>
+                </td>
+                <td class="py-3.5 px-3 whitespace-nowrap text-gray-500 text-[11px]">
+                    ${timeFormatted}
+                </td>
+                <td class="py-3.5 px-3 text-right font-mono font-medium text-gray-700">
+                    ${formatVND(o.subtotal_amount)}
+                </td>
+                <td class="py-3.5 px-3 text-right font-mono text-rose-600 font-medium">
+                    ${o.discount_amount > 0 ? `-${formatVND(o.discount_amount)}` : '0 ₫'}
+                </td>
+                <td class="py-3.5 px-3 text-right font-mono text-gray-500 font-medium">
+                    +${formatVND(o.delivery_fee)}
+                </td>
+                <td class="py-3.5 px-3 text-right font-mono font-bold text-charcoal">
+                    ${formatVND(o.total_amount)}
+                </td>
+                <td class="py-3.5 px-3 text-right font-mono font-bold text-primary">
+                    ${formatVND(o.estimated_net_amount)}
+                </td>
+                <td class="py-3.5 pl-3 text-center whitespace-nowrap">
+                    <span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] ${statusBadge}">${o.status}</span>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderReconciliationPagination(meta) {
+        const bar = document.getElementById('reconcile-pagination');
+        if (!meta || meta.total_items === 0) {
+            bar.classList.add('hidden');
+            return;
+        }
+        bar.classList.remove('hidden');
+
+        const start = (meta.page - 1) * meta.page_size + 1;
+        const end = Math.min(meta.page * meta.page_size, meta.total_items);
+
+        document.getElementById('rec-page-range').textContent = `${start} - ${end}`;
+        document.getElementById('rec-total-count').textContent = meta.total_items;
+        document.getElementById('rec-current-page').textContent = `Trang ${meta.page} / ${meta.total_pages || 1}`;
+
+        document.getElementById('btn-prev-rec').disabled = meta.page <= 1;
+        document.getElementById('btn-next-rec').disabled = meta.page >= meta.total_pages;
+    }
+
+    function loadAllReportData() {
+        const spinner = document.getElementById('refresh-spinner');
+        if (spinner) spinner.classList.add('animate-spin');
+
+        Promise.all([loadAnalyticsData(), loadReconciliationData()]).finally(() => {
+            if (spinner) spinner.classList.remove('animate-spin');
+        });
+    }
+
+    // On Load
+    document.addEventListener('DOMContentLoaded', () => {
+        setQuickRange('last_7_days');
+    });
+</script>
+{% endblock %}

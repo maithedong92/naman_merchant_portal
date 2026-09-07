@@ -67,6 +67,22 @@ async def orders_dispatch_page(request: Request):
     )
 
 
+@web_router.get("/reports", response_class=HTMLResponse)
+@web_router.get("/admin/reports", response_class=HTMLResponse)
+async def reports_analytics_page(request: Request):
+    """Serve Multi-Channel Analytics, Reporting & Reconciliation page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="reports.html",
+        context={
+            "request": request,
+            "active_page": "reports",
+            "app_name": settings.APP_NAME,
+            "app_version": settings.APP_VERSION,
+        }
+    )
+
+
 @web_router.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_page(request: Request):
     """Serve Admin Login page."""
