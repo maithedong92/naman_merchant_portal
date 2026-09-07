@@ -280,18 +280,18 @@
 
             <div>
                 <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Người xử lý</label>
-                <input id="resolve-by-input" type="text" required class="w-full px-4 py-2.5 rounded-xl bg-surface-low text-xs focus:ring-2 focus:ring-primary focus:bg-white" placeholder="Tên kỹ sư / quản trị viên">
+                <input id="resolve-by-input" type="text" class="w-full px-4 py-2.5 rounded-xl bg-surface-low text-xs focus:ring-2 focus:ring-primary focus:bg-white" placeholder="Tên kỹ sư / quản trị viên">
             </div>
 
             <div>
                 <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Ghi chú giải pháp / Hành động khắc phục</label>
-                <textarea id="resolve-notes-input" rows="4" required class="w-full px-4 py-3 rounded-xl bg-surface-low text-xs focus:ring-2 focus:ring-primary focus:bg-white" placeholder="Ví dụ: Đã kiểm tra lại kết nối mạng, khởi động lại adapter ShopeeFood và thực hiện đồng bộ lại menu thủ công thành công."></textarea>
+                <textarea id="resolve-notes-input" rows="4" class="w-full px-4 py-3 rounded-xl bg-surface-low text-xs focus:ring-2 focus:ring-primary focus:bg-white" placeholder="Ví dụ: Đã kiểm tra lại kết nối mạng, khởi động lại adapter ShopeeFood và thực hiện đồng bộ lại menu thủ công thành công."></textarea>
             </div>
 
             <div class="flex items-center justify-end space-x-3 pt-2">
                 <button type="button" onclick="closeResolveModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-xs font-bold hover:bg-gray-200">Hủy bỏ</button>
-                <button type="submit" class="px-6 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md">
-                    Xác Nhận Đã Xử Lý (RESOLVED)
+                <button type="button" id="btn-confirm-resolve" onclick="submitResolveIncident(event)" class="px-6 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md transition-all flex items-center space-x-1.5">
+                    <span>Xác Nhận Đã Xử Lý (RESOLVED)</span>
                 </button>
             </div>
         </form>
@@ -421,7 +421,9 @@
         }
 
         tbody.innerHTML = '';
+        window._errorsCache = window._errorsCache || {};
         items.forEach(e => {
+            window._errorsCache[e.id] = e;
             const tr = document.createElement('tr');
             tr.className = "hover:bg-surface-low/50 transition-colors group";
 
@@ -468,7 +470,7 @@
                     <span class="px-2 py-0.5 rounded-full font-bold text-[11px] ${statusBadge}">${e.resolution_status}</span>
                 </td>
                 <td class="py-4 pl-3 text-right whitespace-nowrap space-x-2">
-                    <button onclick='viewErrorDetail(${JSON.stringify(e).replace(/'/g, "&apos;")})' class="px-3 py-1.5 rounded-full bg-surface-low hover:bg-gray-200 text-charcoal font-bold text-[11px] transition-colors">
+                    <button onclick="viewErrorDetail('${e.id}')" class="px-3 py-1.5 rounded-full bg-surface-low hover:bg-gray-200 text-charcoal font-bold text-[11px] transition-colors">
                         Chi tiết
                     </button>
                     ${e.resolution_status !== 'RESOLVED' ? `
@@ -515,7 +517,12 @@
     }
 
     // Detail Modal
-    function viewErrorDetail(err) {
+    function viewErrorDetail(errorIdOrObj) {
+        let err = errorIdOrObj;
+        if (typeof errorIdOrObj === 'string') {
+            err = (window._errorsCache && window._errorsCache[errorIdOrObj]) ? window._errorsCache[errorIdOrObj] : null;
+        }
+        if (!err) return;
         currentDetailError = err;
         document.getElementById('modal-detail-title').textContent = `${err.error_code} (#${err.id.substring(0, 8)})`;
         document.getElementById('modal-detail-severity').textContent = err.severity;
@@ -569,9 +576,14 @@
     // Resolve Modal
     function openResolveModal(errorId) {
         document.getElementById('resolve-error-id').value = errorId;
-        const user = TokenManager.getUser();
+        const user = (typeof TokenManager !== 'undefined' && TokenManager.getUser) ? TokenManager.getUser() : {};
         document.getElementById('resolve-by-input').value = user.full_name || user.username || "Quản trị viên";
-        document.getElementById('resolve-notes-input').value = "";
+        document.getElementById('resolve-notes-input').value = "Đã kiểm tra và khắc phục sự cố thành công.";
+        const btn = document.getElementById('btn-confirm-resolve');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>Xác Nhận Đã Xử Lý (RESOLVED)</span>';
+        }
         document.getElementById('modal-resolve-incident').classList.remove('hidden');
     }
 
@@ -580,10 +592,25 @@
     }
 
     async function submitResolveIncident(e) {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         const errorId = document.getElementById('resolve-error-id').value;
-        const resolvedBy = document.getElementById('resolve-by-input').value.trim();
-        const resolutionNotes = document.getElementById('resolve-notes-input').value.trim();
+        if (!errorId) {
+            showToast("Không tìm thấy mã định danh sự cố.", "error");
+            return;
+        }
+
+        const resolvedBy = (document.getElementById('resolve-by-input').value || '').trim() || 'Quản trị viên';
+        let resolutionNotes = (document.getElementById('resolve-notes-input').value || '').trim();
+        if (!resolutionNotes || resolutionNotes.length < 3) {
+            resolutionNotes = "Đã kiểm tra và khắc phục sự cố thành công.";
+            document.getElementById('resolve-notes-input').value = resolutionNotes;
+        }
+
+        const btn = document.getElementById('btn-confirm-resolve');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="inline-block animate-spin mr-1.5">⏳</span><span>Đang xử lý...</span>';
+        }
 
         try {
             const res = await authFetch(`/api/v1/system/errors/${errorId}/resolve`, {
@@ -597,12 +624,19 @@
             if (res.ok && data.success) {
                 showToast("Đã cập nhật trạng thái sự cố thành ĐÃ XỬ LÝ (RESOLVED)", "success");
                 closeResolveModal();
+                closeDetailModal();
                 loadAllSystemData();
             } else {
                 showToast(data.message || "Không thể cập nhật sự cố", "error");
             }
         } catch(err) {
+            console.error("Lỗi khi resolve error:", err);
             showToast("Lỗi kết nối khi xử lý sự cố", "error");
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<span>Xác Nhận Đã Xử Lý (RESOLVED)</span>';
+            }
         }
     }
 
