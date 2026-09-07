@@ -13,6 +13,7 @@ from app.models.product import Category, Product
 from app.models.store import Store, StoreChannelMapping
 from app.schemas.order import OrderStatusUpdateSchema
 from app.schemas.sync import SyncResult
+from app.services.channel_service import channel_service
 from app.services.order_service import OrderService
 from app.modules.grabmart.schemas import (
     GrabCategory,
@@ -180,6 +181,17 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         Generate GrabMart v1.1.3 menu and notify GrabMart to pull/update menu.
         Endpoint: POST /partner/v1/merchant/menu/notification
         """
+        enabled = await channel_service.is_feature_enabled(self.channel_code, "menu_sync_enabled", db)
+        if not enabled:
+            logger.info(f"Đồng bộ thực đơn {self.channel_code} bị bỏ qua do tính năng đang TẮT.")
+            return SyncResult(
+                channel_code=self.channel_code,
+                store_id=store_id,
+                sync_type="MENU",
+                success=False,
+                message="Tính năng 'Đồng bộ thực đơn' cho GrabMart hiện đang TẮT trong cài đặt quản trị.",
+            )
+
         try:
             menu_data = await self.build_catalog_menu(store_id, partner_store_id, db)
             total_items = sum(
@@ -229,6 +241,17 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         Batch update item stock and availability status on GrabMart.
         Conforms to GrabMart rule: maxStock must be 0 if UNAVAILABLE, > 0 if AVAILABLE.
         """
+        enabled = await channel_service.is_feature_enabled(self.channel_code, "stock_sync_enabled", db)
+        if not enabled:
+            logger.info(f"Đồng bộ tồn kho {self.channel_code} bị bỏ qua do tính năng đang TẮT.")
+            return SyncResult(
+                channel_code=self.channel_code,
+                store_id=store_id,
+                sync_type="STOCK",
+                success=False,
+                message="Tính năng 'Đồng bộ tồn kho' cho GrabMart hiện đang TẮT trong cài đặt quản trị.",
+            )
+
         try:
             items_payload = []
             for itm in stock_items:
@@ -279,6 +302,14 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         Process GrabMart Submit Order Webhook.
         Converts GrabMart schema into UnifiedOrder and stores in PostgreSQL.
         """
+        enabled = await channel_service.is_feature_enabled(self.channel_code, "order_webhook_enabled", db)
+        if not enabled:
+            logger.warning("Nhận webhook đơn hàng GrabMart nhưng tính năng 'Nhận đơn qua Webhook' đang TẮT.")
+            return {
+                "status": "REJECTED",
+                "message": "Tính năng nhận webhook đơn hàng GrabMart hiện đang tạm dừng bởi Quản trị viên."
+            }
+
         payload_dict = json.loads(raw_body.decode("utf-8"))
         webhook = GrabSubmitOrderWebhook(**payload_dict)
 
@@ -295,9 +326,13 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             if instruction:
                 full_address = f"{full_address} (Ghi chú giao: {instruction})"
 
+        auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
+        is_auto = auto_confirm or (webhook.featureFlags and webhook.featureFlags.orderAcceptedType == "AUTO")
+        initial_status = UnifiedOrderStatus.ACCEPTED if is_auto else UnifiedOrderStatus.PENDING
+
         order_data = {
             "display_order_id": webhook.shortOrderNumber or channel_order_id[-6:],
-            "initial_status": UnifiedOrderStatus.ACCEPTED if (webhook.featureFlags and webhook.featureFlags.orderAcceptedType == "AUTO") else UnifiedOrderStatus.PENDING,
+            "initial_status": initial_status,
             "subtotal_amount": float(webhook.price.subtotal),
             "discount_amount": float(webhook.price.merchantFundPromo),
             "delivery_fee": float(webhook.price.deliveryFee),

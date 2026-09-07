@@ -11,6 +11,7 @@ from app.models.inventory import StoreInventory
 from app.models.order import UnifiedOrderStatus
 from app.models.product import Product
 from app.schemas.sync import SyncResult
+from app.services.channel_service import channel_service
 from app.services.order_service import OrderService
 from app.modules.shopeemart.service import shopeemart_client
 
@@ -35,6 +36,17 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         db: AsyncSession
     ) -> SyncResult:
         """Synchronize product listings and prices to ShopeeMart shop."""
+        enabled = await channel_service.is_feature_enabled(self.channel_code, "menu_sync_enabled", db)
+        if not enabled:
+            logger.info(f"Đồng bộ danh mục {self.channel_code} bị bỏ qua do tính năng đang TẮT.")
+            return SyncResult(
+                channel_code=self.channel_code,
+                store_id=store_id,
+                sync_type="MENU",
+                success=False,
+                message="Tính năng 'Đồng bộ thực đơn/danh mục' cho ShopeeMart hiện đang TẮT trong cài đặt quản trị.",
+            )
+
         try:
             query = select(Product).where(Product.is_active == True)
             res = await db.execute(query)
@@ -75,6 +87,17 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         db: AsyncSession
     ) -> SyncResult:
         """Push batch stock updates to ShopeeMart (v2.product.update_stock)."""
+        enabled = await channel_service.is_feature_enabled(self.channel_code, "stock_sync_enabled", db)
+        if not enabled:
+            logger.info(f"Đồng bộ tồn kho {self.channel_code} bị bỏ qua do tính năng đang TẮT.")
+            return SyncResult(
+                channel_code=self.channel_code,
+                store_id=store_id,
+                sync_type="STOCK",
+                success=False,
+                message="Tính năng 'Đồng bộ tồn kho' cho ShopeeMart hiện đang TẮT trong cài đặt quản trị.",
+            )
+
         try:
             stock_list = []
             for item in stock_items:
@@ -116,10 +139,20 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         db: AsyncSession
     ) -> Dict[str, Any]:
         """Ingest incoming order push notification from ShopeeMart."""
+        enabled = await channel_service.is_feature_enabled(self.channel_code, "order_webhook_enabled", db)
+        if not enabled:
+            logger.warning("Nhận webhook đơn hàng ShopeeMart nhưng tính năng 'Nhận đơn qua Webhook' đang TẮT.")
+            return {
+                "code": -1,
+                "message": "Tính năng nhận webhook đơn hàng ShopeeMart hiện đang tạm dừng bởi Quản trị viên."
+            }
+
         payload = json.loads(raw_body.decode("utf-8"))
         data = payload.get("data", payload)
         order_sn = str(data.get("order_sn", ""))
         shop_id = str(data.get("shop_id", ""))
+
+        auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
 
         # Map Shopee order status
         raw_status = data.get("status", "READY_TO_SHIP")
@@ -131,7 +164,7 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             "COMPLETED": UnifiedOrderStatus.DELIVERED,
             "CANCELLED": UnifiedOrderStatus.CANCELLED,
         }
-        order_status = status_map.get(raw_status, UnifiedOrderStatus.ACCEPTED)
+        order_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else status_map.get(raw_status, UnifiedOrderStatus.ACCEPTED)
 
         recipient = data.get("recipient_address", {})
         customer_name = recipient.get("name")

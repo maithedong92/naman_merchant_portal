@@ -47,9 +47,11 @@ async def lifespan(app: FastAPI):
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("✅ Đã sẵn sàng cơ sở dữ liệu PostgreSQL.")
 
-            # Seed default SuperAdmin
+            # Seed default SuperAdmin and Default Channels
             async with AsyncSessionLocal() as session:
                 await auth_service.seed_initial_superadmin(session)
+                from app.services.channel_service import channel_service
+                await channel_service.ensure_default_channels(session)
         except Exception as ex:
             logger.warning(f"Lưu ý: Không thể kết nối tới PostgreSQL trong startup ({str(ex)}). Tiếp tục khởi động...")
 
@@ -184,6 +186,7 @@ app.include_router(api_v1_router)
 
 # Mount Channel Webhook Routers under /api/v1
 app.include_router(shopeefood_webhook_router, prefix="/api/v1")
+app.include_router(shopeefood_webhook_router)  # Allows root /shopeefoodapi/{store_code}.json
 app.include_router(grabmart_webhook_router, prefix="/api/v1")
 app.include_router(shopeemart_webhook_router, prefix="/api/v1")
 

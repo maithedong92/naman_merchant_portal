@@ -53,7 +53,7 @@
         </a>
     </div>
 
-    <!-- Operational KPI Metrics (The "No-Line" Rule & Living Canvas Tonal Layering) -->
+    <!-- Operational KPI Metrics -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <!-- Metric 1: System Status -->
         <div class="bg-white rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
@@ -92,7 +92,7 @@
                 </div>
             </div>
             <div class="mt-4 flex items-baseline justify-between">
-                <div class="text-2xl font-display font-extrabold text-charcoal">3 Kênh</div>
+                <div id="kpi-active-channels" class="text-2xl font-display font-extrabold text-charcoal">3 / 3 Kênh</div>
                 <span class="text-xs text-emerald-600 font-semibold">Tự động nạp</span>
             </div>
             <p class="mt-2 text-xs text-gray-400">ShopeeFood • GrabMart • ShopeeMart</p>
@@ -107,89 +107,370 @@
                 </div>
             </div>
             <div class="mt-4 flex items-baseline justify-between">
-                <div class="text-2xl font-display font-extrabold text-charcoal">Multi-Store</div>
-                <span class="text-xs text-blue-600 font-medium">10001, 10002,...</span>
+                <div class="text-2xl font-display font-extrabold text-charcoal">4 Điểm Bán</div>
+                <span class="text-xs text-blue-600 font-medium">10001, 10004,...</span>
             </div>
-            <p class="mt-2 text-xs text-gray-400">Kho hàng & ánh xạ độc lập</p>
+            <p class="mt-2 text-xs text-gray-400">Thảo Điền, Hưng Phúc, MCT, NVT</p>
         </div>
     </div>
 
-    <!-- Sales Channels Integration Matrix & Architecture Overview -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        <!-- ShopeeFood Card -->
-        <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
+    <!-- Sales Channels Integration Matrix & Granular Feature Toggles -->
+    <div>
+        <div class="flex items-center justify-between mb-4">
             <div>
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 font-bold flex items-center justify-center text-sm">
-                            SF
-                        </div>
-                        <div>
-                            <h3 class="font-display font-bold text-charcoal text-base">ShopeeFood S2S</h3>
-                            <p class="text-xs text-gray-400 font-mono">App ID: 10045</p>
-                        </div>
-                    </div>
-                    <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
-                </div>
-                <p class="text-xs text-charcoal-muted leading-relaxed">
-                    Tích hợp Foody S2S API v7.0.2. Đồng bộ danh mục món ăn, tồn kho, giá bán và nhận webhook đơn hàng thời gian thực qua chữ ký HMAC-SHA256.
-                </p>
+                <h2 class="text-xl font-display font-bold text-charcoal">Ma Trận Kênh Bán Hàng & Bảng Điều Khiển Tính Năng</h2>
+                <p class="text-xs text-charcoal-muted mt-0.5">Bật/tắt linh hoạt từng tính năng (nhận đơn, tự động duyệt, tồn kho, thực đơn) theo thời gian thực.</p>
             </div>
-            <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
-                <span class="text-gray-400">Adapter: ShopeeFoodChannelAdapter</span>
-                <span class="text-primary font-bold">Port 3002</span>
-            </div>
+            <button onclick="loadChannelFeatureFlags()" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-primary text-xs font-bold transition-all flex items-center space-x-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>Làm mới</span>
+            </button>
         </div>
 
-        <!-- GrabMart Card -->
-        <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 font-bold flex items-center justify-center text-sm">
-                            GM
-                        </div>
-                        <div>
-                            <h3 class="font-display font-bold text-charcoal text-base">GrabMart POS</h3>
-                            <p class="text-xs text-gray-400 font-mono">Scope: mart.partner_api</p>
-                        </div>
-                    </div>
-                    <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
-                </div>
-                <p class="text-xs text-charcoal-muted leading-relaxed">
-                    Tích hợp GrabMart Partner POS API v1.1.3 qua OAuth2. Đồng bộ menu, cập nhật tồn kho theo thời gian thực và tự động xác nhận đơn hàng.
-                </p>
-            </div>
-            <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
-                <span class="text-gray-400">Adapter: GrabMartChannelAdapter</span>
-                <span class="text-primary font-bold">Port 3002</span>
-            </div>
-        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <!-- ShopeeMart Card -->
-        <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-                <div class="flex items-center justify-between mb-4">
-                    <div class="flex items-center space-x-3">
-                        <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 font-bold flex items-center justify-center text-sm">
-                            SM
+            <!-- 1. ShopeeFood Card -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between" id="card-SHOPEEFOOD">
+                <div>
+                    <!-- Channel Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 font-bold flex items-center justify-center text-sm shadow-sm">
+                                SF
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-charcoal text-base">ShopeeFood S2S</h3>
+                                <p class="text-xs text-gray-400 font-mono">App ID: 10045</p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 class="font-display font-bold text-charcoal text-base">ShopeeMart (Fresh)</h3>
-                            <p class="text-xs text-gray-400 font-mono">Shopee Open Platform v2</p>
+                        <!-- Master Channel Toggle & Badge -->
+                        <div class="flex items-center space-x-2">
+                            <span id="badge-SHOPEEFOOD" class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold transition-colors">Đang Bật</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEFOOD-is_active" class="sr-only peer" onchange="toggleFeature('SHOPEEFOOD', 'is_active', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
                         </div>
                     </div>
-                    <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">Active</span>
+
+                    <p class="text-xs text-charcoal-muted leading-relaxed mb-4">
+                        Tích hợp Foody S2S API v7.0.2. Đồng bộ danh mục món ăn, tồn kho, giá bán và nhận webhook đơn hàng thời gian thực qua chữ ký HMAC-SHA256.
+                    </p>
+
+                    <!-- Granular Feature Toggles -->
+                    <div class="bg-surface-low rounded-2xl p-4 space-y-3">
+                        <div class="text-[11px] font-bold text-charcoal-muted uppercase tracking-wider mb-1 flex items-center justify-between">
+                            <span>Tính năng kiểm soát</span>
+                            <span class="text-[10px] text-gray-400 font-normal">Bật/Tắt chủ động</span>
+                        </div>
+
+                        <!-- Feature: Order Webhook -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center text-xs">
+                                    📥
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Nhận Đơn Webhook</div>
+                                    <div class="text-[10px] text-gray-400">Tiếp nhận đơn mới từ ShopeeFood</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEFOOD-order_webhook_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEFOOD', 'order_webhook_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Auto Confirm -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs">
+                                    ⚡
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Tự Động Xác Nhận</div>
+                                    <div class="text-[10px] text-gray-400">Tự duyệt sang trạng thái Đã Nhận</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEFOOD-auto_confirm_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEFOOD', 'auto_confirm_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Stock Sync -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs">
+                                    📦
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Đồng Bộ Tồn Kho</div>
+                                    <div class="text-[10px] text-gray-400">Báo Còn / Hết hàng món ăn</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEFOOD-stock_sync_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEFOOD', 'stock_sync_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Menu Sync -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs">
+                                    📋
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Đồng Bộ Thực Đơn</div>
+                                    <div class="text-[10px] text-gray-400">Đồng bộ catalog & giá bán món</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEFOOD-menu_sync_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEFOOD', 'menu_sync_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+                    </div>
                 </div>
-                <p class="text-xs text-charcoal-muted leading-relaxed">
-                    Tích hợp siêu thị thực phẩm tươi sống ShopeeMart theo bảng đối soát hàng hóa. Đồng bộ giá, tồn theo lô và tiếp nhận thông báo đóng gói đơn.
-                </p>
+
+                <!-- Card Footer -->
+                <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <span class="text-gray-400 font-mono">Port 3002 • Adapter</span>
+                    <button onclick="triggerSync('SHOPEEFOOD')" class="text-primary font-bold hover:underline hover:text-primary-light transition-colors">
+                        Đồng bộ Menu ngay &rarr;
+                    </button>
+                </div>
             </div>
-            <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
-                <span class="text-gray-400">Adapter: ShopeeMartChannelAdapter</span>
-                <span class="text-primary font-bold">Port 3002</span>
+
+            <!-- 2. GrabMart Card -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between" id="card-GRABMART">
+                <div>
+                    <!-- Channel Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 font-bold flex items-center justify-center text-sm shadow-sm">
+                                GM
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-charcoal text-base">GrabMart POS</h3>
+                                <p class="text-xs text-gray-400 font-mono">Scope: mart.partner_api</p>
+                            </div>
+                        </div>
+                        <!-- Master Channel Toggle & Badge -->
+                        <div class="flex items-center space-x-2">
+                            <span id="badge-GRABMART" class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold transition-colors">Đang Bật</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-GRABMART-is_active" class="sr-only peer" onchange="toggleFeature('GRABMART', 'is_active', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-charcoal-muted leading-relaxed mb-4">
+                        Tích hợp GrabMart Partner POS API v1.1.3 qua OAuth2. Đồng bộ menu, cập nhật tồn kho theo thời gian thực và tự động xác nhận đơn hàng.
+                    </p>
+
+                    <!-- Granular Feature Toggles -->
+                    <div class="bg-surface-low rounded-2xl p-4 space-y-3">
+                        <div class="text-[11px] font-bold text-charcoal-muted uppercase tracking-wider mb-1 flex items-center justify-between">
+                            <span>Tính năng kiểm soát</span>
+                            <span class="text-[10px] text-gray-400 font-normal">Bật/Tắt chủ động</span>
+                        </div>
+
+                        <!-- Feature: Order Webhook -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs">
+                                    📥
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Nhận Đơn Webhook</div>
+                                    <div class="text-[10px] text-gray-400">Tiếp nhận đơn Submit từ GrabMart</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-GRABMART-order_webhook_enabled" class="sr-only peer" onchange="toggleFeature('GRABMART', 'order_webhook_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Auto Confirm -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs">
+                                    ⚡
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Tự Động Xác Nhận</div>
+                                    <div class="text-[10px] text-gray-400">Tự duyệt sang trạng thái Đã Nhận</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-GRABMART-auto_confirm_enabled" class="sr-only peer" onchange="toggleFeature('GRABMART', 'auto_confirm_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Stock Sync -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs">
+                                    📦
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Đồng Bộ Tồn Kho</div>
+                                    <div class="text-[10px] text-gray-400">maxStock & availableStatus v1.1.3</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-GRABMART-stock_sync_enabled" class="sr-only peer" onchange="toggleFeature('GRABMART', 'stock_sync_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Menu Sync -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs">
+                                    📋
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Đồng Bộ Menu</div>
+                                    <div class="text-[10px] text-gray-400">Danh mục bán & sellingTimes</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-GRABMART-menu_sync_enabled" class="sr-only peer" onchange="toggleFeature('GRABMART', 'menu_sync_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Footer -->
+                <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <span class="text-gray-400 font-mono">Port 3002 • Adapter</span>
+                    <button onclick="triggerSync('GRABMART')" class="text-primary font-bold hover:underline hover:text-primary-light transition-colors">
+                        Đồng bộ Menu ngay &rarr;
+                    </button>
+                </div>
             </div>
+
+            <!-- 3. ShopeeMart Card -->
+            <div class="bg-white rounded-3xl p-6 shadow-sm flex flex-col justify-between" id="card-SHOPEEMART">
+                <div>
+                    <!-- Channel Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 font-bold flex items-center justify-center text-sm shadow-sm">
+                                SM
+                            </div>
+                            <div>
+                                <h3 class="font-display font-bold text-charcoal text-base">ShopeeMart (Fresh)</h3>
+                                <p class="text-xs text-gray-400 font-mono">Shopee Open Platform v2</p>
+                            </div>
+                        </div>
+                        <!-- Master Channel Toggle & Badge -->
+                        <div class="flex items-center space-x-2">
+                            <span id="badge-SHOPEEMART" class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold transition-colors">Đang Bật</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEMART-is_active" class="sr-only peer" onchange="toggleFeature('SHOPEEMART', 'is_active', this)">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-charcoal-muted leading-relaxed mb-4">
+                        Tích hợp siêu thị thực phẩm tươi sống ShopeeMart theo bảng đối soát hàng hóa. Đồng bộ giá, tồn theo lô và tiếp nhận thông báo đóng gói đơn.
+                    </p>
+
+                    <!-- Granular Feature Toggles -->
+                    <div class="bg-surface-low rounded-2xl p-4 space-y-3">
+                        <div class="text-[11px] font-bold text-charcoal-muted uppercase tracking-wider mb-1 flex items-center justify-between">
+                            <span>Tính năng kiểm soát</span>
+                            <span class="text-[10px] text-gray-400 font-normal">Bật/Tắt chủ động</span>
+                        </div>
+
+                        <!-- Feature: Order Webhook -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-xs">
+                                    📥
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Nhận Đơn Webhook</div>
+                                    <div class="text-[10px] text-gray-400">Tiếp nhận đơn mua hàng ShopeeMart</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEMART-order_webhook_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEMART', 'order_webhook_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Auto Confirm -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs">
+                                    ⚡
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Tự Động Xác Nhận</div>
+                                    <div class="text-[10px] text-gray-400">Tự duyệt sang trạng thái Đã Nhận</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEMART-auto_confirm_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEMART', 'auto_confirm_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Stock Sync -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs">
+                                    📦
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Đồng Bộ Tồn Kho</div>
+                                    <div class="text-[10px] text-gray-400">Tồn theo lô & date sản phẩm</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEMART-stock_sync_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEMART', 'stock_sync_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+
+                        <!-- Feature: Menu Sync -->
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-6 h-6 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs">
+                                    📋
+                                </div>
+                                <div>
+                                    <div class="text-xs font-semibold text-charcoal">Đồng Bộ Danh Mục</div>
+                                    <div class="text-[10px] text-gray-400">Catalog tươi sống & đối soát</div>
+                                </div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="toggle-SHOPEEMART-menu_sync_enabled" class="sr-only peer" onchange="toggleFeature('SHOPEEMART', 'menu_sync_enabled', this)">
+                                <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Footer -->
+                <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+                    <span class="text-gray-400 font-mono">Port 3002 • Adapter</span>
+                    <button onclick="showToast('ShopeeMart đang cập nhật cơ chế đồng bộ theo lô.', 'info')" class="text-primary font-bold hover:underline hover:text-primary-light transition-colors">
+                        Đồng bộ Danh mục &rarr;
+                    </button>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -219,10 +500,10 @@
 
             <div class="p-5 rounded-2xl bg-surface-low">
                 <div class="flex items-center justify-between">
-                    <span class="font-display font-bold text-sm text-charcoal">Cơ Sở Dữ Liệu Local</span>
-                    <span class="text-xs font-mono text-emerald-700 font-bold">5432</span>
+                    <span class="font-display font-bold text-sm text-charcoal">Cơ Sở Dữ Liệu UMP</span>
+                    <span class="text-xs font-mono text-emerald-700 font-bold">103.175.248.250:6767</span>
                 </div>
-                <p class="text-xs text-gray-500 mt-2">PostgreSQL chạy trực tiếp trên Host để tối ưu I/O và an toàn dữ liệu.</p>
+                <p class="text-xs text-gray-500 mt-2">PostgreSQL UMP tập trung lưu trữ đồng bộ sản phẩm, tồn kho và đơn hàng.</p>
             </div>
         </div>
     </div>
@@ -232,6 +513,131 @@
 
 {% block extra_scripts %}
 <script>
+    // Feature dictionary label mapping for friendly toasts
+    const FEATURE_NAMES = {
+        'is_active': 'Kênh bán hàng',
+        'order_webhook_enabled': 'Nhận đơn qua Webhook',
+        'auto_confirm_enabled': 'Tự động xác nhận đơn',
+        'stock_sync_enabled': 'Đồng bộ tồn kho',
+        'menu_sync_enabled': 'Đồng bộ thực đơn / danh mục'
+    };
+
+    // Load channel configurations and sync toggle switches
+    async function loadChannelFeatureFlags() {
+        try {
+            const res = await authFetch('/api/v1/channels');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.data)) {
+                    let activeCount = 0;
+                    data.data.forEach(ch => {
+                        const code = ch.code;
+                        const features = ch.features || {};
+
+                        if (ch.is_active) activeCount++;
+
+                        // Update Master Badge & Switch
+                        const badgeEl = document.getElementById(`badge-${code}`);
+                        const masterToggle = document.getElementById(`toggle-${code}-is_active`);
+
+                        if (masterToggle) masterToggle.checked = !!ch.is_active;
+                        if (badgeEl) {
+                            if (ch.is_active) {
+                                badgeEl.textContent = 'Đang Bật';
+                                badgeEl.className = 'px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold transition-colors';
+                            } else {
+                                badgeEl.textContent = 'Tạm Dừng';
+                                badgeEl.className = 'px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 text-xs font-bold transition-colors';
+                            }
+                        }
+
+                        // Update Sub-feature switches
+                        ['order_webhook_enabled', 'auto_confirm_enabled', 'stock_sync_enabled', 'menu_sync_enabled'].forEach(key => {
+                            const el = document.getElementById(`toggle-${code}-${key}`);
+                            if (el && features[key] !== undefined) {
+                                el.checked = !!features[key];
+                            }
+                        });
+                    });
+
+                    // Update KPI Active Channels
+                    const kpiEl = document.getElementById('kpi-active-channels');
+                    if (kpiEl) kpiEl.textContent = `${activeCount} / ${data.data.length} Kênh`;
+                }
+            }
+        } catch(e) {
+            console.error("Lỗi khi tải cấu hình kênh:", e);
+        }
+    }
+
+    // Toggle specific feature for a channel
+    async function toggleFeature(channelCode, featureKey, inputEl) {
+        const isChecked = inputEl.checked;
+        const featureTitle = FEATURE_NAMES[featureKey] || featureKey;
+        
+        // Prevent spam
+        inputEl.disabled = true;
+
+        try {
+            const res = await authFetch(`/api/v1/channels/${channelCode}/features`, {
+                method: 'PATCH',
+                body: JSON.stringify({ [featureKey]: isChecked })
+            });
+
+            if (res.ok) {
+                const json = await res.json();
+                showToast(`Đã ${isChecked ? 'BẬT' : 'TẮT'} tính năng "${featureTitle}" của kênh ${channelCode}.`, 'success');
+                
+                // If master is_active was toggled, update badge
+                if (featureKey === 'is_active') {
+                    const badgeEl = document.getElementById(`badge-${channelCode}`);
+                    if (badgeEl) {
+                        badgeEl.textContent = isChecked ? 'Đang Bật' : 'Tạm Dừng';
+                        badgeEl.className = isChecked
+                            ? 'px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold transition-colors'
+                            : 'px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 text-xs font-bold transition-colors';
+                    }
+                    loadChannelFeatureFlags();
+                }
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                showToast(`Lỗi khi cập nhật: ${errData.message || 'Không thể lưu'}`, 'error');
+                inputEl.checked = !isChecked; // Revert
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Lỗi kết nối mạng khi cập nhật tính năng.', 'error');
+            inputEl.checked = !isChecked; // Revert
+        } finally {
+            inputEl.disabled = false;
+        }
+    }
+
+    // Manual sync trigger
+    async function triggerSync(channelCode) {
+        showToast(`Đang gửi yêu cầu đồng bộ menu tới ${channelCode}...`, 'info');
+        try {
+            let url = '';
+            if (channelCode === 'SHOPEEFOOD') {
+                url = '/api/v1/shopeefood/sync/menu/10001';
+            } else if (channelCode === 'GRABMART') {
+                url = '/api/v1/grabmart/sync/menu/STORE_HCM_01';
+            }
+            if (url) {
+                const res = await authFetch(url, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast(data.message || `Đồng bộ ${channelCode} thành công!`, 'success');
+                } else {
+                    showToast(data.message || `Đồng bộ thất bại: ${data.message}`, 'error');
+                }
+            }
+        } catch (e) {
+            showToast(`Lỗi khi gọi đồng bộ: ${e.message}`, 'error');
+        }
+    }
+
+    // Load System Health & Incident KPI Metrics
     async function loadDashboardMetrics() {
         try {
             const res = await authFetch('/api/v1/system/health');
@@ -268,7 +674,7 @@
                         }
                     }
 
-                    // Banner
+                    // Incident Banner
                     if (openTotal > 0) {
                         const banner = document.getElementById('active-incidents-banner');
                         banner.classList.remove('hidden');
@@ -281,7 +687,10 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', loadDashboardMetrics);
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDashboardMetrics();
+        loadChannelFeatureFlags();
+    });
     setInterval(loadDashboardMetrics, 20000);
 </script>
 {% endblock %}
