@@ -62,6 +62,33 @@ INITIAL_CHANNELS = [
     }
 ]
 
+DEFAULT_STORES = [
+    {
+        "code": "10001",
+        "name": "Nam An Market - 21 Thảo Điền",
+        "address": "21 Thảo Điền, P. Thảo Điền, TP. Thủ Đức, TP.HCM",
+        "phone": "028 3519 2200"
+    },
+    {
+        "code": "10004",
+        "name": "Nam An Market - 46 Hưng Phúc",
+        "address": "46 Hưng Phúc, Phú Mỹ Hưng, P. Tân Phong, Q.7, TP.HCM",
+        "phone": "028 5413 8899"
+    },
+    {
+        "code": "10005",
+        "name": "Nam An Market - 17 Mai Chí Thọ",
+        "address": "17 Mai Chí Thọ, P. An Khánh, TP. Thủ Đức, TP.HCM",
+        "phone": "028 3620 4455"
+    },
+    {
+        "code": "10006",
+        "name": "Nam An Market - 303 Nguyễn Văn Trỗi",
+        "address": "303 Nguyễn Văn Trỗi, P. 1, Q. Tân Bình, TP.HCM",
+        "phone": "028 3997 7889"
+    }
+]
+
 
 class ChannelService:
     """Service to manage sales channels and their granular feature toggles."""
@@ -104,6 +131,29 @@ class ChannelService:
                 db.add(ch)
                 logger.info(f"Đã khởi tạo kênh bán hàng mặc định: {ch_def['code']}")
             channels.append(ch)
+
+        # Also seed default 4 Nam An stores
+        from app.models.store import Store
+        for st_def in DEFAULT_STORES:
+            st_stmt = select(Store).where(Store.code == st_def["code"])
+            st_res = await db.execute(st_stmt)
+            if inspect.isawaitable(st_res):
+                st_res = await st_res
+            st_scalar = getattr(st_res, "scalar_one_or_none", None)
+            st = st_scalar() if callable(st_scalar) else None
+            if inspect.isawaitable(st):
+                st = await st
+            if not st:
+                new_store = Store(
+                    code=st_def["code"],
+                    name=st_def["name"],
+                    address=st_def["address"],
+                    phone=st_def["phone"],
+                    is_active=True
+                )
+                db.add(new_store)
+                logger.info(f"Đã khởi tạo chi nhánh Nam An: {st_def['name']}")
+
         await db.commit()
         for ch in channels:
             try:

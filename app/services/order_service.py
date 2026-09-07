@@ -69,13 +69,41 @@ class OrderService:
         mapping = mapping_res.scalar_one_or_none()
         
         if not mapping:
-            # Fallback: Find any active store if not mapped yet
-            fallback_stmt = select(Store).limit(1)
-            fallback_res = await db.execute(fallback_stmt)
-            store = fallback_res.scalar_one_or_none()
+            # Check by Store code (e.g. 10001, 10004, 10005, 10006)
+            store_stmt = select(Store).where(Store.code == str(partner_store_id))
+            store_res = await db.execute(store_stmt)
+            store = store_res.scalar_one_or_none()
+
             if not store:
-                raise AppException(f"Không tìm thấy Store tương ứng với partner ID: {partner_store_id}")
+                # Check any fallback store
+                fallback_stmt = select(Store).where(Store.is_active == True).limit(1)
+                fallback_res = await db.execute(fallback_stmt)
+                store = fallback_res.scalar_one_or_none()
+
+            if not store:
+                # Auto-create store if database is completely fresh
+                store = Store(
+                    code=str(partner_store_id),
+                    name=f"Nam An Chi Nhánh {partner_store_id}",
+                    address="Hồ Chí Minh, Việt Nam",
+                    is_active=True
+                )
+                db.add(store)
+                await db.flush()
+
             store_id = store.id
+            # Create mapping for future orders
+            try:
+                new_map = StoreChannelMapping(
+                    store_id=store_id,
+                    channel_id=channel.id,
+                    partner_store_id=str(partner_store_id),
+                    is_active=True
+                )
+                db.add(new_map)
+                await db.flush()
+            except Exception:
+                pass
         else:
             store_id = mapping.store_id
 
@@ -160,13 +188,19 @@ class OrderService:
         """Fetch paginated list of unified orders with filters."""
         query = select(UnifiedOrder).options(
             selectinload(UnifiedOrder.items),
-            selectinload(UnifiedOrder.status_history)
+            selectinload(UnifiedOrder.status_history),
+            selectinload(UnifiedOrder.channel),
+            selectinload(UnifiedOrder.store),
         )
 
         if params.store_id:
             query = query.where(UnifiedOrder.store_id == params.store_id)
+        if params.store_code:
+            query = query.join(UnifiedOrder.store).where(Store.code == params.store_code)
         if params.channel_id:
             query = query.where(UnifiedOrder.channel_id == params.channel_id)
+        if params.channel_code:
+            query = query.join(UnifiedOrder.channel).where(Channel.code == params.channel_code.upper())
         if params.status:
             query = query.where(UnifiedOrder.status == params.status)
         if params.from_date:
@@ -178,6 +212,7 @@ class OrderService:
             query = query.where(
                 (UnifiedOrder.order_code.ilike(search_pattern)) |
                 (UnifiedOrder.channel_order_id.ilike(search_pattern)) |
+                (UnifiedOrder.display_order_id.ilike(search_pattern)) |
                 (UnifiedOrder.customer_name.ilike(search_pattern)) |
                 (UnifiedOrder.customer_phone.ilike(search_pattern))
             )
@@ -193,6 +228,85 @@ class OrderService:
         res = await db.execute(query)
         items = list(res.scalars().all())
         return items, total_count
+
+    @staticmethod
+    async def get_order_summary(
+        store_id: Optional[str],
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """Calculate order metric counters for dashboard KPI tiles."""
+        now = datetime.now(timezone.utc)
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Total
+        total_stmt = select(func.count(UnifiedOrder.id))
+        if store_id:
+            total_stmt = total_stmt.where(UnifiedOrder.store_id == store_id)
+        total_orders = (await db.execute(total_stmt)).scalar() or 0
+
+        # Pending
+        pending_stmt = select(func.count(UnifiedOrder.id)).where(UnifiedOrder.status == UnifiedOrderStatus.PENDING)
+        if store_id:
+            pending_stmt = pending_stmt.where(UnifiedOrder.store_id == store_id)
+        pending_count = (await db.execute(pending_stmt)).scalar() or 0
+
+        # Preparing (ACCEPTED or PREPARING)
+        prep_stmt = select(func.count(UnifiedOrder.id)).where(
+            UnifiedOrder.status.in_([UnifiedOrderStatus.ACCEPTED, UnifiedOrderStatus.PREPARING])
+        )
+        if store_id:
+            prep_stmt = prep_stmt.where(UnifiedOrder.store_id == store_id)
+        preparing_count = (await db.execute(prep_stmt)).scalar() or 0
+
+        # Ready
+        ready_stmt = select(func.count(UnifiedOrder.id)).where(UnifiedOrder.status == UnifiedOrderStatus.READY)
+        if store_id:
+            ready_stmt = ready_stmt.where(UnifiedOrder.store_id == store_id)
+        ready_count = (await db.execute(ready_stmt)).scalar() or 0
+
+        # Delivering (PICKED_UP)
+        delivering_stmt = select(func.count(UnifiedOrder.id)).where(UnifiedOrder.status == UnifiedOrderStatus.PICKED_UP)
+        if store_id:
+            delivering_stmt = delivering_stmt.where(UnifiedOrder.store_id == store_id)
+        delivering_count = (await db.execute(delivering_stmt)).scalar() or 0
+
+        # Delivered today
+        delivered_stmt = select(func.count(UnifiedOrder.id)).where(
+            UnifiedOrder.status == UnifiedOrderStatus.DELIVERED,
+            UnifiedOrder.created_at >= start_of_day
+        )
+        if store_id:
+            delivered_stmt = delivered_stmt.where(UnifiedOrder.store_id == store_id)
+        delivered_today_count = (await db.execute(delivered_stmt)).scalar() or 0
+
+        # Cancelled today
+        cancelled_stmt = select(func.count(UnifiedOrder.id)).where(
+            UnifiedOrder.status == UnifiedOrderStatus.CANCELLED,
+            UnifiedOrder.created_at >= start_of_day
+        )
+        if store_id:
+            cancelled_stmt = cancelled_stmt.where(UnifiedOrder.store_id == store_id)
+        cancelled_today_count = (await db.execute(cancelled_stmt)).scalar() or 0
+
+        # Revenue today
+        revenue_stmt = select(func.coalesce(func.sum(UnifiedOrder.total_amount), 0.0)).where(
+            UnifiedOrder.status != UnifiedOrderStatus.CANCELLED,
+            UnifiedOrder.created_at >= start_of_day
+        )
+        if store_id:
+            revenue_stmt = revenue_stmt.where(UnifiedOrder.store_id == store_id)
+        revenue_today = float((await db.execute(revenue_stmt)).scalar() or 0.0)
+
+        return {
+            "total_orders": total_orders,
+            "pending_count": pending_count,
+            "preparing_count": preparing_count,
+            "ready_count": ready_count,
+            "delivering_count": delivering_count,
+            "delivered_today_count": delivered_today_count,
+            "cancelled_today_count": cancelled_today_count,
+            "revenue_today": revenue_today,
+        }
 
     @staticmethod
     async def update_order_status(

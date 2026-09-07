@@ -100,6 +100,22 @@ class UnifiedOrder(Base, TimestampMixin):
         "OrderStatusHistory", back_populates="order", cascade="all, delete-orphan"
     )
 
+    @property
+    def channel_code(self) -> Optional[str]:
+        return self.channel.code if self.channel else None
+
+    @property
+    def channel_name(self) -> Optional[str]:
+        return self.channel.name if self.channel else None
+
+    @property
+    def store_code(self) -> Optional[str]:
+        return self.store.code if self.store else None
+
+    @property
+    def store_name(self) -> Optional[str]:
+        return self.store.name if self.store else None
+
 
 class OrderItem(Base, TimestampMixin):
     """Line item in a unified order."""

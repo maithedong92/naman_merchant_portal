@@ -12,6 +12,7 @@ from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.order import (
     OrderFilterParams,
     OrderStatusUpdateSchema,
+    OrderSummaryResponse,
     UnifiedOrderResponse,
 )
 from app.services.order_service import OrderService
@@ -19,12 +20,33 @@ from app.services.order_service import OrderService
 router = APIRouter(prefix="/orders", tags=["Unified Orders"])
 
 
+@router.get("/summary", response_model=APIResponse[OrderSummaryResponse])
+async def get_order_summary(
+    store_id: Optional[str] = Query(None, description="Filter summary by store UUID"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get live KPI metrics of omnichannel orders:
+    Pending, Preparing, Ready, Delivering, Delivered Today, Cancelled Today, Revenue.
+    """
+    effective_store_id = store_id
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if current_user.store_id:
+            effective_store_id = current_user.store_id
+
+    summary = await OrderService.get_order_summary(effective_store_id, db)
+    return APIResponse.ok(data=OrderSummaryResponse(**summary))
+
+
 @router.get("", response_model=APIResponse[PaginatedResponse[UnifiedOrderResponse]])
 async def list_orders(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     store_id: Optional[str] = Query(None, description="Filter by store UUID"),
+    store_code: Optional[str] = Query(None, description="Filter by store code e.g. 10001"),
     channel_id: Optional[str] = Query(None, description="Filter by channel UUID"),
+    channel_code: Optional[str] = Query(None, description="Filter by channel code e.g. SHOPEEFOOD, GRABMART"),
     status: Optional[UnifiedOrderStatus] = Query(None, description="Filter by unified order status"),
     search: Optional[str] = Query(None, description="Search by order code, customer name, phone, etc."),
     from_date: Optional[datetime] = Query(None),
@@ -47,7 +69,9 @@ async def list_orders(
         page=page,
         page_size=page_size,
         store_id=effective_store_id,
+        store_code=store_code,
         channel_id=channel_id,
+        channel_code=channel_code,
         status=status,
         search=search,
         from_date=from_date,
@@ -102,4 +126,3 @@ async def update_order_status(
         data=updated_order,
         message=f"Đã cập nhật trạng thái đơn hàng sang: {payload.new_status.value}"
     )
-

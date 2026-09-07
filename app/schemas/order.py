@@ -45,8 +45,7 @@ class UnifiedOrderBase(BaseModel):
     delivery_address: Optional[str] = None
     driver_name: Optional[str] = None
     driver_phone: Optional[str] = None
-    driver_license_plate: Optional[str] = None
-    order_time: datetime
+    order_time: Optional[datetime] = None
     estimated_ready_time: Optional[datetime] = None
 
 
@@ -55,10 +54,14 @@ class UnifiedOrderResponse(UnifiedOrderBase):
     id: str
     channel_id: str
     store_id: str
+    channel_code: Optional[str] = None
+    channel_name: Optional[str] = None
+    store_code: Optional[str] = None
+    store_name: Optional[str] = None
     cancellation_reason: Optional[str] = None
     cancelled_by: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     items: List[OrderItemResponse] = []
     status_history: List[OrderStatusHistoryResponse] = []
 
@@ -73,10 +76,23 @@ class OrderStatusUpdateSchema(BaseModel):
 
 class OrderFilterParams(BaseModel):
     store_id: Optional[str] = None
+    store_code: Optional[str] = None
     channel_id: Optional[str] = None
+    channel_code: Optional[str] = None
     status: Optional[UnifiedOrderStatus] = None
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None
     search: Optional[str] = None
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
+
+
+class OrderSummaryResponse(BaseModel):
+    total_orders: int = 0
+    pending_count: int = 0
+    preparing_count: int = 0
+    ready_count: int = 0
+    delivering_count: int = 0
+    delivered_today_count: int = 0
+    cancelled_today_count: int = 0
+    revenue_today: float = 0.0

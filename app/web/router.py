@@ -51,6 +51,22 @@ async def system_status_page(request: Request):
     )
 
 
+@web_router.get("/orders", response_class=HTMLResponse)
+@web_router.get("/admin/orders", response_class=HTMLResponse)
+async def orders_dispatch_page(request: Request):
+    """Serve Unified Orders Dispatching & Management page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="orders.html",
+        context={
+            "request": request,
+            "active_page": "orders",
+            "app_name": settings.APP_NAME,
+            "app_version": settings.APP_VERSION,
+        }
+    )
+
+
 @web_router.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_page(request: Request):
     """Serve Admin Login page."""

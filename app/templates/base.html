@@ -105,6 +105,10 @@
                         <a href="/admin" class="px-4 py-2 rounded-full text-sm font-medium transition-colors {% if active_page == 'dashboard' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
                             Tổng quan
                         </a>
+                        <a href="/admin/orders" class="px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'orders' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
+                            Đơn hàng
+                            <span id="nav-pending-orders-badge" class="hidden ml-1.5 px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-500 text-white animate-pulse">0</span>
+                        </a>
                         <a href="/system-status" class="px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'system_status' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
                             System Status & Lỗi
                             <span id="nav-error-badge" class="hidden ml-1.5 px-2 py-0.2 text-[11px] font-bold rounded-full bg-rose-500 text-white">0</span>
