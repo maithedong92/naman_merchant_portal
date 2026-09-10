@@ -185,7 +185,7 @@ def test_login_endpoint(client, mock_admin_user, monkeypatch):
 
     response = client.post(
         "/api/v1/auth/login",
-        json={"username": "admin", "password": "NamAn@2024Admin!"}
+        json={"username": "admin", "password": "phhthtnkhk"}
     )
     assert response.status_code == 200
     json_data = response.json()

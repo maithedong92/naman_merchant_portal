@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # Initial SuperAdmin Seed Account
     INITIAL_ADMIN_USERNAME: str = "admin"
-    INITIAL_ADMIN_PASSWORD: str = "NamAn@2024Admin!"
+    INITIAL_ADMIN_PASSWORD: str = "phhthtnkhk"
     INITIAL_ADMIN_EMAIL: str = "admin@namanmarket.com"
     INITIAL_ADMIN_FULL_NAME: str = "Nam An System Administrator"
 
