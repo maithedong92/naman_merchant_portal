@@ -57,6 +57,11 @@ async def get_partner_oauth_token(payload: GrabOAuthTokenRequest):
 # ==============================================================================
 
 @router.post(
+    "/orders",
+    summary="GrabMart Submit Order Webhook (Standard)",
+    include_in_schema=False,
+)
+@router.post(
     "/webhooks/order",
     summary="GrabMart Submit Order Webhook",
     description="Called by GrabMart when a customer places an order. Ingests order into Unified Order schema.",
@@ -80,6 +85,11 @@ async def receive_grabmart_order(
 
 
 @router.put(
+    "/order/state",
+    summary="GrabMart Push Order State Webhook (Standard)",
+    include_in_schema=False,
+)
+@router.put(
     "/webhooks/order/state",
     summary="GrabMart Push Order State Webhook",
     description="Called by GrabMart on state changes (DRIVER_ALLOCATED, COLLECTED, DELIVERED, CANCELLED, FAILED).",
@@ -102,6 +112,11 @@ async def receive_grabmart_order_state(
         )
 
 
+@router.get(
+    "/merchant/menu",
+    summary="GrabMart Get Mart Menu Webhook (Standard)",
+    include_in_schema=False,
+)
 @router.get(
     "/menu",
     summary="GrabMart Get Mart Menu Webhook",
@@ -151,6 +166,48 @@ async def get_mart_menu_webhook(
         db=db,
     )
     return menu_payload
+
+
+@router.post(
+    "/menu/sync/state",
+    summary="GrabMart Menu Sync State Webhook",
+    description="GrabMart calls this endpoint to notify the status of a background menu sync.",
+)
+async def receive_menu_sync_state(request: Request):
+    try:
+        data = await request.json()
+        logger.info(f"GrabMart menu sync state callback: {data}")
+    except Exception:
+        pass
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/menus",
+    summary="GrabMart Push Grab Menu Webhook",
+    description="GrabMart calls this endpoint to push the Grab store menu to partner POS.",
+)
+async def receive_push_grab_menu(request: Request):
+    try:
+        data = await request.json()
+        logger.info(f"GrabMart push menu callback: merchantID={data.get('merchantID')}")
+    except Exception:
+        pass
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/status",
+    summary="GrabMart Push Store Integration Status Webhook",
+    description="GrabMart calls this endpoint to notify store integration status changes.",
+)
+async def receive_store_integration_status(request: Request):
+    try:
+        data = await request.json()
+        logger.info(f"GrabMart integration status callback: {data}")
+    except Exception:
+        pass
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ==============================================================================
