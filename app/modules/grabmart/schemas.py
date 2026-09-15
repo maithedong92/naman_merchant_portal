@@ -80,6 +80,7 @@ class GrabModifierGroup(BaseModel):
 class GrabMenuItem(BaseModel):
     id: str = Field(..., description="Partner SKU / Item ID")
     name: str
+    sequence: int = 1
     price: int = Field(..., description="VND amount (minor unit exponent is 0 for VN)")
     availableStatus: str = Field(default="AVAILABLE", description="AVAILABLE | UNAVAILABLE")
     maxStock: int = Field(default=999, description="Stock count, must be 0 if UNAVAILABLE")
@@ -95,15 +96,19 @@ class GrabMenuItem(BaseModel):
 class GrabSubcategory(BaseModel):
     id: str
     name: str
-    sequence: int = 0
+    sequence: int = 1
+    availableStatus: str = "AVAILABLE"
+    sellingTimeID: str = "standard_schedule"
     items: List[GrabMenuItem] = Field(default_factory=list)
 
 
 class GrabCategory(BaseModel):
     id: str
     name: str
-    sequence: int = 0
-    subcategories: List[GrabSubcategory] = Field(default_factory=list)
+    sequence: int = 1
+    availableStatus: str = "AVAILABLE"
+    sellingTimeID: str = "standard_schedule"
+    subCategories: List[GrabSubcategory] = Field(default_factory=list)
 
 
 class GrabCurrency(BaseModel):

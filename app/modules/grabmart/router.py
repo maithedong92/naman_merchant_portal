@@ -161,9 +161,9 @@ async def get_mart_menu_webhook(
     partner_store_code = partnerMerchantID or partner_merchant_id_query or "10001"
     logger.info(f"GrabMart requested menu for merchantID: {grab_merchant_id}, partnerMerchantID: {partner_store_code}")
 
-    # Check cache first
+    # Check cache first (only if partnerMerchantID matches)
     cached_menu = adapter.get_cached_menu(grab_merchant_id)
-    if cached_menu:
+    if cached_menu and cached_menu.get("partnerMerchantID") == partner_store_code:
         return cached_menu
 
     # Resolve store by mapping or code
@@ -196,6 +196,7 @@ async def get_mart_menu_webhook(
     menu_payload = await adapter.build_catalog_menu(
         store_id=store_id,
         partner_store_id=grab_merchant_id,
+        partner_merchant_id=partner_store_code,
         db=db,
     )
     return menu_payload

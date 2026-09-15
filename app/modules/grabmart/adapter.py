@@ -36,8 +36,51 @@ logger = logging.getLogger("naman_portal.modules.grabmart.adapter")
 _store_menu_cache: Dict[str, Dict[str, Any]] = {}
 
 
+GRAB_CATEGORY_MAPPING = {
+    "SEAFOOD_MEAT": {
+        "cat_id": "VNITEDP20200727031357010717",
+        "cat_name": "Thịt, cá, trứng, hải sản",
+        "sub_id": "VNITEDP20200727081116016865",
+        "sub_name": "Thịt tươi",
+    },
+    "FRUITS_VEGGIES": {
+        "cat_id": "VNITEDP20200727031221010048",
+        "cat_name": "Rau củ trái cây",
+        "sub_id": "VNITEDP20200727045036014942",
+        "sub_name": "Rau tươi",
+    },
+    "DAIRY_DELI": {
+        "cat_id": "VNITEDP20200708074635013756",
+        "cat_name": "Sữa và các chế phẩm từ sữa",
+        "sub_id": "VNITEDP20200727043627011817",
+        "sub_name": "Bơ các loại",
+    },
+    "BAKERY_PANTRY": {
+        "cat_id": "VNITEDP20200727031233013595",
+        "cat_name": "Đồ khô & Thực phẩm đóng gói",
+        "sub_id": "VNITEDP20200727065551016731",
+        "sub_name": "Mì, nui, bún khô",
+    },
+    "WINE_BEVERAGES": {
+        "cat_id": "VNITEDP20200724103117010195",
+        "cat_name": "Đồ uống",
+        "sub_id": "VNITEDP20200727042952015426",
+        "sub_name": "Nước",
+    },
+    "DEFAULT": {
+        "cat_id": "VNITEDP20200727031233013595",
+        "cat_name": "Đồ khô & Thực phẩm đóng gói",
+        "sub_id": "VNITEDP20200727065551016731",
+        "sub_name": "Mì, nui, bún khô",
+    },
+}
+
+
 class GrabMartChannelAdapter(BaseChannelAdapter):
-    """Channel Adapter for GrabMart Partner POS API v1.1.3."""
+    """
+    Channel Adapter implementation for GrabMart Vietnam Partner POS API (v1.1.3).
+    Decoupled architecture conforming to Development SOP and ChannelRegistry.
+    """
 
     @property
     def channel_code(self) -> str:
@@ -55,11 +98,15 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         self,
         store_id: str,
         partner_store_id: str,
-        db: AsyncSession,
+        partner_merchant_id: str = "10001",
+        db: AsyncSession = None,
     ) -> Dict[str, Any]:
         """
         Build GrabMart Menu v1.1.3 catalog payload from local database.
-        Includes sellingTimes, categories, subcategories, items, prices in VND.
+        Conforms strictly to GrabMart specifications:
+        - partnerMerchantID matches the partner store ID (e.g. 10001)
+        - categories and subCategories conform to List Mart Categories
+        - sellingTimes, sequence, availableStatus, photos in VND minor units.
         """
         query = (
             select(Product, StoreInventory)
@@ -76,21 +123,30 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
 
         # Build category map: category -> subcategory -> items
         category_map: Dict[str, Dict[str, Any]] = {}
+        seq = 1
 
         for product, inv in rows:
-            cat_name = product.category.name if product.category else "Bách Hóa Tổng Hợp"
-            cat_id = product.category.code if product.category else "general"
+            raw_code = product.category.code if product.category else "DEFAULT"
+            mapping = GRAB_CATEGORY_MAPPING.get(raw_code, GRAB_CATEGORY_MAPPING["DEFAULT"])
+            cat_id = mapping["cat_id"]
+            cat_name = mapping["cat_name"]
+            sub_id = mapping["sub_id"]
+            sub_name = mapping["sub_name"]
 
             if cat_id not in category_map:
                 category_map[cat_id] = {
-                    "id": str(cat_id),
+                    "id": cat_id,
                     "name": cat_name,
-                    "sequence": product.category.sequence if product.category else 0,
-                    "subcategories": {
-                        "sub_default": {
-                            "id": f"{cat_id}_sub",
-                            "name": cat_name,
-                            "sequence": 0,
+                    "sequence": len(category_map) + 1,
+                    "availableStatus": "AVAILABLE",
+                    "sellingTimeID": "standard_schedule",
+                    "subCategories": {
+                        sub_id: {
+                            "id": sub_id,
+                            "name": sub_name,
+                            "sequence": 1,
+                            "availableStatus": "AVAILABLE",
+                            "sellingTimeID": "standard_schedule",
                             "items": [],
                         }
                     },
@@ -103,31 +159,38 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
             stock_qty = inv.available_stock if (inv and is_available == "AVAILABLE") else 0
 
-            item_dict = GrabMenuItem(
+            photos = [product.image_url] if product.image_url else []
+            if not photos:
+                photos = ["https://ump.namanmarket.com/static/images/product-placeholder.jpg"]
+
+            item = GrabMenuItem(
                 id=str(product.sku),
                 name=product.name,
+                sequence=seq,
                 price=int(product.base_price),
                 availableStatus=is_available,
                 maxStock=max(0, stock_qty),
-                photos=[product.image_url] if product.image_url else [],
+                photos=photos,
                 barcodes=[product.barcode] if product.barcode else [],
-                description=product.description or "",
+                description=product.description or product.name,
                 sellingTimeID="standard_schedule",
-            ).model_dump()
-
-            category_map[cat_id]["subcategories"]["sub_default"]["items"].append(item_dict)
+            )
+            seq += 1
+            category_map[cat_id]["subCategories"][sub_id]["items"].append(item)
 
         # Assemble Categories
         categories_output: List[GrabCategory] = []
         for cat in category_map.values():
             sub_list: List[GrabSubcategory] = []
-            for sub in cat["subcategories"].values():
+            for sub in cat["subCategories"].values():
                 sub_list.append(
                     GrabSubcategory(
                         id=sub["id"],
                         name=sub["name"],
                         sequence=sub["sequence"],
-                        items=[GrabMenuItem(**itm) for itm in sub["items"]],
+                        availableStatus=sub["availableStatus"],
+                        sellingTimeID=sub["sellingTimeID"],
+                        items=sub["items"],
                     )
                 )
             categories_output.append(
@@ -135,7 +198,9 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                     id=cat["id"],
                     name=cat["name"],
                     sequence=cat["sequence"],
-                    subcategories=sub_list,
+                    availableStatus=cat["availableStatus"],
+                    sellingTimeID=cat["sellingTimeID"],
+                    subCategories=sub_list,
                 )
             )
 
@@ -161,13 +226,13 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
 
         payload = GrabMartMenuPayload(
             merchantID=partner_store_id,
-            partnerMerchantID=store_id,
+            partnerMerchantID=partner_merchant_id or "10001",
             currency=GrabCurrency(code="VND", symbol="₫", exponent=0),
             sellingTimes=selling_times,
             categories=categories_output,
         )
 
-        menu_dict = payload.model_dump()
+        menu_dict = payload.model_dump(exclude_none=True)
         _store_menu_cache[partner_store_id] = menu_dict
         return menu_dict
 

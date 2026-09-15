@@ -148,13 +148,13 @@ async def test_grabmart_catalog_menu_structure():
     assert "serviceHours" in schedule
     assert schedule["serviceHours"]["mon"]["openPeriodType"] == "OpenPeriod"
 
-    # 3. Categories and Subcategories validation
+    # 3. Categories and Subcategories validation (Official Grab category IDs and subCategories casing)
     assert len(menu["categories"]) == 1
     category = menu["categories"][0]
-    assert category["id"] == "fresh_produce"
-    assert len(category["subcategories"]) == 1
+    assert category["id"].startswith("VNITEDP")
+    assert len(category["subCategories"]) == 1
 
-    items = category["subcategories"][0]["items"]
+    items = category["subCategories"][0]["items"]
     assert len(items) == 2
 
     # In-stock item
@@ -172,22 +172,20 @@ async def test_grabmart_catalog_menu_structure():
 
 def test_grabmart_get_menu_webhook_pull(client):
     """GrabMart pulls store menu via GET /api/v1/grabmart/menu."""
-    adapter = GrabMartChannelAdapter()
-    adapter._store_menu_cache = getattr(adapter, "_store_menu_cache", {})
-    
-    # Seed cache
     from app.modules.grabmart.adapter import _store_menu_cache
     _store_menu_cache["GM-TEST-STORE"] = {
         "merchantID": "GM-TEST-STORE",
+        "partnerMerchantID": "10001",
         "currency": {"code": "VND", "symbol": "₫", "exponent": 0},
         "sellingTimes": [],
         "categories": [],
     }
 
-    response = client.get("/api/v1/grabmart/menu?merchantID=GM-TEST-STORE")
+    response = client.get("/api/v1/grabmart/menu?merchantID=GM-TEST-STORE&partnerMerchantID=10001")
     assert response.status_code == 200
     data = response.json()
     assert data["merchantID"] == "GM-TEST-STORE"
+    assert data["partnerMerchantID"] == "10001"
     assert data["currency"]["code"] == "VND"
 
 
