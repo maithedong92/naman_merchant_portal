@@ -68,3 +68,8 @@ htmlcov/
 node_modules/
 .next/
 out/
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
