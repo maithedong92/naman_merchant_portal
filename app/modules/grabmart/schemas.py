@@ -117,12 +117,20 @@ class GrabCurrency(BaseModel):
     exponent: int = 0
 
 
+class GrabSection(BaseModel):
+    id: str = "section_daily"
+    name: str = "Nam An Daily Menu"
+    serviceHours: GrabServiceHours = Field(default_factory=GrabServiceHours)
+    categories: List[GrabCategory] = Field(default_factory=list)
+
+
 class GrabMartMenuPayload(BaseModel):
     merchantID: str
     partnerMerchantID: Optional[str] = None
     currency: GrabCurrency = Field(default_factory=GrabCurrency)
     sellingTimes: List[GrabSellingTime] = Field(default_factory=list)
     categories: List[GrabCategory] = Field(default_factory=list)
+    sections: List[GrabSection] = Field(default_factory=list)
 
 
 # ==============================================================================

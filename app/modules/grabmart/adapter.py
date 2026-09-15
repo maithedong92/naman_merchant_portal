@@ -21,6 +21,7 @@ from app.modules.grabmart.schemas import (
     GrabDaySchedule,
     GrabMenuItem,
     GrabMartMenuPayload,
+    GrabSection,
     GrabPushOrderStateWebhook,
     GrabSellingPeriod,
     GrabSellingTime,
@@ -224,12 +225,21 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
         ]
 
+        # Section-based compatibility structure for GrabMart validator
+        section = GrabSection(
+            id="section_daily",
+            name="Nam An Daily Menu",
+            serviceHours=service_hours,
+            categories=categories_output,
+        )
+
         payload = GrabMartMenuPayload(
             merchantID=partner_store_id,
             partnerMerchantID=partner_merchant_id or "10001",
             currency=GrabCurrency(code="VND", symbol="₫", exponent=0),
             sellingTimes=selling_times,
             categories=categories_output,
+            sections=[section],
         )
 
         menu_dict = payload.model_dump(exclude_none=True)
