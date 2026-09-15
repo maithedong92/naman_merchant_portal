@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
@@ -196,6 +196,20 @@ app.include_router(shopeemart_webhook_router, prefix="/api/v1")
 async def root_oauth_token(request: Request):
     from app.modules.grabmart.router import get_partner_oauth_token
     return await get_partner_oauth_token(request)
+
+
+# 1x1 transparent PNG image for static image mock/placeholder responses
+PLACEHOLDER_IMAGE_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06"
+    b"\x00\x00\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02"
+    b"\xfe\xdc\xccY\xe7\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+@app.get("/static/images/{filename:path}", include_in_schema=False)
+async def serve_static_images(filename: str):
+    """Serve mock/placeholder image for GrabMart and other channel photo validators."""
+    return Response(content=PLACEHOLDER_IMAGE_PNG, media_type="image/png")
 
 
 # Mount Admin Portal & Web Pages (/admin, /system-status, /admin/login)

@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ==============================================================================
@@ -188,16 +188,21 @@ class GrabOrderItem(BaseModel):
     price: int = 0
     tax: Optional[int] = 0
     specifications: Optional[str] = None
-    modifiers: List[GrabOrderItemModifier] = Field(default_factory=list)
+    modifiers: Optional[List[GrabOrderItemModifier]] = Field(default_factory=list)
+
+    @field_validator("modifiers", mode="before")
+    @classmethod
+    def set_modifiers_default(cls, v):
+        return v if v is not None else []
 
 
 class GrabOrderPrice(BaseModel):
-    subtotal: int = 0
-    tax: int = 0
-    deliveryFee: int = 0
-    merchantFundPromo: int = 0
-    grabFundPromo: int = 0
-    total: int = 0
+    subtotal: Optional[int] = 0
+    tax: Optional[int] = 0
+    deliveryFee: Optional[int] = 0
+    merchantFundPromo: Optional[int] = 0
+    grabFundPromo: Optional[int] = 0
+    total: Optional[int] = 0
 
 
 class GrabFeatureFlags(BaseModel):
@@ -211,15 +216,20 @@ class GrabSubmitOrderWebhook(BaseModel):
     shortOrderNumber: Optional[str] = Field(None, description="Human friendly short code, e.g. GM-102")
     merchantID: str = Field(..., description="GrabMart outlet ID")
     partnerMerchantID: Optional[str] = Field(None, description="Nam An Store ID / Code")
-    paymentType: str = "CASHLESS"  # CASH | CASHLESS
-    orderTime: str
+    paymentType: Optional[str] = "CASHLESS"  # CASH | CASHLESS
+    orderTime: Optional[str] = None
     submitTime: Optional[str] = None
     scheduledTime: Optional[str] = None
-    currency: GrabCurrency = Field(default_factory=GrabCurrency)
+    currency: Optional[GrabCurrency] = Field(default_factory=GrabCurrency)
     featureFlags: Optional[GrabFeatureFlags] = None
-    items: List[GrabOrderItem] = Field(default_factory=list)
-    price: GrabOrderPrice = Field(default_factory=GrabOrderPrice)
+    items: Optional[List[GrabOrderItem]] = Field(default_factory=list)
+    price: Optional[GrabOrderPrice] = Field(default_factory=GrabOrderPrice)
     receiver: Optional[GrabReceiver] = None
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def set_items_default(cls, v):
+        return v if v is not None else []
 
 
 # ==============================================================================

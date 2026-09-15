@@ -273,6 +273,54 @@ async def test_grabmart_handle_submit_order_webhook():
         assert call_kwargs["items_data"][0]["quantity"] == 2
 
 
+@pytest.mark.asyncio
+async def test_grabmart_submit_order_with_null_modifiers():
+    """Verify orders with modifiers=null (sent by Grab Sandbox Testing Tool) are parsed without errors."""
+    adapter = GrabMartChannelAdapter()
+    payload = {
+        "orderID": "GM-ORD-NULL-MOD",
+        "shortOrderNumber": "GM-999",
+        "merchantID": "GFSBPOS-760-043",
+        "partnerMerchantID": "10001",
+        "orderTime": "2026-09-15T09:20:30Z",
+        "items": [
+            {
+                "id": "SKU-WATER-01",
+                "name": "Nước Khoáng Tự Nhiên 500ml",
+                "quantity": 1,
+                "price": 12000,
+                "modifiers": None,
+            }
+        ],
+        "price": {
+            "subtotal": 12000,
+            "total": 12000,
+        },
+    }
+    raw_body = json.dumps(payload).encode("utf-8")
+    mock_db = AsyncMock()
+
+    mock_order = UnifiedOrder(
+        id="ord-uuid-null-mod",
+        order_code="NAM-20260915-GM999",
+        channel_order_id="GM-ORD-NULL-MOD",
+        display_order_id="GM-999",
+        status=UnifiedOrderStatus.ACCEPTED,
+    )
+
+    with patch("app.services.order_service.OrderService.create_or_get_inbound_order", return_value=(mock_order, True)):
+        resp = await adapter.handle_order_webhook(headers={}, raw_body=raw_body, db=mock_db)
+        assert resp["status"] == "ACCEPTED"
+        assert resp["orderID"] == "GM-ORD-NULL-MOD"
+
+
+def test_static_placeholder_image_endpoint(client):
+    """Verify /static/images/... returns HTTP 200 image/png for Grab photo validation."""
+    resp = client.get("/static/images/water.jpg")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+
+
 # ==============================================================================
 # 4. Push Order State Webhook Tests
 # ==============================================================================

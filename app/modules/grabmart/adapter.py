@@ -449,37 +449,54 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         channel_order_id = webhook.orderID
         partner_store_id = webhook.partnerMerchantID or webhook.merchantID
 
-        receiver = webhook.receiver or {}
-        address_info = receiver.address if isinstance(receiver, dict) else (receiver.address if hasattr(receiver, "address") else None)
-        
+        receiver = webhook.receiver
         full_address = None
-        if address_info:
-            full_address = address_info.address if hasattr(address_info, "address") else address_info.get("address")
-            instruction = address_info.deliveryInstruction if hasattr(address_info, "deliveryInstruction") else address_info.get("deliveryInstruction")
-            if instruction:
-                full_address = f"{full_address} (Ghi chú giao: {instruction})"
+        cust_name = None
+        cust_phone = None
+
+        if receiver:
+            if isinstance(receiver, dict):
+                cust_name = receiver.get("name")
+                cust_phone = receiver.get("phones")
+                address_info = receiver.get("address")
+            else:
+                cust_name = getattr(receiver, "name", None)
+                cust_phone = getattr(receiver, "phones", None)
+                address_info = getattr(receiver, "address", None)
+
+            if address_info:
+                if isinstance(address_info, dict):
+                    addr_str = address_info.get("address")
+                    instr = address_info.get("deliveryInstruction")
+                else:
+                    addr_str = getattr(address_info, "address", None)
+                    instr = getattr(address_info, "deliveryInstruction", None)
+                full_address = addr_str
+                if instr:
+                    full_address = f"{addr_str} (Ghi chú giao: {instr})" if addr_str else f"Ghi chú giao: {instr}"
 
         auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
         is_auto = auto_confirm or (webhook.featureFlags and webhook.featureFlags.orderAcceptedType == "AUTO")
         initial_status = UnifiedOrderStatus.ACCEPTED if is_auto else UnifiedOrderStatus.PENDING
 
+        price_obj = webhook.price or GrabOrderPrice()
         order_data = {
             "display_order_id": webhook.shortOrderNumber or channel_order_id[-6:],
             "initial_status": initial_status,
-            "subtotal_amount": float(webhook.price.subtotal),
-            "discount_amount": float(webhook.price.merchantFundPromo),
-            "delivery_fee": float(webhook.price.deliveryFee),
-            "total_amount": float(webhook.price.total),
-            "customer_name": receiver.name if hasattr(receiver, "name") else receiver.get("name"),
-            "customer_phone": receiver.phones if hasattr(receiver, "phones") else receiver.get("phones"),
+            "subtotal_amount": float(price_obj.subtotal or 0),
+            "discount_amount": float(price_obj.merchantFundPromo or 0),
+            "delivery_fee": float(price_obj.deliveryFee or 0),
+            "total_amount": float(price_obj.total or 0),
+            "customer_name": cust_name,
+            "customer_phone": cust_phone,
             "delivery_address": full_address,
             "raw_payload": payload_dict,
         }
 
         items_data = []
-        for itm in webhook.items:
-            unit_price = float(itm.price)
-            qty = itm.quantity
+        for itm in (webhook.items or []):
+            unit_price = float(itm.price or 0)
+            qty = itm.quantity or 1
             items_data.append({
                 "sku": itm.id,
                 "item_name": itm.name or f"GrabMart Product {itm.id}",
