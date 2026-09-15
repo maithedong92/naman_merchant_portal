@@ -16,11 +16,31 @@ logger = logging.getLogger("naman_portal.order_service")
 
 # State machine allowed transitions
 VALID_STATUS_TRANSITIONS: Dict[UnifiedOrderStatus, List[UnifiedOrderStatus]] = {
-    UnifiedOrderStatus.PENDING: [UnifiedOrderStatus.ACCEPTED, UnifiedOrderStatus.CANCELLED],
-    UnifiedOrderStatus.ACCEPTED: [UnifiedOrderStatus.PREPARING, UnifiedOrderStatus.CANCELLED],
-    UnifiedOrderStatus.PREPARING: [UnifiedOrderStatus.READY, UnifiedOrderStatus.CANCELLED],
-    UnifiedOrderStatus.READY: [UnifiedOrderStatus.PICKED_UP, UnifiedOrderStatus.CANCELLED],
-    UnifiedOrderStatus.PICKED_UP: [UnifiedOrderStatus.DELIVERED],
+    UnifiedOrderStatus.PENDING: [
+        UnifiedOrderStatus.ACCEPTED,
+        UnifiedOrderStatus.PREPARING,
+        UnifiedOrderStatus.CANCELLED,
+    ],
+    UnifiedOrderStatus.ACCEPTED: [
+        UnifiedOrderStatus.PREPARING,
+        UnifiedOrderStatus.READY,
+        UnifiedOrderStatus.PICKED_UP,
+        UnifiedOrderStatus.CANCELLED,
+    ],
+    UnifiedOrderStatus.PREPARING: [
+        UnifiedOrderStatus.READY,
+        UnifiedOrderStatus.PICKED_UP,
+        UnifiedOrderStatus.CANCELLED,
+    ],
+    UnifiedOrderStatus.READY: [
+        UnifiedOrderStatus.PICKED_UP,
+        UnifiedOrderStatus.DELIVERED,
+        UnifiedOrderStatus.CANCELLED,
+    ],
+    UnifiedOrderStatus.PICKED_UP: [
+        UnifiedOrderStatus.DELIVERED,
+        UnifiedOrderStatus.CANCELLED,
+    ],
     UnifiedOrderStatus.DELIVERED: [],
     UnifiedOrderStatus.CANCELLED: [],
 }
