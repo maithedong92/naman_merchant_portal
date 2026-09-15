@@ -39,12 +39,35 @@ adapter = GrabMartChannelAdapter()
     summary="GrabMart Partner OAuth Token Endpoint",
     description="GrabMart calls this endpoint to obtain an access token before making webhook calls.",
 )
-async def get_partner_oauth_token(payload: GrabOAuthTokenRequest):
+async def get_partner_oauth_token(request: Request):
     """
     Implements GrabMart Partner OAuth Token Webhook specification.
     Returns Bearer token to authorize GrabMart webhook requests.
+    Supports application/json, application/x-www-form-urlencoded, and query params.
     """
-    logger.info(f"GrabMart requested partner OAuth token for client_id: {payload.client_id}")
+    client_id = "grabmart_client"
+    try:
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            data = await request.json()
+            client_id = data.get("client_id", client_id)
+        elif "form" in content_type:
+            form = await request.form()
+            client_id = form.get("client_id", client_id)
+        else:
+            try:
+                data = await request.json()
+                client_id = data.get("client_id", client_id)
+            except Exception:
+                form = await request.form()
+                client_id = form.get("client_id", client_id)
+    except Exception as ex:
+        logger.debug(f"Parsing body in get_partner_oauth_token: {ex}")
+
+    if client_id == "grabmart_client" and request.query_params.get("client_id"):
+        client_id = request.query_params.get("client_id")
+
+    logger.info(f"GrabMart requested partner OAuth token for client_id: {client_id}")
     return GrabOAuthTokenResponse(
         access_token="naman_partner_bearer_token_for_grabmart",
         token_type="Bearer",
@@ -125,28 +148,32 @@ async def receive_grabmart_order_state(
 async def get_mart_menu_webhook(
     merchantID: Optional[str] = Header(None),
     partnerMerchantID: Optional[str] = Header(None),
-    BusinessType: int = Query(default=1),
+    BusinessType: Optional[int] = Query(default=1),
     merchant_id_query: Optional[str] = Query(None, alias="merchantID"),
+    partner_merchant_id_query: Optional[str] = Query(None, alias="partnerMerchantID"),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Returns GrabMart Menu v1.1.3 JSON structure with sellingTimes and categories.
+    Handles merchantID and partnerMerchantID from either headers or query params.
     """
     grab_merchant_id = merchantID or merchant_id_query or "GM-THAO-DIEN"
-    logger.info(f"GrabMart requested menu for merchantID: {grab_merchant_id}")
+    partner_store_code = partnerMerchantID or partner_merchant_id_query or "10001"
+    logger.info(f"GrabMart requested menu for merchantID: {grab_merchant_id}, partnerMerchantID: {partner_store_code}")
 
     # Check cache first
     cached_menu = adapter.get_cached_menu(grab_merchant_id)
     if cached_menu:
         return cached_menu
 
-    # Resolve store by mapping or fallback
+    # Resolve store by mapping or code
     stmt = (
         select(StoreChannelMapping)
         .join(Channel)
         .where(
             Channel.code == "GRABMART",
-            StoreChannelMapping.partner_store_id == grab_merchant_id,
+            (StoreChannelMapping.partner_store_id == grab_merchant_id)
+            | (StoreChannelMapping.partner_store_id == partner_store_code)
         )
     )
     res = await db.execute(stmt)
@@ -155,10 +182,16 @@ async def get_mart_menu_webhook(
     if mapping:
         store_id = mapping.store_id
     else:
-        # Fallback to first active store
-        store_res = await db.execute(select(Store).where(Store.is_active == True).limit(1))
-        first_store = store_res.scalar_one_or_none()
-        store_id = first_store.id if first_store else "default_store"
+        # Check by Store code directly (e.g. "10001")
+        store_by_code_res = await db.execute(select(Store).where(Store.code == partner_store_code, Store.is_active == True))
+        store_by_code = store_by_code_res.scalar_one_or_none()
+        if store_by_code:
+            store_id = store_by_code.id
+        else:
+            # Fallback to first active store
+            store_res = await db.execute(select(Store).where(Store.is_active == True).limit(1))
+            first_store = store_res.scalar_one_or_none()
+            store_id = first_store.id if first_store else "default_store"
 
     menu_payload = await adapter.build_catalog_menu(
         store_id=store_id,

@@ -184,11 +184,19 @@ from app.web import web_router
 # Mount Core API Routers
 app.include_router(api_v1_router)
 
-# Mount Channel Webhook Routers under /api/v1
+# Mount Channel Webhook Routers under /api/v1 and root
 app.include_router(shopeefood_webhook_router, prefix="/api/v1")
 app.include_router(shopeefood_webhook_router)  # Allows root /shopeefoodapi/{store_code}.json
 app.include_router(grabmart_webhook_router, prefix="/api/v1")
+app.include_router(grabmart_webhook_router)     # Allows root /grabmart/... endpoints
 app.include_router(shopeemart_webhook_router, prefix="/api/v1")
+
+
+@app.post("/oauth/token", include_in_schema=False)
+async def root_oauth_token(request: Request):
+    from app.modules.grabmart.router import get_partner_oauth_token
+    return await get_partner_oauth_token(request)
+
 
 # Mount Admin Portal & Web Pages (/admin, /system-status, /admin/login)
 app.include_router(web_router)

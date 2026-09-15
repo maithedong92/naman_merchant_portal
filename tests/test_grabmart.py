@@ -51,19 +51,35 @@ async def test_grabmart_client_token_simulation():
 
 
 def test_grabmart_partner_oauth_webhook_endpoint(client):
-    """GrabMart calls POST /api/v1/grabmart/oauth/token to authenticate."""
+    """GrabMart calls POST /grabmart/oauth/token and /api/v1/grabmart/oauth/token to authenticate."""
     payload = {
         "client_id": "grabmart_pos_system",
         "client_secret": "grabmart_secret_123",
         "grant_type": "client_credentials",
         "scope": "grabmart.partner.pos"
     }
+    # Test prefixed endpoint with JSON
     response = client.post("/api/v1/grabmart/oauth/token", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert data["token_type"] == "Bearer"
     assert "access_token" in data
     assert data["expires_in"] == 86400
+
+    # Test root /grabmart/oauth/token with JSON
+    res_root = client.post("/grabmart/oauth/token", json=payload)
+    assert res_root.status_code == 200
+    assert res_root.json()["token_type"] == "Bearer"
+
+    # Test root /grabmart/oauth/token with Form Data (x-www-form-urlencoded)
+    res_form = client.post("/grabmart/oauth/token", data=payload)
+    assert res_form.status_code == 200
+    assert res_form.json()["token_type"] == "Bearer"
+
+    # Test root /oauth/token fallback
+    res_fallback = client.post("/oauth/token", json=payload)
+    assert res_fallback.status_code == 200
+    assert res_fallback.json()["token_type"] == "Bearer"
 
 
 # ==============================================================================
