@@ -13,7 +13,10 @@ class GrabMartClient:
     """HTTP Client for GrabMart Partner POS API v1.1.3."""
 
     def __init__(self):
-        self.base_url = settings.GRABMART_BASE_URL.rstrip("/")
+        base = settings.GRABMART_BASE_URL.rstrip("/")
+        if not base.endswith("/grabmart") and not base.endswith("/grabmart-sandbox"):
+            base = f"{base}/grabmart"
+        self.base_url = base
         self.client_id = settings.GRABMART_CLIENT_ID
         self.client_secret = settings.GRABMART_CLIENT_SECRET
         self.oauth_url = getattr(settings, "GRABMART_OAUTH_URL", "https://api.grab.com/grabid/v1/oauth2/token")
@@ -170,12 +173,18 @@ class GrabMartClient:
         payload = {"orderID": str(order_id), "toState": to_state}
         return await self.call_api("POST", endpoint, body=payload)
 
+    async def get_mart_categories(self, country_code: str = "VN") -> Dict[str, Any]:
+        """Fetch official GrabMart product categories for the designated country."""
+        endpoint = "/partner/v1/menu/categories"
+        params = {"countryCode": country_code}
+        return await self.call_api("GET", endpoint, params=params)
+
     async def mark_order_ready(self, order_id: str) -> Dict[str, Any]:
         """
         Notify GrabMart driver that the order items are packaged and ready for pickup.
-        Endpoint: POST /partner/v1/order/ready
+        Endpoint: POST /partner/v1/orders/mark
         """
-        endpoint = "/partner/v1/order/ready"
+        endpoint = "/partner/v1/orders/mark"
         payload = {"orderID": str(order_id), "markStatus": 1}
         return await self.call_api("POST", endpoint, body=payload)
 
@@ -200,7 +209,7 @@ class GrabMartClient:
     ) -> Dict[str, Any]:
         """
         Cancel order on GrabMart with designated cancellation reason code.
-        Endpoint: POST /partner/v1/order/cancel
+        Endpoint: PUT /partner/v1/order/cancel
         cancelCode: 1001 (Out of stock), 1002 (Too busy), 1003 (Shop closed)
         """
         endpoint = "/partner/v1/order/cancel"
@@ -209,7 +218,7 @@ class GrabMartClient:
             "merchantID": str(merchant_id),
             "cancelCode": cancel_code,
         }
-        return await self.call_api("POST", endpoint, body=payload)
+        return await self.call_api("PUT", endpoint, body=payload)
 
 
 grabmart_client = GrabMartClient()
