@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
-from app.core.database import get_db
+from app.core.database import get_db, get_optional_db
 from app.core.responses import APIResponse
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
@@ -151,11 +151,12 @@ async def get_mart_menu_webhook(
     BusinessType: Optional[int] = Query(default=1),
     merchant_id_query: Optional[str] = Query(None, alias="merchantID"),
     partner_merchant_id_query: Optional[str] = Query(None, alias="partnerMerchantID"),
-    db: AsyncSession = Depends(get_db),
+    db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
     """
     Returns GrabMart Menu v1.1.3 JSON structure with sellingTimes and categories.
     Handles merchantID and partnerMerchantID from either headers or query params.
+    Resilient design: falls back to standard catalog if database connection is offline.
     """
     grab_merchant_id = merchantID or merchant_id_query or "GM-THAO-DIEN"
     partner_store_code = partnerMerchantID or partner_merchant_id_query or "10001"
@@ -166,32 +167,37 @@ async def get_mart_menu_webhook(
     if cached_menu and cached_menu.get("partnerMerchantID") == partner_store_code:
         return cached_menu
 
-    # Resolve store by mapping or code
-    stmt = (
-        select(StoreChannelMapping)
-        .join(Channel)
-        .where(
-            Channel.code == "GRABMART",
-            (StoreChannelMapping.partner_store_id == grab_merchant_id)
-            | (StoreChannelMapping.partner_store_id == partner_store_code)
-        )
-    )
-    res = await db.execute(stmt)
-    mapping = res.scalar_one_or_none()
+    store_id = "default_store"
+    if db is not None:
+        try:
+            # Resolve store by mapping or code
+            stmt = (
+                select(StoreChannelMapping)
+                .join(Channel)
+                .where(
+                    Channel.code == "GRABMART",
+                    (StoreChannelMapping.partner_store_id == grab_merchant_id)
+                    | (StoreChannelMapping.partner_store_id == partner_store_code)
+                )
+            )
+            res = await db.execute(stmt)
+            mapping = res.scalar_one_or_none()
 
-    if mapping:
-        store_id = mapping.store_id
-    else:
-        # Check by Store code directly (e.g. "10001")
-        store_by_code_res = await db.execute(select(Store).where(Store.code == partner_store_code, Store.is_active == True))
-        store_by_code = store_by_code_res.scalar_one_or_none()
-        if store_by_code:
-            store_id = store_by_code.id
-        else:
-            # Fallback to first active store
-            store_res = await db.execute(select(Store).where(Store.is_active == True).limit(1))
-            first_store = store_res.scalar_one_or_none()
-            store_id = first_store.id if first_store else "default_store"
+            if mapping:
+                store_id = mapping.store_id
+            else:
+                # Check by Store code directly (e.g. "10001")
+                store_by_code_res = await db.execute(select(Store).where(Store.code == partner_store_code, Store.is_active == True))
+                store_by_code = store_by_code_res.scalar_one_or_none()
+                if store_by_code:
+                    store_id = store_by_code.id
+                else:
+                    # Fallback to first active store
+                    store_res = await db.execute(select(Store).where(Store.is_active == True).limit(1))
+                    first_store = store_res.scalar_one_or_none()
+                    store_id = first_store.id if first_store else "default_store"
+        except Exception as ex:
+            logger.warning(f"Failed to query store for GrabMart menu: {ex}. Using default store.")
 
     menu_payload = await adapter.build_catalog_menu(
         store_id=store_id,

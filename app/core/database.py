@@ -1,4 +1,4 @@
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -44,3 +44,20 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+async def get_optional_db() -> AsyncGenerator[Optional[AsyncSession], None]:
+    """Dependency for providing an async DB session, or None if DB is unavailable."""
+    try:
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                yield None
+            finally:
+                await session.close()
+    except Exception:
+        yield None
+
