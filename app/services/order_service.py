@@ -331,16 +331,26 @@ class OrderService:
     @staticmethod
     async def update_order_status(
         order_id: str,
-        update_data: OrderStatusUpdateSchema,
-        db: AsyncSession
+        update_data: Optional[OrderStatusUpdateSchema] = None,
+        db: Optional[AsyncSession] = None,
+        payload: Optional[OrderStatusUpdateSchema] = None,
+        sync_to_channel: bool = True,
+        **kwargs
     ) -> UnifiedOrder:
         """
         Transition order status following the Unified State Machine rules.
-        Also calls channel adapter to notify external partner (ShopeeFood / GrabMart).
+        Also calls channel adapter to notify external partner (ShopeeFood / GrabMart) if sync_to_channel is True.
+        Supports both 'update_data' and 'payload' keyword arguments for seamless adapter compatibility.
         """
+        data = update_data or payload
+        if not data:
+            raise ValidationError("Dữ liệu cập nhật trạng thái (update_data/payload) không được để trống.")
+        if db is None:
+            raise ValidationError("Session cơ sở dữ liệu (db) không được để trống.")
+
         order = await OrderService.get_order_by_id(order_id, db)
         current_status = order.status
-        target_status = update_data.new_status
+        target_status = data.new_status
 
         # Validate transition
         allowed = VALID_STATUS_TRANSITIONS.get(current_status, [])
@@ -352,53 +362,54 @@ class OrderService:
 
         # Update order entity
         order.status = target_status
-        if update_data.estimated_ready_time:
-            order.estimated_ready_time = update_data.estimated_ready_time
+        if data.estimated_ready_time:
+            order.estimated_ready_time = data.estimated_ready_time
         if target_status == UnifiedOrderStatus.READY:
             order.completed_at = datetime.now(timezone.utc)
         elif target_status == UnifiedOrderStatus.PICKED_UP:
             order.picked_up_at = datetime.now(timezone.utc)
         elif target_status == UnifiedOrderStatus.CANCELLED:
-            order.cancellation_reason = update_data.cancellation_reason or update_data.note
-            order.cancelled_by = update_data.changed_by
+            order.cancellation_reason = data.cancellation_reason or data.note
+            order.cancelled_by = data.changed_by
 
         # Add history log
         history = OrderStatusHistory(
             order_id=order.id,
             from_status=current_status,
             to_status=target_status,
-            note=update_data.note,
-            changed_by=update_data.changed_by
+            note=data.note,
+            changed_by=data.changed_by
         )
         db.add(history)
         await db.commit()
 
-        # Notify external channel adapter if available
-        channel_stmt = select(Channel).where(Channel.id == order.channel_id)
-        channel_res = await db.execute(channel_stmt)
-        channel = channel_res.scalar_one_or_none()
+        # Notify external channel adapter if enabled and requested
+        if sync_to_channel:
+            channel_stmt = select(Channel).where(Channel.id == order.channel_id)
+            channel_res = await db.execute(channel_stmt)
+            channel = channel_res.scalar_one_or_none()
 
-        if channel:
-            adapter = channel_registry.get(channel.code)
-            if adapter:
-                try:
-                    # Look up partner_store_id
-                    mapping_stmt = select(StoreChannelMapping).where(
-                        StoreChannelMapping.channel_id == channel.id,
-                        StoreChannelMapping.store_id == order.store_id
-                    )
-                    mapping_res = await db.execute(mapping_stmt)
-                    mapping = mapping_res.scalar_one_or_none()
-                    partner_store_id = mapping.partner_store_id if mapping else ""
+            if channel:
+                adapter = channel_registry.get(channel.code)
+                if adapter:
+                    try:
+                        # Look up partner_store_id
+                        mapping_stmt = select(StoreChannelMapping).where(
+                            StoreChannelMapping.channel_id == channel.id,
+                            StoreChannelMapping.store_id == order.store_id
+                        )
+                        mapping_res = await db.execute(mapping_stmt)
+                        mapping = mapping_res.scalar_one_or_none()
+                        partner_store_id = mapping.partner_store_id if mapping else ""
 
-                    await adapter.update_order_status(
-                        channel_order_id=order.channel_order_id,
-                        partner_store_id=partner_store_id,
-                        new_status=target_status,
-                        db=db,
-                        reason=update_data.cancellation_reason
-                    )
-                except Exception as ex:
-                    logger.error(f"Lỗi khi gửi cập nhật trạng thái lên sàn {channel.code}: {str(ex)}")
+                        await adapter.update_order_status(
+                            channel_order_id=order.channel_order_id,
+                            partner_store_id=partner_store_id,
+                            new_status=target_status,
+                            db=db,
+                            reason=data.cancellation_reason
+                        )
+                    except Exception as ex:
+                        logger.error(f"Lỗi khi gửi cập nhật trạng thái lên sàn {channel.code}: {str(ex)}")
 
         return await OrderService.get_order_by_id(order.id, db)

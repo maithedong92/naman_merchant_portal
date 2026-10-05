@@ -87,15 +87,20 @@ class GrabMartClient:
         }
 
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.request(
-                method=method,
-                url=url,
-                headers=headers,
-                json=body,
-                params=params,
-            )
-            resp.raise_for_status()
-            return resp.json() if resp.content else {}
+            try:
+                resp = await client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=body,
+                    params=params,
+                )
+                resp.raise_for_status()
+                return resp.json() if resp.content else {}
+            except httpx.HTTPStatusError as ex:
+                err_detail = ex.response.text
+                logger.error(f"GrabMart API Error [{ex.response.status_code}] on {method} {url}: {err_detail}")
+                raise
 
     # ==========================================================================
     # 1. Menu & Catalog Management
