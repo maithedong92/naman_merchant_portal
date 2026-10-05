@@ -121,7 +121,7 @@ class ShopeeMartBatchPriceUpdate(BaseModel):
 class ShopeeMartOrderItem(BaseModel):
     """Individual item line within an incoming ShopeeMart order."""
     item_id: Optional[int] = None
-    item_name: str = "Sản phẩm Shopee"
+    item_name: Optional[str] = None
     item_sku: Optional[str] = None
     model_id: Optional[int] = None
     model_name: Optional[str] = None

@@ -194,7 +194,7 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         # Handle Shopee Open Platform standard wrapper vs direct payload
         data = payload.get("data", payload)
         order_sn = str(data.get("order_sn", payload.get("order_sn", "")))
-        shop_id = str(data.get("shop_id", payload.get("shop_id", "10001")))
+        shop_id = str(data.get("shop_id") or payload.get("shop_id") or "")
 
         if not order_sn:
             logger.error(f"ShopeeMart webhook payload missing order_sn: {payload}")
@@ -223,14 +223,15 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         else:
             order_status = status_map.get(raw_status, UnifiedOrderStatus.ACCEPTED)
 
-        # Recipient address details
+        # Recipient address details (do not hardcode placeholder strings)
         recipient = data.get("recipient_address", {})
-        customer_name = recipient.get("name") or data.get("buyer_username") or "Khách hàng Shopee"
-        customer_phone = recipient.get("phone") or "0900000000"
+        customer_name = recipient.get("name") or data.get("buyer_username") or None
+        customer_phone = recipient.get("phone") or None
         full_addr = recipient.get("full_address")
         if not full_addr:
             addr_parts = [recipient.get("address"), recipient.get("ward"), recipient.get("district"), recipient.get("city")]
-            full_addr = ", ".join([p for p in addr_parts if p]) or "Giao qua ứng dụng Shopee"
+            combined_addr = ", ".join([p for p in addr_parts if p])
+            full_addr = combined_addr if combined_addr else None
 
         order_data = {
             "display_order_id": order_sn[-8:] if len(order_sn) >= 8 else order_sn,
@@ -251,24 +252,14 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         for itm in raw_items:
             qty = int(itm.get("model_quantity_purchased", itm.get("quantity", 1)))
             price = float(itm.get("model_discounted_price", itm.get("price", 0.0)))
-            sku = str(itm.get("item_sku") or itm.get("model_sku") or itm.get("item_id") or "SKU-GENERIC")
-            name = str(itm.get("item_name") or itm.get("model_name") or "Sản phẩm ShopeeMart")
+            sku = str(itm.get("item_sku") or itm.get("model_sku") or itm.get("item_id") or "")
+            name = str(itm.get("item_name") or itm.get("model_name") or "")
             items_data.append({
                 "sku": sku,
                 "item_name": name,
                 "quantity": qty,
                 "unit_price": price,
                 "total_price": price * qty
-            })
-
-        if not items_data:
-            # Fallback single item if item_list is not provided in quick status push
-            items_data.append({
-                "sku": "SHOPEEMART-COMBO",
-                "item_name": "Đơn hàng ShopeeMart",
-                "quantity": 1,
-                "unit_price": order_data["total_amount"],
-                "total_price": order_data["total_amount"]
             })
 
         try:

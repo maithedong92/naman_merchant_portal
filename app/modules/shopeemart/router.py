@@ -88,13 +88,15 @@ async def receive_shopeemart_order_webhook(
     description="Sinh đường dẫn để Quản trị viên/Chủ shop Nam An đăng nhập vào Shopee Partner Platform và cấp quyền truy cập.",
 )
 async def get_shopee_auth_url(
-    redirect_url: str = Query(
-        default="https://ump.namanmarket.com/shopeemart/auth/callback",
-        description="URL chuyển hướng sau khi hoàn tất ủy quyền trên Shopee"
+    request: Request,
+    redirect_url: Optional[str] = Query(
+        default=None,
+        description="URL chuyển hướng sau khi hoàn tất ủy quyền trên Shopee (Mặc định tự sinh từ máy chủ hiện tại)"
     ),
     current_user: User = Depends(get_current_active_user),
 ):
-    auth_info = shopeemart_client.get_authorization_url(redirect_url=redirect_url)
+    final_redirect = redirect_url or f"{str(request.base_url).rstrip('/')}/shopeemart/auth/callback"
+    auth_info = shopeemart_client.get_authorization_url(redirect_url=final_redirect)
     return APIResponse.ok(
         data=auth_info,
         message="Đã tạo liên kết ủy quyền gian hàng Shopee thành công."
@@ -194,7 +196,12 @@ async def sync_store_inventory_to_shopee(
     )
     res = await db.execute(stmt)
     mapping = res.scalar_one_or_none()
-    partner_store_id = mapping.partner_store_id if mapping else "10001"
+    if not mapping or not mapping.partner_store_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cửa hàng (store_id: {store_id}) chưa được ánh xạ với mã Outlet Shop nào của ShopeeMart. Vui lòng thiết lập liên kết cửa hàng trong trang Quản Trị Đa Kênh."
+        )
+    partner_store_id = mapping.partner_store_id
 
     sync_result = await adapter.sync_inventory(
         store_id=store_id,
@@ -296,8 +303,14 @@ async def add_shopee_product(
     shop_id: Optional[str] = Query(None, description="Mart Shop ID"),
     current_user: User = Depends(get_current_active_user),
 ):
+    target_shop = shop_id or shopeemart_client.default_shop_id
+    if not target_shop:
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng cung cấp tham số shop_id hoặc cấu hình biến môi trường SHOPEEMART_SHOP_ID."
+        )
     result = await shopeemart_client.add_item(
-        shop_id=shop_id or "10001",
+        shop_id=target_shop,
         item_data=payload.model_dump(exclude_none=True)
     )
     return APIResponse.ok(
@@ -310,15 +323,21 @@ async def add_shopee_product(
     "/product/publish-outlet",
     response_model=APIResponse[Dict[str, Any]],
     summary="Đẩy SKU sang các chi nhánh Outlet (v2.product.publish_item_to_outlet_shop)",
-    description="Liên kết và công bố sản phẩm từ Mart Shop sang 4 siêu thị chi nhánh.",
+    description="Liên kết và công bố sản phẩm từ Mart Shop sang các chi nhánh Outlet.",
 )
 async def publish_item_to_outlets(
     payload: ShopeeMartPublishOutletRequest,
     shop_id: Optional[str] = Query(None, description="Mart Shop ID"),
     current_user: User = Depends(get_current_active_user),
 ):
+    target_shop = shop_id or shopeemart_client.default_shop_id
+    if not target_shop:
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng cung cấp tham số shop_id hoặc cấu hình biến môi trường SHOPEEMART_SHOP_ID."
+        )
     result = await shopeemart_client.publish_item_to_outlet_shop(
-        shop_id=shop_id or "10001",
+        shop_id=target_shop,
         item_id=payload.item_id,
         outlet_shop_id_list=payload.outlet_shop_id_list,
         price_list=payload.price_list,
@@ -340,8 +359,14 @@ async def batch_update_outlet_stock_endpoint(
     shop_id: Optional[str] = Query(None, description="Shop ID"),
     current_user: User = Depends(get_current_active_user),
 ):
+    target_shop = shop_id or shopeemart_client.default_shop_id
+    if not target_shop:
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng cung cấp tham số shop_id hoặc cấu hình biến môi trường SHOPEEMART_SHOP_ID."
+        )
     result = await shopeemart_client.batch_update_outlet_stock(
-        shop_id=shop_id or "10001",
+        shop_id=target_shop,
         outlet_stock_list=[item.model_dump() for item in payload.outlet_stock_list]
     )
     return APIResponse.ok(

@@ -160,7 +160,7 @@ class ShopeeMartClient:
                 access_token="mock_shopee_access_token_sandbox",
                 refresh_token="mock_shopee_refresh_token_sandbox",
                 expire_in=14400,
-                shop_id=int(shop_id) if shop_id.isdigit() else 10001
+                shop_id=int(shop_id) if (shop_id and str(shop_id).isdigit()) else None
             )
             self._save_token_cache(str(shop_id), mock_resp.access_token, mock_resp.refresh_token, mock_resp.expire_in)
             return mock_resp
@@ -207,7 +207,9 @@ class ShopeeMartClient:
         Proactively refresh an expiring Shopee access token using its refresh token.
         Endpoint: POST /api/v2/auth/access_token/get
         """
-        target_shop = str(shop_id or self.default_shop_id or "10001")
+        target_shop = str(shop_id or self.default_shop_id or "")
+        if not target_shop:
+            raise ValueError("Shop ID is required to refresh ShopeeMart token.")
         cached = self._token_cache.get(target_shop)
 
         if not self.is_configured:
@@ -216,7 +218,7 @@ class ShopeeMartClient:
                 access_token="mock_refreshed_access_token_sandbox",
                 refresh_token="mock_refreshed_refresh_token_sandbox",
                 expire_in=14400,
-                shop_id=int(target_shop) if target_shop.isdigit() else 10001
+                shop_id=int(target_shop) if target_shop.isdigit() else None
             )
             self._save_token_cache(target_shop, mock_resp.access_token, mock_resp.refresh_token, mock_resp.expire_in)
             return mock_resp
@@ -262,8 +264,8 @@ class ShopeeMartClient:
 
     async def get_valid_access_token(self, shop_id: Optional[str] = None) -> str:
         """Return a valid cached access token, automatically refreshing if close to expiry."""
-        target_shop = str(shop_id or self.default_shop_id or "10001")
-        cached = self._token_cache.get(target_shop)
+        target_shop = str(shop_id or self.default_shop_id or "")
+        cached = self._token_cache.get(target_shop) if target_shop else None
 
         now = time.time()
         # If token exists in cache and has > 5 minutes remaining
@@ -274,7 +276,7 @@ class ShopeeMartClient:
             return cached.get("access_token", "mock_shopeemart_access_token") if cached else "mock_shopeemart_access_token"
 
         # Otherwise refresh if refresh_token is present
-        if cached and cached.get("refresh_token"):
+        if cached and cached.get("refresh_token") and target_shop:
             try:
                 refreshed = await self.refresh_access_token(target_shop)
                 return refreshed.access_token
@@ -310,7 +312,7 @@ class ShopeeMartClient:
         require_token: bool = True
     ) -> Dict[str, Any]:
         """Send signed authenticated request to Shopee Open Platform API v2."""
-        target_shop = str(shop_id if shop_id is not None else (self.default_shop_id or "10001"))
+        target_shop = str(shop_id if shop_id is not None else (self.default_shop_id or ""))
         timestamp = int(time.time())
 
         access_token = ""
@@ -696,7 +698,7 @@ class ShopeeMartClient:
                 "return_sn": return_sn,
                 "dispute_reason": dispute_reason,
                 "dispute_text_reason": dispute_text_reason,
-                "email": email or "support@namanmarket.com"
+                "email": email or ""
             }
         )
 
@@ -735,8 +737,8 @@ class ShopeeMartClient:
 
     def get_connection_status(self, shop_id: Optional[str] = None) -> ShopeeMartConnectionStatus:
         """Inspect and report the health of credentials and active access tokens."""
-        target_shop = str(shop_id or self.default_shop_id or "10001")
-        cached = self._token_cache.get(target_shop)
+        target_shop = str(shop_id or self.default_shop_id or "")
+        cached = self._token_cache.get(target_shop) if target_shop else None
 
         has_valid_token = False
         expires_at_iso = None
@@ -755,8 +757,8 @@ class ShopeeMartClient:
             has_valid_token=has_valid_token,
             token_expires_at=expires_at_iso,
             is_sandbox_mode=not self.is_configured,
-            partner_id=self.partner_id if self.is_configured else "SANDBOX",
-            shop_id=target_shop
+            partner_id=self.partner_id if self.is_configured else None,
+            shop_id=target_shop or None
         )
 
 
