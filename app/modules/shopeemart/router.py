@@ -66,7 +66,7 @@ async def receive_shopeemart_order_webhook(
             return {"code": 0, "message": "simulated_accepted_offline"}
     except Exception as ex:
         logger.error(f"Error handling ShopeeMart webhook: {ex}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(ex))
+        return {"code": 400, "message": f"Webhook processing error: {str(ex)}"}
 
 
 # ==============================================================================

@@ -49,15 +49,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def get_optional_db() -> AsyncGenerator[Optional[AsyncSession], None]:
     """Dependency for providing an async DB session, or None if DB is unavailable."""
     try:
-        async with AsyncSessionLocal() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                yield None
-            finally:
-                await session.close()
+        session = AsyncSessionLocal()
     except Exception:
         yield None
+        return
+
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
 
