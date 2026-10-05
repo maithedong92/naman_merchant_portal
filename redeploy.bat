@@ -35,6 +35,11 @@ if not exist ".env" (
 )
 echo.
 
+:: 2.1. Dong bo ma nguon moi nhat tu Git
+echo [Git] Cap nhat ma nguon moi nhat tu GitHub...
+git pull origin main
+echo.
+
 :: 3. Dung va don dep container cu
 echo [3/6] Dung va thu hoi containers cu naman_portal_app, naman_portal_nginx...
 docker compose down --remove-orphans
