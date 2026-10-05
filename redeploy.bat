@@ -2,6 +2,11 @@
 setlocal enabledelayedexpansion
 chcp 65001 >nul
 
+:: Thiet lap moi truong cho phien headless / remote SSH
+set "PATH=C:\Git\cmd;%PATH%"
+set "DOCKER_BUILDKIT=0"
+set "COMPOSE_DOCKER_CLI_BUILD=0"
+
 echo ===============================================================================
 echo        NAM AN MARKET - UNIFIED MERCHANT PORTAL (NAM-UMP)
 echo              DOCKER DEPLOY AND REDEPLOY AUTOMATION SCRIPT
@@ -50,12 +55,12 @@ echo.
 echo [4/6] Dong goi va build lai image voi ma nguon moi nhat...
 if "%1"=="--clean" (
     echo       Che do clean build: Khong su dung cache...
-    docker compose build --no-cache
+    docker build --no-cache -f docker/Dockerfile -t ump-app .
 ) else if "%1"=="--no-cache" (
     echo       Che do no-cache: Build lai toan bo packages...
-    docker compose build --no-cache
+    docker build --no-cache -f docker/Dockerfile -t ump-app .
 ) else (
-    docker compose build
+    docker build -f docker/Dockerfile -t ump-app .
 )
 
 if errorlevel 1 (
