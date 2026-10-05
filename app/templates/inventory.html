@@ -16,7 +16,7 @@
                 Quản Lý Thực Đơn & Tồn Kho Đa Kênh
             </h1>
             <p class="text-xs sm:text-sm text-charcoal-muted mt-1">
-                Kiểm soát số lượng tồn kho khả dụng và bật/tắt món tức thì trên <strong>ShopeeFood & GrabMart</strong> cho từng chi nhánh Nam An Market.
+                Kiểm soát số lượng tồn kho khả dụng và bật/tắt món tức thì trên <strong>ShopeeFood, GrabMart & ShopeeMart</strong> cho từng chi nhánh Nam An Market.
             </p>
         </div>
 
@@ -184,7 +184,7 @@
 
             <div class="p-3 rounded-xl bg-emerald-50 text-primary text-xs flex items-center space-x-2">
                 <input type="checkbox" id="modal-sync-channels" checked class="rounded text-primary focus:ring-primary">
-                <label for="modal-sync-channels" class="font-medium cursor-pointer">Tự động đẩy tồn kho sang ShopeeFood & GrabMart</label>
+                <label for="modal-sync-channels" class="font-medium cursor-pointer">Tự động đẩy tồn kho sang ShopeeFood, GrabMart & ShopeeMart</label>
             </div>
 
             <div class="flex items-center justify-end space-x-3 pt-2">
@@ -490,7 +490,7 @@
             });
             const data = await res.json();
             if (res.ok && data.success) {
-                showToast(`Đã đồng bộ toàn bộ tồn kho chi nhánh ${currentStoreCode} sang ShopeeFood & GrabMart!`, 'success');
+                showToast(`Đã đồng bộ toàn bộ tồn kho chi nhánh ${currentStoreCode} sang các sàn đối tác (ShopeeFood, GrabMart, ShopeeMart)!`, 'success');
                 loadInventoryOverview();
             } else {
                 showToast(data.message || 'Lỗi khi đồng bộ toàn bộ', 'error');

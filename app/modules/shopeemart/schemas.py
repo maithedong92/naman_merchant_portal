@@ -193,7 +193,7 @@ class ShopeeMartTrackingNumberResponse(BaseModel):
 
 class ShopeeMartCreateShippingDocRequest(BaseModel):
     """Request to generate Airway Bill (AWB) document for printing."""
-    order_sn: str = Field(..., description="Shopee Order SN")
+    order_sn: Optional[str] = Field(None, description="Shopee Order SN")
     document_type: str = Field("THERMAL_AIR_WAYBILL", description="THERMAL_AIR_WAYBILL or NORMAL_AIR_WAYBILL")
 
 

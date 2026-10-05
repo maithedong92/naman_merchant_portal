@@ -14,12 +14,25 @@ class StoreChannelMappingCreate(StoreChannelMappingBase):
     pass
 
 
+class StoreChannelMappingUpdate(BaseModel):
+    partner_store_id: Optional[str] = None
+    is_active: Optional[bool] = None
+    channel_config: Optional[dict] = None
+
+
 class StoreChannelMappingResponse(StoreChannelMappingBase):
     model_config = ConfigDict(from_attributes=True)
     id: str
     store_id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class StoreChannelMappingDetail(StoreChannelMappingResponse):
+    store_code: Optional[str] = None
+    store_name: Optional[str] = None
+    channel_code: Optional[str] = None
+    channel_name: Optional[str] = None
 
 
 class StoreBase(BaseModel):

@@ -6,13 +6,16 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, require_super_admin
 from app.core.database import get_db
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.core.responses import APIResponse
+from app.models.channel import Channel
 from app.models.store import Store, StoreChannelMapping
 from app.models.user import User
 from app.schemas.store import (
     StoreChannelMappingCreate,
+    StoreChannelMappingDetail,
     StoreChannelMappingResponse,
+    StoreChannelMappingUpdate,
     StoreCreate,
     StoreResponse,
     StoreUpdate,
@@ -53,6 +56,44 @@ async def create_store(
     stmt = select(Store).where(Store.id == store.id).options(selectinload(Store.channel_mappings))
     created = (await db.execute(stmt)).scalar_one()
     return APIResponse.ok(data=created, message="Tạo cửa hàng thành công")
+
+
+@router.get("/mappings", response_model=APIResponse[List[StoreChannelMappingDetail]])
+async def list_all_store_channel_mappings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all store-to-channel partner mappings with store and channel names."""
+    stmt = (
+        select(StoreChannelMapping)
+        .options(
+            selectinload(StoreChannelMapping.store),
+            selectinload(StoreChannelMapping.channel)
+        )
+        .order_by(StoreChannelMapping.created_at.desc())
+    )
+    res = await db.execute(stmt)
+    mappings = res.scalars().all()
+
+    data = []
+    for m in mappings:
+        data.append(
+            StoreChannelMappingDetail(
+                id=m.id,
+                store_id=m.store_id,
+                channel_id=m.channel_id,
+                partner_store_id=m.partner_store_id,
+                is_active=m.is_active,
+                channel_config=m.channel_config,
+                created_at=m.created_at,
+                updated_at=m.updated_at,
+                store_code=m.store.code if m.store else None,
+                store_name=m.store.name if m.store else None,
+                channel_code=m.channel.code if m.channel else None,
+                channel_name=m.channel.name if m.channel else None,
+            )
+        )
+    return APIResponse.ok(data=data)
 
 
 @router.get("/{store_id}", response_model=APIResponse[StoreResponse])
@@ -108,3 +149,86 @@ async def map_store_to_channel(
     await db.commit()
     await db.refresh(mapping)
     return APIResponse.ok(data=mapping, message="Liên kết kênh bán lẻ cho chi nhánh thành công")
+
+
+@router.put("/{store_id}/channels/{channel_id}", response_model=APIResponse[StoreChannelMappingResponse])
+async def update_or_create_store_channel_mapping(
+    store_id: str,
+    channel_id: str,
+    payload: StoreChannelMappingUpdate,
+    current_admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Cập nhật hoặc tạo mới (upsert) liên kết giữa chi nhánh Nam An và mã cửa hàng trên sàn đối tác
+    (ví dụ: cập nhật Outlet ID ShopeeMart, Store ID GrabMart, Partner ID ShopeeFood).
+    """
+    store_stmt = select(Store).where((Store.id == store_id) | (Store.code == store_id))
+    store = (await db.execute(store_stmt)).scalar_one_or_none()
+    if not store:
+        raise NotFoundError("Store", store_id)
+
+    channel_stmt = select(Channel).where((Channel.id == channel_id) | (Channel.code == channel_id.upper()))
+    channel = (await db.execute(channel_stmt)).scalar_one_or_none()
+    if not channel:
+        raise NotFoundError("Channel", channel_id)
+
+    mapping_stmt = select(StoreChannelMapping).where(
+        StoreChannelMapping.store_id == store.id,
+        StoreChannelMapping.channel_id == channel.id
+    )
+    mapping = (await db.execute(mapping_stmt)).scalar_one_or_none()
+
+    if mapping:
+        if payload.partner_store_id is not None:
+            mapping.partner_store_id = payload.partner_store_id
+        if payload.is_active is not None:
+            mapping.is_active = payload.is_active
+        if payload.channel_config is not None:
+            mapping.channel_config = payload.channel_config
+    else:
+        if not payload.partner_store_id:
+            raise BadRequestError("partner_store_id là bắt buộc để tạo liên kết mới.")
+        mapping = StoreChannelMapping(
+            store_id=store.id,
+            channel_id=channel.id,
+            partner_store_id=payload.partner_store_id,
+            is_active=payload.is_active if payload.is_active is not None else True,
+            channel_config=payload.channel_config
+        )
+        db.add(mapping)
+
+    await db.commit()
+    await db.refresh(mapping)
+    return APIResponse.ok(data=mapping, message="Cập nhật cấu hình ánh xạ kênh thành công.")
+
+
+@router.delete("/{store_id}/channels/{channel_id}", response_model=APIResponse[dict])
+async def delete_store_channel_mapping(
+    store_id: str,
+    channel_id: str,
+    current_admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """Xóa bỏ liên kết kênh bán lẻ của chi nhánh."""
+    store_stmt = select(Store).where((Store.id == store_id) | (Store.code == store_id))
+    store = (await db.execute(store_stmt)).scalar_one_or_none()
+    if not store:
+        raise NotFoundError("Store", store_id)
+
+    channel_stmt = select(Channel).where((Channel.id == channel_id) | (Channel.code == channel_id.upper()))
+    channel = (await db.execute(channel_stmt)).scalar_one_or_none()
+    if not channel:
+        raise NotFoundError("Channel", channel_id)
+
+    mapping_stmt = select(StoreChannelMapping).where(
+        StoreChannelMapping.store_id == store.id,
+        StoreChannelMapping.channel_id == channel.id
+    )
+    mapping = (await db.execute(mapping_stmt)).scalar_one_or_none()
+    if not mapping:
+        raise NotFoundError(f"Liên kết giữa chi nhánh {store.code} và kênh {channel.code} không tồn tại.")
+
+    await db.delete(mapping)
+    await db.commit()
+    return APIResponse.ok(data={"deleted": True}, message="Đã xóa liên kết kênh của chi nhánh thành công.")

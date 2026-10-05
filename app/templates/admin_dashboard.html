@@ -474,6 +474,47 @@
         </div>
     </div>
 
+    <!-- 4. Store & Channel Outlet Mapping Section -->
+    <div class="bg-white rounded-3xl p-6 sm:p-8 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-gray-100 gap-4">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-primary"></span>
+                    <h3 class="text-lg font-display font-bold text-charcoal">Ánh Xạ Chi Nhánh & Mã Cửa Hàng Trên Sàn</h3>
+                </div>
+                <p class="text-xs text-charcoal-muted mt-1">
+                    Cấu hình liên kết giữa 4 siêu thị Nam An Market và mã Outlet Shop trên <strong>ShopeeMart</strong>, <strong>GrabMart</strong>, <strong>ShopeeFood</strong> để định tuyến đơn hàng & đẩy tồn kho chính xác.
+                </p>
+            </div>
+            <button onclick="openStoreMappingModal()" class="px-5 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md shadow-primary/20 flex items-center space-x-2 transition-all self-start sm:self-auto">
+                <span>➕</span>
+                <span>Thêm / Cập Nhật Liên Kết</span>
+            </button>
+        </div>
+
+        <!-- Mappings Table -->
+        <div class="overflow-x-auto mt-6">
+            <table class="w-full text-left text-xs text-charcoal">
+                <thead>
+                    <tr class="text-charcoal-muted uppercase text-[10px] tracking-wider border-b border-gray-100">
+                        <th class="py-3 px-4">Chi Nhánh Nam An</th>
+                        <th class="py-3 px-4">Kênh Bán Lẻ</th>
+                        <th class="py-3 px-4">Mã Cửa Hàng / Outlet ID trên Sàn</th>
+                        <th class="py-3 px-4 text-center">Trạng Thái</th>
+                        <th class="py-3 px-4 text-right">Thao Tác</th>
+                    </tr>
+                </thead>
+                <tbody id="store-mappings-tbody" class="divide-y divide-gray-50">
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-gray-400">
+                            Đang tải danh sách ánh xạ chi nhánh...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Quick Action / Core Architecture Notice -->
     <div class="bg-white rounded-3xl p-8 shadow-sm">
         <h3 class="text-lg font-display font-bold text-charcoal mb-2">Quy Hoạch Hạ Tầng 3 Lớp & Phân Vùng Cổng 3001+</h3>
@@ -508,6 +549,58 @@
         </div>
     </div>
 
+</div>
+
+<!-- Modal: Edit / Add Store Channel Mapping -->
+<div id="store-mapping-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-charcoal">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+            <h3 class="font-display font-bold text-sm text-charcoal" id="store-mapping-modal-title">Cấu Hình Ánh Xạ Kênh Chi Nhánh</h3>
+            <button onclick="closeStoreMappingModal()" class="text-gray-400 hover:text-charcoal text-lg">✕</button>
+        </div>
+
+        <form onsubmit="submitStoreMappingForm(event)" class="space-y-4 mt-4 text-xs">
+            <div>
+                <label class="block font-bold text-gray-700 uppercase tracking-wider mb-1">Chi nhánh Nam An:</label>
+                <select id="mapping-modal-store" required class="w-full px-3 py-2.5 rounded-xl bg-surface-low border-0 font-medium text-charcoal focus:ring-2 focus:ring-primary">
+                    <option value="10001">📍 10001 - Nam An Thảo Điền (21 Thảo Điền)</option>
+                    <option value="10004">📍 10004 - Nam An Hưng Phúc (46 Hưng Phúc, Q.7)</option>
+                    <option value="10005">📍 10005 - Nam An Mai Chí Thọ (17 Mai Chí Thọ)</option>
+                    <option value="10006">📍 10006 - Nam An Nguyễn Văn Trỗi (303 Nguyễn Văn Trỗi)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block font-bold text-gray-700 uppercase tracking-wider mb-1">Kênh Bán Lẻ:</label>
+                <select id="mapping-modal-channel" required class="w-full px-3 py-2.5 rounded-xl bg-surface-low border-0 font-medium text-charcoal focus:ring-2 focus:ring-primary">
+                    <option value="SHOPEEMART">🛒 ShopeeMart (Fresh)</option>
+                    <option value="GRABMART">🛵 GrabMart VN</option>
+                    <option value="SHOPEEFOOD">🍲 ShopeeFood VN</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block font-bold text-gray-700 uppercase tracking-wider mb-1">Mã Cửa Hàng / Outlet ID trên Sàn:</label>
+                <input type="text" id="mapping-modal-partner-id" required placeholder="Ví dụ: 10001 hoặc GM-THAO-DIEN..." class="w-full px-3 py-2.5 rounded-xl bg-surface-low border-0 font-mono font-bold text-charcoal focus:ring-2 focus:ring-primary">
+                <p class="text-[10px] text-gray-400 mt-1">Đối với ShopeeMart, đây là mã Outlet Shop ID (v2.product.publish_item_to_outlet_shop).</p>
+            </div>
+
+            <div class="p-3 rounded-xl bg-surface-low flex items-center justify-between">
+                <span class="font-medium text-charcoal">Kích hoạt liên kết này</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="mapping-modal-active" checked class="sr-only peer">
+                    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
+                <button type="button" onclick="closeStoreMappingModal()" class="px-4 py-2 rounded-full bg-surface-low text-xs font-bold text-charcoal hover:bg-gray-200">Hủy</button>
+                <button type="submit" id="btn-save-mapping" class="px-5 py-2 rounded-full bg-primary hover:bg-primary-light text-white font-bold shadow-md">
+                    Lưu Liên Kết
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
@@ -687,9 +780,164 @@
         }
     }
 
+    // Store Channel Mapping Management
+    let allStoreMappings = [];
+
+    async function loadStoreMappingsTable() {
+        const tbody = document.getElementById('store-mappings-tbody');
+        try {
+            const res = await authFetch('/api/v1/stores/mappings');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && Array.isArray(data.data)) {
+                    allStoreMappings = data.data;
+                    renderStoreMappingsTable(allStoreMappings);
+                    return;
+                }
+            }
+            tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-rose-500 font-bold">Không thể tải dữ liệu ánh xạ chi nhánh.</td></tr>`;
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-rose-500 font-bold">Lỗi kết nối: ${e.message}</td></tr>`;
+        }
+    }
+
+    function renderStoreMappingsTable(mappings) {
+        const tbody = document.getElementById('store-mappings-tbody');
+        if (!mappings || mappings.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">Chưa có liên kết chi nhánh nào. Bấm "+ Thêm / Cập Nhật Liên Kết" để tạo mới.</td></tr>`;
+            return;
+        }
+
+        let html = '';
+        mappings.forEach(m => {
+            const storeLabel = m.store_name ? `${m.store_code} - ${m.store_name}` : (m.store_code || m.store_id);
+            let channelBadge = '';
+            if (m.channel_code === 'SHOPEEMART') {
+                channelBadge = `<span class="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-bold inline-flex items-center space-x-1"><span>🛒</span><span>ShopeeMart</span></span>`;
+            } else if (m.channel_code === 'GRABMART') {
+                channelBadge = `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold inline-flex items-center space-x-1"><span>🛵</span><span>GrabMart</span></span>`;
+            } else if (m.channel_code === 'SHOPEEFOOD') {
+                channelBadge = `<span class="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-bold inline-flex items-center space-x-1"><span>🍲</span><span>ShopeeFood</span></span>`;
+            } else {
+                channelBadge = `<span class="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-bold">${m.channel_code}</span>`;
+            }
+
+            const statusBadge = m.is_active
+                ? `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-bold text-[11px]">Đang Liên Kết</span>`
+                : `<span class="px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 font-bold text-[11px]">Tạm Ngắt</span>`;
+
+            html += `
+                <tr class="hover:bg-surface-low/50 transition-colors">
+                    <td class="py-3 px-4 font-bold text-charcoal">
+                        ${storeLabel}
+                    </td>
+                    <td class="py-3 px-4">
+                        ${channelBadge}
+                    </td>
+                    <td class="py-3 px-4 font-mono font-bold text-primary">
+                        ${m.partner_store_id}
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        ${statusBadge}
+                    </td>
+                    <td class="py-3 px-4 text-right space-x-2">
+                        <button onclick="editMapping('${m.store_code}', '${m.channel_code}', '${m.partner_store_id}', ${m.is_active})" class="px-3 py-1 rounded-lg bg-surface-low hover:bg-emerald-50 text-primary font-bold text-xs transition-colors">
+                            Sửa
+                        </button>
+                        <button onclick="deleteMapping('${m.store_code}', '${m.channel_code}')" class="px-3 py-1 rounded-lg bg-surface-low hover:bg-rose-50 text-rose-600 font-bold text-xs transition-colors">
+                            Xóa
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    function openStoreMappingModal() {
+        document.getElementById('store-mapping-modal-title').textContent = "Thêm / Cập Nhật Ánh Xạ Kênh Chi Nhánh";
+        document.getElementById('mapping-modal-partner-id').value = "";
+        document.getElementById('mapping-modal-active').checked = true;
+        document.getElementById('store-mapping-modal').classList.remove('hidden');
+    }
+
+    function closeStoreMappingModal() {
+        document.getElementById('store-mapping-modal').classList.add('hidden');
+    }
+
+    function editMapping(storeCode, channelCode, partnerId, isActive) {
+        document.getElementById('store-mapping-modal-title').textContent = `Cập Nhật Ánh Xạ Chi Nhánh ${storeCode}`;
+        document.getElementById('mapping-modal-store').value = storeCode;
+        document.getElementById('mapping-modal-channel').value = channelCode;
+        document.getElementById('mapping-modal-partner-id').value = partnerId;
+        document.getElementById('mapping-modal-active').checked = !!isActive;
+        document.getElementById('store-mapping-modal').classList.remove('hidden');
+    }
+
+    async function submitStoreMappingForm(event) {
+        event.preventDefault();
+        const storeCode = document.getElementById('mapping-modal-store').value;
+        const channelCode = document.getElementById('mapping-modal-channel').value;
+        const partnerId = document.getElementById('mapping-modal-partner-id').value.trim();
+        const isActive = document.getElementById('mapping-modal-active').checked;
+        const btn = document.getElementById('btn-save-mapping');
+
+        if (!partnerId) {
+            showToast("Vui lòng nhập Mã Cửa hàng / Outlet ID trên sàn", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = "Đang lưu...";
+
+        try {
+            const res = await authFetch(`/api/v1/stores/${encodeURIComponent(storeCode)}/channels/${encodeURIComponent(channelCode)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    partner_store_id: partnerId,
+                    is_active: isActive
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(`Đã lưu ánh xạ chi nhánh ${storeCode} (${partnerId})!`, 'success');
+                closeStoreMappingModal();
+                loadStoreMappingsTable();
+            } else {
+                showToast(data.message || "Lỗi khi lưu liên kết", "error");
+            }
+        } catch(e) {
+            showToast(`Lỗi kết nối: ${e.message}`, "error");
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Lưu Liên Kết";
+        }
+    }
+
+    async function deleteMapping(storeCode, channelCode) {
+        if (!confirm(`Bạn có chắc chắn muốn xóa liên kết giữa chi nhánh ${storeCode} và kênh ${channelCode}?`)) return;
+
+        try {
+            const res = await authFetch(`/api/v1/stores/${encodeURIComponent(storeCode)}/channels/${encodeURIComponent(channelCode)}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(`Đã xóa liên kết chi nhánh ${storeCode} và kênh ${channelCode}`, 'success');
+                loadStoreMappingsTable();
+            } else {
+                showToast(data.message || "Lỗi khi xóa liên kết", "error");
+            }
+        } catch(e) {
+            showToast(`Lỗi kết nối: ${e.message}`, "error");
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         loadDashboardMetrics();
         loadChannelFeatureFlags();
+        loadStoreMappingsTable();
     });
     setInterval(loadDashboardMetrics, 20000);
 </script>

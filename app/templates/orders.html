@@ -293,10 +293,35 @@
                 <h3 id="detail-modal-title" class="font-display font-extrabold text-xl text-charcoal mt-1">Chi Tiết Đơn Hàng</h3>
             </div>
             <button onclick="closeDetailsModal()" class="w-8 h-8 rounded-full bg-surface-low text-gray-500 hover:text-charcoal flex items-center justify-center">✕</button>
-        </div>
-
         <div class="mt-6 space-y-6" id="detail-modal-content">
             <!-- Content Injected via JS -->
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 4: ShopeeMart AWB Airway Bill Print Preview -->
+<!-- ======================================================================= -->
+<div id="shopee-awb-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl relative text-charcoal">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100 no-print">
+            <div class="flex items-center space-x-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                <h3 class="font-display font-bold text-sm">Phiếu Gửi Hàng ShopeeMart (Airway Bill - AWB)</h3>
+            </div>
+            <button onclick="closeShopeeAwbModal()" class="text-gray-400 hover:text-charcoal text-lg">✕</button>
+        </div>
+
+        <div id="shopee-awb-content" class="my-4">
+            <!-- Injected via JS -->
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100 no-print">
+            <button onclick="closeShopeeAwbModal()" class="px-4 py-2 rounded-full bg-surface-low text-xs font-bold text-charcoal hover:bg-gray-200">Đóng</button>
+            <button onclick="window.print()" class="px-5 py-2 rounded-full bg-primary text-xs font-bold text-white shadow-md hover:bg-primary-light flex items-center space-x-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                <span>In Phiếu AWB</span>
+            </button>
         </div>
     </div>
 </div>
@@ -620,6 +645,12 @@
                                 <svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                                 <span>In Phiếu 80mm</span>
                             </button>
+                            ${o.channel_code === 'SHOPEEMART' ? `
+                                <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-3 py-1.5 rounded-full bg-rose-50 hover:bg-rose-100 text-xs font-bold text-rose-700 transition-colors flex items-center space-x-1">
+                                    <span>📄</span>
+                                    <span>Vận Đơn AWB</span>
+                                </button>
+                            ` : ''}
                             <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-xs font-bold text-charcoal transition-colors">
                                 Chi tiết & Lịch sử
                             </button>
@@ -907,6 +938,94 @@
 
     function closeDetailsModal() {
         document.getElementById('order-details-modal').classList.add('hidden');
+    }
+
+    // ShopeeMart Airway Bill Modal
+    async function openShopeeAwbModal(orderSn) {
+        const modal = document.getElementById('shopee-awb-modal');
+        const container = document.getElementById('shopee-awb-content');
+        modal.classList.remove('hidden');
+        container.innerHTML = `<div class="p-8 text-center text-gray-400">Đang khởi tạo phiếu vận đơn AWB từ Shopee...</div>`;
+
+        try {
+            const [trackRes, awbRes] = await Promise.all([
+                authFetch(`/api/v1/shopeemart/orders/${orderSn}/tracking`),
+                authFetch(`/api/v1/shopeemart/orders/${orderSn}/create-awb`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ document_type: 'THERMAL_AIR_WAYBILL' })
+                })
+            ]);
+            const trackData = await trackRes.json();
+            const awbData = await awbRes.json();
+
+            const trackingNo = (trackData.data && (trackData.data.tracking_number || trackData.data.tracking_no)) || ('VN-SPX-' + orderSn.slice(-8));
+            const orderObj = currentOrdersCache.find(x => x.channel_order_id === orderSn || x.display_order_id === orderSn) || {};
+
+            let itemsListHtml = '';
+            (orderObj.items || []).forEach(it => {
+                itemsListHtml += `<li class="flex justify-between py-0.5 border-b border-gray-100"><span>${it.quantity}x ${it.item_name}</span><span>${formatVND(it.total_price)}</span></li>`;
+            });
+
+            container.innerHTML = `
+                <div class="border-2 border-charcoal p-4 rounded-xl font-mono text-xs text-charcoal bg-white space-y-3">
+                    <div class="flex items-center justify-between border-b pb-2">
+                        <div class="flex items-center space-x-2">
+                            <span class="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-xs">ShopeeMart</span>
+                            <span class="font-bold text-sm">SPX EXPRESS</span>
+                        </div>
+                        <span class="font-bold text-rose-700">CHUẨN TƯƠI SỐNG</span>
+                    </div>
+
+                    <!-- Tracking Barcode Simulation -->
+                    <div class="text-center py-2.5 border-y border-dashed border-gray-300 bg-gray-50/50 rounded-lg">
+                        <div class="text-xl sm:text-2xl tracking-[4px] font-black font-mono text-charcoal">${trackingNo}</div>
+                        <div class="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Mã Vận Đơn 3PL (Tracking Code)</div>
+                    </div>
+
+                    <!-- Sender & Receiver -->
+                    <div class="grid grid-cols-2 gap-3 text-[11px]">
+                        <div class="p-2.5 rounded-lg bg-surface-low space-y-1">
+                            <div class="font-bold text-gray-500 uppercase text-[9px] tracking-wider">NGƯỜI GỬI:</div>
+                            <div class="font-bold text-charcoal">Nam An Market (${orderObj.store_name || 'Chi nhánh ' + (orderObj.store_code || '10001')})</div>
+                            <div class="text-gray-600">${orderObj.store_address || 'TP. Hồ Chí Minh'}</div>
+                        </div>
+                        <div class="p-2.5 rounded-lg bg-surface-low space-y-1">
+                            <div class="font-bold text-gray-500 uppercase text-[9px] tracking-wider">NGƯỜI NHẬN:</div>
+                            <div class="font-bold text-charcoal">${orderObj.customer_name || 'Khách Hàng Shopee'}</div>
+                            <div class="text-gray-600 font-bold">${orderObj.customer_phone || ''}</div>
+                            <div class="text-gray-600">${orderObj.delivery_address || 'Theo địa chỉ ứng dụng Shopee'}</div>
+                        </div>
+                    </div>
+
+                    <!-- Items Checklist -->
+                    <div class="p-2.5 rounded-lg bg-surface-low text-[11px] space-y-1.5">
+                        <div class="font-bold text-gray-500 uppercase text-[9px] tracking-wider">MẶT HÀNG ĐÓNG GÓI:</div>
+                        <ul class="space-y-0.5 text-gray-700 max-h-24 overflow-y-auto">
+                            ${itemsListHtml || '<li>1x Đơn hàng thực phẩm tươi sống ShopeeMart</li>'}
+                        </ul>
+                    </div>
+
+                    <!-- Order Details Summary -->
+                    <div class="p-2.5 rounded-lg bg-surface-low text-[11px] flex justify-between items-center">
+                        <div>
+                            <div><strong>Mã Đơn Shopee:</strong> ${orderSn}</div>
+                            <div><strong>Trạng thái tạo:</strong> ${awbData.data ? (awbData.data.status || 'READY') : 'READY'}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-gray-400 uppercase font-semibold">TỔNG THU (COD):</div>
+                            <div class="text-base font-extrabold text-primary">${formatVND(orderObj.total_amount || 0)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch(e) {
+            container.innerHTML = `<div class="p-6 text-center text-rose-600 font-bold">Lỗi khi khởi tạo phiếu AWB: ${e.message}</div>`;
+        }
+    }
+
+    function closeShopeeAwbModal() {
+        document.getElementById('shopee-awb-modal').classList.add('hidden');
     }
 
     // Auto-refresh control
