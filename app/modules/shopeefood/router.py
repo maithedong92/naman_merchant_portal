@@ -10,8 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import verify_hmac_sha256
 from app.core.config import get_settings
+from app.models.operational_error import ErrorSeverity
 from app.models.store import Store
 from app.modules.shopeefood.adapter import ShopeeFoodChannelAdapter
+from app.services.error_service import error_service
+import traceback
 
 logger = logging.getLogger("naman_portal.modules.shopeefood.router")
 router = APIRouter(tags=["ShopeeFood / Foody S2S"])
@@ -54,6 +57,20 @@ async def receive_shopeefood_order_webhook(
         return response
     except Exception as ex:
         logger.error(f"Lỗi khi xử lý webhook đơn hàng ShopeeFood: {str(ex)}")
+        try:
+            await error_service.log_error(
+                db=db,
+                error_code="SHOPEEFOOD_WEBHOOK_ORDER_ERROR",
+                message=f"Lỗi khi xử lý webhook đơn hàng ShopeeFood: {str(ex)}",
+                severity=ErrorSeverity.CRITICAL,
+                module="SHOPEEFOOD",
+                stack_trace=traceback.format_exc(),
+                endpoint="/shopeefood/webhooks/order",
+                http_method="POST",
+                request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
+            )
+        except Exception as log_ex:
+            logger.error(f"Failed to record operational error: {log_ex}")
         return {"result": "failed", "error": str(ex)}
 
 

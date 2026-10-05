@@ -1,4 +1,5 @@
 import logging
+import traceback
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
@@ -9,6 +10,7 @@ from app.core.database import get_db, get_optional_db
 from app.core.responses import APIResponse
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
+from app.models.operational_error import ErrorSeverity
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
 from app.models.store import Store, StoreChannelMapping
 from app.models.user import User
@@ -21,6 +23,7 @@ from app.modules.grabmart.schemas import (
     GrabOrderPrepareRequest,
 )
 from app.modules.grabmart.service import grabmart_client
+from app.services.error_service import error_service
 from app.services.order_service import OrderService
 
 logger = logging.getLogger("naman_portal.modules.grabmart.router")
@@ -110,6 +113,21 @@ async def receive_grabmart_order(
             }
     except Exception as ex:
         logger.error(f"Error handling GrabMart order webhook: {str(ex)}", exc_info=True)
+        if db is not None:
+            try:
+                await error_service.log_error(
+                    db=db,
+                    error_code="GRABMART_SUBMIT_ORDER_ERROR",
+                    message=f"Lỗi khi tiếp nhận đơn hàng GrabMart: {str(ex)}",
+                    severity=ErrorSeverity.CRITICAL,
+                    module="GRABMART",
+                    stack_trace=traceback.format_exc(),
+                    endpoint="/webhooks/order",
+                    http_method="POST",
+                    request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
+                )
+            except Exception as log_ex:
+                logger.error(f"Failed to record operational error: {log_ex}")
         return {"status": "ACCEPTED", "message": str(ex)}
 
 
@@ -139,6 +157,21 @@ async def receive_grabmart_order_state(
             return Response(status_code=status.HTTP_204_NO_CONTENT)
     except Exception as ex:
         logger.error(f"Error handling GrabMart order state webhook: {str(ex)}", exc_info=True)
+        if db is not None:
+            try:
+                await error_service.log_error(
+                    db=db,
+                    error_code="GRABMART_ORDER_STATE_ERROR",
+                    message=f"Lỗi khi cập nhật trạng thái đơn GrabMart: {str(ex)}",
+                    severity=ErrorSeverity.ERROR,
+                    module="GRABMART",
+                    stack_trace=traceback.format_exc(),
+                    endpoint="/webhooks/order/state",
+                    http_method="PUT",
+                    request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
+                )
+            except Exception as log_ex:
+                logger.error(f"Failed to record operational error: {log_ex}")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

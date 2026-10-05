@@ -1,5 +1,6 @@
 import json
 import logging
+import traceback
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,12 +9,14 @@ from sqlalchemy.orm import selectinload
 from app.interfaces.channel_adapter import BaseChannelAdapter
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
+from app.models.operational_error import ErrorSeverity
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
 from app.models.product import Category, Product
 from app.models.store import Store, StoreChannelMapping
 from app.schemas.order import OrderStatusUpdateSchema
 from app.schemas.sync import SyncResult
 from app.services.channel_service import channel_service
+from app.services.error_service import error_service
 from app.services.order_service import OrderService
 from app.modules.grabmart.schemas import (
     GrabCategory,
@@ -347,6 +350,20 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
         except Exception as ex:
             logger.error(f"Lỗi khi đồng bộ menu GrabMart (Store {store_id}): {str(ex)}")
+            if db is not None:
+                try:
+                    await error_service.log_error(
+                        db=db,
+                        error_code="GRABMART_SYNC_MENU_ERROR",
+                        message=f"Lỗi khi đồng bộ menu GrabMart chi nhánh {store_id}: {str(ex)}",
+                        severity=ErrorSeverity.ERROR,
+                        module="GRABMART",
+                        stack_trace=traceback.format_exc(),
+                        endpoint="/partner/v1/merchant/menu/notification",
+                        http_method="POST",
+                    )
+                except Exception as log_ex:
+                    logger.error(f"Failed to record operational error: {log_ex}")
             return SyncResult(
                 channel_code=self.channel_code,
                 store_id=store_id,
@@ -413,6 +430,20 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
         except Exception as ex:
             logger.error(f"Lỗi khi cập nhật tồn kho GrabMart: {str(ex)}")
+            if db is not None:
+                try:
+                    await error_service.log_error(
+                        db=db,
+                        error_code="GRABMART_SYNC_STOCK_ERROR",
+                        message=f"Lỗi khi cập nhật tồn kho GrabMart (Store {store_id}): {str(ex)}",
+                        severity=ErrorSeverity.ERROR,
+                        module="GRABMART",
+                        stack_trace=traceback.format_exc(),
+                        endpoint="/partner/v1/menu",
+                        http_method="PUT",
+                    )
+                except Exception as log_ex:
+                    logger.error(f"Failed to record operational error: {log_ex}")
             return SyncResult(
                 channel_code=self.channel_code,
                 store_id=store_id,
@@ -623,5 +654,20 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             return True
         except Exception as ex:
             logger.error(f"Lỗi khi gửi cập nhật trạng thái lên GrabMart: {str(ex)}")
+            if db is not None:
+                try:
+                    await error_service.log_error(
+                        db=db,
+                        error_code="GRABMART_SYNC_ORDER_STATUS_ERROR",
+                        message=f"Lỗi gửi cập nhật trạng thái đơn {channel_order_id} sang '{new_status.value}' lên GrabMart: {str(ex)}",
+                        severity=ErrorSeverity.ERROR,
+                        module="GRABMART",
+                        stack_trace=traceback.format_exc(),
+                        endpoint="/partner/v1/orders/mark" if new_status == UnifiedOrderStatus.READY else "/partner/v1/order/prepare",
+                        http_method="POST",
+                        request_payload={"order_id": channel_order_id, "partner_store_id": partner_store_id, "new_status": new_status.value, "error": str(ex)},
+                    )
+                except Exception as log_ex:
+                    logger.error(f"Failed to record operational error: {log_ex}")
             return False
 
