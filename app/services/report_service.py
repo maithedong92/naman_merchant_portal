@@ -82,12 +82,12 @@ class ReportService:
         total_orders = len(orders)
         completed_orders = sum(1 for o in orders if o.status == UnifiedOrderStatus.DELIVERED)
         cancelled_orders = sum(
-            1 for o in orders if o.status in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED)
+            1 for o in orders if o.status == UnifiedOrderStatus.CANCELLED
         )
         active_orders = total_orders - completed_orders - cancelled_orders
 
         non_cancelled = [
-            o for o in orders if o.status not in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED)
+            o for o in orders if o.status != UnifiedOrderStatus.CANCELLED
         ]
 
         total_gross_revenue = sum(float(o.total_amount or 0.0) for o in non_cancelled)
@@ -147,9 +147,9 @@ class ReportService:
                 item.order_count += 1
                 if o.status == UnifiedOrderStatus.DELIVERED:
                     item.completed_count += 1
-                elif o.status in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED):
+                elif o.status == UnifiedOrderStatus.CANCELLED:
                     item.cancelled_count += 1
-                if o.status not in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED):
+                if o.status != UnifiedOrderStatus.CANCELLED:
                     item.revenue += float(o.total_amount or 0.0)
 
         channel_items = list(channel_map.values())
@@ -181,9 +181,9 @@ class ReportService:
                 s_item.order_count += 1
                 if o.status == UnifiedOrderStatus.DELIVERED:
                     s_item.completed_count += 1
-                elif o.status in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED):
+                elif o.status == UnifiedOrderStatus.CANCELLED:
                     s_item.cancelled_count += 1
-                if o.status not in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED):
+                if o.status != UnifiedOrderStatus.CANCELLED:
                     s_item.revenue += float(o.total_amount or 0.0)
 
         store_items = list(store_map.values())
@@ -213,7 +213,7 @@ class ReportService:
                 d_item.order_count += 1
                 if o.status == UnifiedOrderStatus.DELIVERED:
                     d_item.completed_count += 1
-                if o.status not in (UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.FAILED):
+                if o.status != UnifiedOrderStatus.CANCELLED:
                     d_item.revenue += float(o.total_amount or 0.0)
 
         daily_trends = sorted(daily_dict.values(), key=lambda x: x.date)
