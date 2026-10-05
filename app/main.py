@@ -190,6 +190,7 @@ app.include_router(shopeefood_webhook_router)  # Allows root /shopeefoodapi/{sto
 app.include_router(grabmart_webhook_router, prefix="/api/v1")
 app.include_router(grabmart_webhook_router)     # Allows root /grabmart/... endpoints
 app.include_router(shopeemart_webhook_router, prefix="/api/v1")
+app.include_router(shopeemart_webhook_router)     # Allows root /shopeemart/... endpoints
 
 
 @app.post("/oauth/token", include_in_schema=False)
