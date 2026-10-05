@@ -15,11 +15,19 @@ from app.models.store import Store, StoreChannelMapping
 from app.models.user import User
 from app.modules.shopeemart.adapter import ShopeeMartChannelAdapter
 from app.modules.shopeemart.schemas import (
+    ShopeeMartAddItemRequest,
     ShopeeMartAuthUrlResponse,
+    ShopeeMartBatchOutletStockUpdate,
+    ShopeeMartBuyerCancellationRequest,
     ShopeeMartCancelOrderRequest,
+    ShopeeMartConfirmReturnRequest,
     ShopeeMartConnectionStatus,
+    ShopeeMartCreateShippingDocRequest,
+    ShopeeMartDisputeReturnRequest,
+    ShopeeMartPublishOutletRequest,
     ShopeeMartShipOrderRequest,
     ShopeeMartTokenResponse,
+    ShopeeMartUpdateItemRequest,
 )
 from app.modules.shopeemart.service import shopeemart_client
 from app.schemas.order import OrderStatusUpdateSchema
@@ -271,3 +279,257 @@ async def cancel_shopee_order(
         data={"order_id": order.id, "status": updated_order.status},
         message=f"Đơn hàng ShopeeMart đã được hủy ({payload.cancel_reason}).",
     )
+
+
+# ==============================================================================
+# 4. Product Listing & Outlet Management Endpoints
+# ==============================================================================
+
+@router.post(
+    "/product/add-item",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Đăng món mới lên Mart Shop (v2.product.add_item)",
+    description="Tạo SKU gốc trên gian hàng Mart chính trước khi đẩy sang các Outlet.",
+)
+async def add_shopee_product(
+    payload: ShopeeMartAddItemRequest,
+    shop_id: Optional[str] = Query(None, description="Mart Shop ID"),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.add_item(
+        shop_id=shop_id or "10001",
+        item_data=payload.model_dump(exclude_none=True)
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã gửi yêu cầu đăng sản phẩm '{payload.item_name}' lên ShopeeMart."
+    )
+
+
+@router.post(
+    "/product/publish-outlet",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Đẩy SKU sang các chi nhánh Outlet (v2.product.publish_item_to_outlet_shop)",
+    description="Liên kết và công bố sản phẩm từ Mart Shop sang 4 siêu thị chi nhánh.",
+)
+async def publish_item_to_outlets(
+    payload: ShopeeMartPublishOutletRequest,
+    shop_id: Optional[str] = Query(None, description="Mart Shop ID"),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.publish_item_to_outlet_shop(
+        shop_id=shop_id or "10001",
+        item_id=payload.item_id,
+        outlet_shop_id_list=payload.outlet_shop_id_list,
+        price_list=payload.price_list,
+        stock_list=payload.stock_list
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã gửi yêu cầu publish sản phẩm #{payload.item_id} sang {len(payload.outlet_shop_id_list)} chi nhánh."
+    )
+
+
+@router.post(
+    "/product/batch-outlet-stock",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Cập nhật tồn kho hàng loạt theo chi nhánh (v2.product.batch_update_outlet_stock)",
+)
+async def batch_update_outlet_stock_endpoint(
+    payload: ShopeeMartBatchOutletStockUpdate,
+    shop_id: Optional[str] = Query(None, description="Shop ID"),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.batch_update_outlet_stock(
+        shop_id=shop_id or "10001",
+        outlet_stock_list=[item.model_dump() for item in payload.outlet_stock_list]
+    )
+    return APIResponse.ok(
+        data=result,
+        message="Đã cập nhật tồn kho đa chi nhánh ShopeeMart thành công."
+    )
+
+
+# ==============================================================================
+# 5. Logistics, Tracking & Airway Bill (AWB) Printing Endpoints
+# ==============================================================================
+
+@router.get(
+    "/orders/{order_sn}/tracking",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Lấy mã vận đơn Tracking Number (v2.logistics.get_tracking_number)",
+)
+async def get_shopee_tracking(
+    order_sn: str,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.get_tracking_number(order_sn=order_sn, shop_id=shop_id)
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã truy vấn mã vận đơn đơn hàng #{order_sn}."
+    )
+
+
+@router.post(
+    "/orders/{order_sn}/create-awb",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Tạo phiếu gửi hàng Airway Bill AWB (v2.logistics.create_shipping_document)",
+)
+async def create_shopee_awb(
+    order_sn: str,
+    payload: Optional[ShopeeMartCreateShippingDocRequest] = None,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    doc_type = payload.document_type if payload else "THERMAL_AIR_WAYBILL"
+    result = await shopeemart_client.create_shipping_document(
+        order_sn=order_sn,
+        document_type=doc_type,
+        shop_id=shop_id
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã tạo lệnh in phiếu vận đơn AWB cho đơn #{order_sn}."
+    )
+
+
+@router.get(
+    "/orders/{order_sn}/download-awb",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Tải file in phiếu vận đơn AWB (v2.logistics.download_shipping_document)",
+)
+async def download_shopee_awb(
+    order_sn: str,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.download_shipping_document(order_sn=order_sn, shop_id=shop_id)
+    return APIResponse.ok(
+        data=result,
+        message=f"Tải phiếu AWB cho đơn #{order_sn} thành công."
+    )
+
+
+# ==============================================================================
+# 6. Buyer Cancellation & Return/Refund Management Endpoints
+# ==============================================================================
+
+@router.post(
+    "/orders/{order_sn}/buyer-cancellation",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Xử lý yêu cầu hủy đơn từ khách (v2.order.handle_buyer_cancellation)",
+)
+async def handle_buyer_cancel(
+    order_sn: str,
+    payload: ShopeeMartBuyerCancellationRequest,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.handle_buyer_cancellation(
+        order_sn=order_sn,
+        operation=payload.operation,
+        shop_id=shop_id
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã gửi phản hồi {payload.operation} cho yêu cầu hủy đơn #{order_sn}."
+    )
+
+
+@router.get(
+    "/returns",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Danh sách yêu cầu Đổi trả / Hoàn tiền (v2.returns.get_return_list)",
+)
+async def get_shopee_returns(
+    page_no: int = Query(0, ge=0),
+    page_size: int = Query(20, ge=1, le=50),
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.get_return_list(page_no=page_no, page_size=page_size, shop_id=shop_id)
+    return APIResponse.ok(
+        data=result,
+        message="Lấy danh sách yêu cầu đổi trả thành công."
+    )
+
+
+@router.get(
+    "/returns/{return_sn}",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Chi tiết một yêu cầu Đổi trả / Hoàn tiền (v2.returns.get_return_detail)",
+)
+async def get_shopee_return_detail(
+    return_sn: str,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.get_return_detail(return_sn=return_sn, shop_id=shop_id)
+    return APIResponse.ok(
+        data=result,
+        message=f"Lấy chi tiết yêu cầu đổi trả #{return_sn} thành công."
+    )
+
+
+@router.post(
+    "/returns/{return_sn}/confirm",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Chấp thuận hoàn tiền cho người mua (v2.returns.confirm)",
+)
+async def confirm_shopee_return(
+    return_sn: str,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.confirm_return(return_sn=return_sn, shop_id=shop_id)
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã chấp thuận yêu cầu hoàn tiền #{return_sn}."
+    )
+
+
+@router.post(
+    "/returns/{return_sn}/dispute",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Khiếu nại yêu cầu hoàn tiền lên Shopee (v2.returns.dispute)",
+)
+async def dispute_shopee_return(
+    return_sn: str,
+    payload: ShopeeMartDisputeReturnRequest,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.dispute_return(
+        return_sn=return_sn,
+        dispute_reason=payload.dispute_reason,
+        dispute_text_reason=payload.dispute_text_reason or "",
+        email=payload.email or "",
+        shop_id=shop_id
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã gửi khiếu nại tranh chấp cho yêu cầu #{return_sn} lên Shopee."
+    )
+
+
+# ==============================================================================
+# 7. Financials & Escrow Settlement Endpoints
+# ==============================================================================
+
+@router.get(
+    "/orders/{order_sn}/escrow",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Chi tiết quyết toán đơn hàng Escrow (v2.payment.get_escrow_detail)",
+)
+async def get_shopee_escrow(
+    order_sn: str,
+    shop_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.get_escrow_detail(order_sn=order_sn, shop_id=shop_id)
+    return APIResponse.ok(
+        data=result,
+        message=f"Lấy bảng quyết toán tài chính Shopee cho đơn #{order_sn} thành công."
+    )
+

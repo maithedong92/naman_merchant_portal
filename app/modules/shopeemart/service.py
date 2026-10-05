@@ -452,6 +452,287 @@ class ShopeeMartClient:
             body={"price_list": price_list}
         )
 
+    # ==========================================================================
+    # 5. Product Listing, Publishing & Mass Outlet Management
+    # ==========================================================================
+
+    async def add_item(self, shop_id: str, item_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new Mart SKU on the primary Mart shop.
+        Endpoint: POST /api/v2/product/add_item
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/product/add_item",
+            shop_id=shop_id,
+            body=item_data
+        )
+
+    async def update_item(self, shop_id: str, item_id: int, update_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update existing Mart item details.
+        Endpoint: POST /api/v2/product/update_item
+        """
+        payload = {"item_id": item_id, **update_data}
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/product/update_item",
+            shop_id=shop_id,
+            body=payload
+        )
+
+    async def publish_item_to_outlet_shop(
+        self,
+        shop_id: str,
+        item_id: int,
+        outlet_shop_id_list: List[int],
+        price_list: Optional[List[Dict[str, Any]]] = None,
+        stock_list: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        Publish created Mart item to one or more Outlet Shops.
+        Endpoint: POST /api/v2/product/publish_item_to_outlet_shop
+        """
+        payload: Dict[str, Any] = {
+            "item_id": item_id,
+            "outlet_shop_id_list": outlet_shop_id_list
+        }
+        if price_list:
+            payload["price_list"] = price_list
+        if stock_list:
+            payload["stock_list"] = stock_list
+
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/product/publish_item_to_outlet_shop",
+            shop_id=shop_id,
+            body=payload
+        )
+
+    async def batch_update_outlet_stock(
+        self,
+        shop_id: str,
+        outlet_stock_list: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Batch update stock across multiple Outlet shops.
+        Endpoint: POST /api/v2/product/batch_update_outlet_stock
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/product/batch_update_outlet_stock",
+            shop_id=shop_id,
+            body={"outlet_stock_list": outlet_stock_list}
+        )
+
+    # ==========================================================================
+    # 6. Logistics, Tracking & Airway Bill (AWB) Management
+    # ==========================================================================
+
+    async def get_tracking_number(self, order_sn: str, shop_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Retrieve carrier tracking number for the order.
+        Endpoint: GET /api/v2/logistics/get_tracking_number
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/logistics/get_tracking_number",
+            shop_id=shop_id,
+            params={"order_sn": order_sn}
+        )
+
+    async def create_shipping_document(
+        self,
+        order_sn: str,
+        document_type: str = "THERMAL_AIR_WAYBILL",
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate printable shipping document / AWB label.
+        Endpoint: POST /api/v2/logistics/create_shipping_document
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/logistics/create_shipping_document",
+            shop_id=shop_id,
+            body={
+                "order_list": [{
+                    "order_sn": order_sn,
+                    "shipping_document_type": document_type
+                }]
+            }
+        )
+
+    async def download_shipping_document(
+        self,
+        order_sn: str,
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Download printable AWB PDF for attaching to packages.
+        Endpoint: POST /api/v2/logistics/download_shipping_document
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/logistics/download_shipping_document",
+            shop_id=shop_id,
+            body={"order_list": [{"order_sn": order_sn}]}
+        )
+
+    # ==========================================================================
+    # 7. Order Enhancements & Buyer Cancellation Handling
+    # ==========================================================================
+
+    async def get_order_list(
+        self,
+        time_from: int,
+        time_to: int,
+        order_status: Optional[str] = None,
+        page_size: int = 50,
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Query order list by time range and status for reconciliation.
+        Endpoint: GET /api/v2/order/get_order_list
+        """
+        params: Dict[str, Any] = {
+            "time_range_field": "create_time",
+            "time_from": time_from,
+            "time_to": time_to,
+            "page_size": page_size
+        }
+        if order_status:
+            params["order_status"] = order_status
+
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/order/get_order_list",
+            shop_id=shop_id,
+            params=params
+        )
+
+    async def handle_buyer_cancellation(
+        self,
+        order_sn: str,
+        operation: str = "ACCEPT",
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Accept or reject buyer's cancellation request.
+        Endpoint: POST /api/v2/order/handle_buyer_cancellation
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/order/handle_buyer_cancellation",
+            shop_id=shop_id,
+            body={
+                "order_sn": order_sn,
+                "operation": operation
+            }
+        )
+
+    # ==========================================================================
+    # 8. Return & Refund (RR) Management
+    # ==========================================================================
+
+    async def get_return_list(
+        self,
+        page_no: int = 0,
+        page_size: int = 20,
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Retrieve list of return and refund applications.
+        Endpoint: GET /api/v2/returns/get_return_list
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/returns/get_return_list",
+            shop_id=shop_id,
+            params={"page_no": page_no, "page_size": page_size}
+        )
+
+    async def get_return_detail(self, return_sn: str, shop_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Retrieve details of a specific return request.
+        Endpoint: GET /api/v2/returns/get_return_detail
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/returns/get_return_detail",
+            shop_id=shop_id,
+            params={"return_sn": return_sn}
+        )
+
+    async def confirm_return(self, return_sn: str, shop_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Accept buyer's return / full refund application.
+        Endpoint: POST /api/v2/returns/confirm
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/returns/confirm",
+            shop_id=shop_id,
+            body={"return_sn": return_sn}
+        )
+
+    async def dispute_return(
+        self,
+        return_sn: str,
+        dispute_reason: str,
+        dispute_text_reason: str = "",
+        email: str = "",
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Escalate return dispute to Shopee dispute mediation center.
+        Endpoint: POST /api/v2/returns/dispute
+        """
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/returns/dispute",
+            shop_id=shop_id,
+            body={
+                "return_sn": return_sn,
+                "dispute_reason": dispute_reason,
+                "dispute_text_reason": dispute_text_reason,
+                "email": email or "support@namanmarket.com"
+            }
+        )
+
+    # ==========================================================================
+    # 9. Financials & Escrow Settlement (Optional)
+    # ==========================================================================
+
+    async def get_escrow_detail(self, order_sn: str, shop_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Retrieve order escrow settlement statement.
+        Endpoint: GET /api/v2/payment/get_escrow_detail
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/payment/get_escrow_detail",
+            shop_id=shop_id,
+            params={"order_sn": order_sn}
+        )
+
+    async def get_wallet_transaction_list(
+        self,
+        page_no: int = 1,
+        page_size: int = 20,
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Get wallet transaction history.
+        Endpoint: GET /api/v2/payment/get_wallet_transaction_list
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/payment/get_wallet_transaction_list",
+            shop_id=shop_id,
+            params={"page_no": page_no, "page_size": page_size}
+        )
+
     def get_connection_status(self, shop_id: Optional[str] = None) -> ShopeeMartConnectionStatus:
         """Inspect and report the health of credentials and active access tokens."""
         target_shop = str(shop_id or self.default_shop_id or "10001")

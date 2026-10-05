@@ -284,3 +284,102 @@ async def test_shopeemart_outbound_order_transitions():
         )
         assert success_cancel is True
         mock_cancel.assert_called_once_with(order_sn="260905SHP111", shop_id="10001", cancel_reason="OUT_OF_STOCK")
+
+
+# ==============================================================================
+# 5. Product Listing & Outlet Publish Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_shopeemart_add_item_and_publish_outlet():
+    """Verify adding item to Mart and publishing to Outlet shops."""
+    sm_client = ShopeeMartClient()
+
+    # 1. Add item simulation
+    item_payload = {
+        "item_name": "Sữa Chua Hy Lạp Lên Men Tự Nhiên 200g",
+        "description": "Sữa chua hữu cơ nguyên chất",
+        "original_price": 55000.0,
+        "normal_stock": 50,
+        "category_id": 10020,
+        "seller_sku": "SKU-YOGURT-GREEK"
+    }
+    add_res = await sm_client.add_item(shop_id="10001", item_data=item_payload)
+    assert add_res["message"] == "sandbox_mode_success"
+
+    # 2. Publish to Outlet shops
+    publish_res = await sm_client.publish_item_to_outlet_shop(
+        shop_id="10001",
+        item_id=889900,
+        outlet_shop_id_list=[10001, 10004, 10005, 10006]
+    )
+    assert publish_res["message"] == "sandbox_mode_success"
+
+
+# ==============================================================================
+# 6. Logistics, Tracking & Airway Bill (AWB) Document Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_shopeemart_logistics_and_awb():
+    """Verify tracking number retrieval and AWB document creation."""
+    sm_client = ShopeeMartClient()
+
+    # 1. Get tracking number
+    track_res = await sm_client.get_tracking_number("260905SHP111", shop_id="10001")
+    assert track_res["message"] == "sandbox_mode_success"
+
+    # 2. Create shipping document
+    create_doc_res = await sm_client.create_shipping_document("260905SHP111", shop_id="10001")
+    assert create_doc_res["message"] == "sandbox_mode_success"
+
+    # 3. Download shipping document
+    download_res = await sm_client.download_shipping_document("260905SHP111", shop_id="10001")
+    assert download_res["message"] == "sandbox_mode_success"
+
+
+# ==============================================================================
+# 7. Buyer Cancellation & Return/Refund Management Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_shopeemart_buyer_cancellation_and_returns():
+    """Verify buyer cancellation response and return dispute lifecycle."""
+    sm_client = ShopeeMartClient()
+
+    # 1. Handle buyer cancellation
+    buyer_cancel_res = await sm_client.handle_buyer_cancellation("260905SHP111", operation="ACCEPT")
+    assert buyer_cancel_res["message"] == "sandbox_mode_success"
+
+    # 2. Return list & detail
+    returns_res = await sm_client.get_return_list(shop_id="10001")
+    assert returns_res["message"] == "sandbox_mode_success"
+
+    ret_detail = await sm_client.get_return_detail("RET-260905-001", shop_id="10001")
+    assert ret_detail["message"] == "sandbox_mode_success"
+
+    # 3. Confirm return
+    confirm_res = await sm_client.confirm_return("RET-260905-001", shop_id="10001")
+    assert confirm_res["message"] == "sandbox_mode_success"
+
+    # 4. Dispute return
+    dispute_res = await sm_client.dispute_return(
+        return_sn="RET-260905-001",
+        dispute_reason="SELLER_DISPUTE_DAMAGED_ITEM",
+        dispute_text_reason="Hàng giao còn nguyên vẹn tem bảo hành",
+        shop_id="10001"
+    )
+    assert dispute_res["message"] == "sandbox_mode_success"
+
+
+# ==============================================================================
+# 8. Escrow Settlement & Financials Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_shopeemart_escrow_financials():
+    """Verify escrow settlement query."""
+    sm_client = ShopeeMartClient()
+    escrow_res = await sm_client.get_escrow_detail("260905SHP111", shop_id="10001")
+    assert escrow_res["message"] == "sandbox_mode_success"
+
