@@ -78,6 +78,16 @@ class User(Base, TimestampMixin):
         "RefreshToken", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
 
+    @property
+    def store_code(self) -> Optional[str]:
+        """Convenience property to access store code."""
+        return self.store.code if self.store else None
+
+    @property
+    def store_name(self) -> Optional[str]:
+        """Convenience property to access store name."""
+        return self.store.name if self.store else None
+
 
 class RefreshToken(Base, TimestampMixin):
     """Store hashed refresh tokens to allow revocation and rotation."""

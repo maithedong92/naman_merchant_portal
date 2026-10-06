@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.responses import APIResponse
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.report import FullAnalyticsReport, ReconciliationOrderItem
 from app.services.report_service import report_service
@@ -28,12 +28,31 @@ async def get_analytics_report(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    effective_store_code = store_code
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code:
+            return APIResponse.ok(
+                data=FullAnalyticsReport(
+                    from_date=from_date,
+                    to_date=to_date,
+                    gross_revenue=0.0,
+                    net_revenue=0.0,
+                    total_orders=0,
+                    cancelled_orders=0,
+                    cancellation_rate=0.0,
+                    channel_distribution=[],
+                    store_performance=[]
+                ),
+                message="Người dùng chưa được phân công chi nhánh."
+            )
+        effective_store_code = current_user.store_code
+
     analytics = await report_service.get_full_analytics(
         db=db,
         from_date=from_date,
         to_date=to_date,
         channel_code=channel_code,
-        store_code=store_code,
+        store_code=effective_store_code,
     )
     return APIResponse.ok(
         data=analytics,
@@ -58,12 +77,21 @@ async def get_reconciliation_orders(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    effective_store_code = store_code
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code:
+            return APIResponse.ok(
+                data=PaginatedResponse(items=[], meta=PaginationMeta.create(page=page, page_size=page_size, total_items=0)),
+                message="Người dùng chưa được phân công chi nhánh."
+            )
+        effective_store_code = current_user.store_code
+
     items, total = await report_service.get_reconciliation_orders(
         db=db,
         from_date=from_date,
         to_date=to_date,
         channel_code=channel_code,
-        store_code=store_code,
+        store_code=effective_store_code,
         search=search,
         page=page,
         page_size=page_size,
@@ -91,12 +119,18 @@ async def export_reconciliation_csv(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    effective_store_code = store_code
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code:
+            return Response(content="\ufeffMã Đơn,Thời Gian,Kênh Bán,Chi Nhánh,Doanh Thu\n", media_type="text/csv")
+        effective_store_code = current_user.store_code
+
     csv_content = await report_service.export_reconciliation_csv(
         db=db,
         from_date=from_date,
         to_date=to_date,
         channel_code=channel_code,
-        store_code=store_code,
+        store_code=effective_store_code,
     )
 
     filename_date = date.today().strftime("%Y%m%d")

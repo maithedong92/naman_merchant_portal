@@ -28,7 +28,9 @@ logger = logging.getLogger("naman_portal.users")
 )
 async def list_users(
     role: Optional[UserRole] = Query(None, description="Lọc theo vai trò"),
-    store_id: Optional[str] = Query(None, description="Lọc theo mã chi nhánh"),
+    store_id: Optional[str] = Query(None, description="Lọc theo mã ID chi nhánh"),
+    store_code: Optional[str] = Query(None, description="Lọc theo mã chi nhánh (10001, 10004...)"),
+    search: Optional[str] = Query(None, description="Tìm theo tên, username, email, SĐT"),
     is_active: Optional[bool] = Query(None, description="Lọc theo trạng thái hoạt động"),
     page: int = Query(1, ge=1, description="Trang hiện tại"),
     page_size: int = Query(50, ge=1, le=100, description="Số lượng bản ghi mỗi trang"),
@@ -39,6 +41,8 @@ async def list_users(
         db=db,
         role=role,
         store_id=store_id,
+        store_code=store_code,
+        search=search,
         is_active=is_active,
         page=page,
         page_size=page_size,

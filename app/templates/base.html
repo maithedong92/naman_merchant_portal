@@ -119,6 +119,9 @@
                         <a href="/admin/inventory" class="px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'inventory' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
                             Kho & Thực đơn
                         </a>
+                        <a href="/admin/users" id="nav-users-link" class="hidden px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'users' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
+                            Người dùng
+                        </a>
                         <a href="/docs" target="_blank" class="px-4 py-2 rounded-full text-sm font-medium text-charcoal-muted hover:text-primary hover:bg-surface-low transition-colors flex items-center space-x-1">
                             <span>OpenAPI Docs</span>
                             <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
@@ -141,7 +144,10 @@
                     <div class="flex items-center space-x-3 pl-2">
                         <div class="text-right hidden sm:block">
                             <div id="user-display-name" class="text-sm font-bold text-charcoal">Quản trị viên</div>
-                            <div id="user-role-badge" class="text-[11px] font-mono text-primary font-medium">SUPER_ADMIN</div>
+                            <div class="flex items-center space-x-1.5 justify-end mt-0.5">
+                                <span id="user-store-badge" class="hidden text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-primary font-bold">10001</span>
+                                <span id="user-role-badge" class="text-[11px] font-mono text-primary font-medium">SUPER_ADMIN</span>
+                            </div>
                         </div>
                         <button onclick="logoutAdmin()" title="Đăng xuất" class="p-2.5 rounded-full bg-surface-low text-charcoal-muted hover:text-rose-600 hover:bg-rose-50 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -268,14 +274,58 @@
             window.location.href = '/admin/login';
         }
 
+        function renderHeaderUserInfo(user) {
+            if (!user) return;
+            const nameEl = document.getElementById('user-display-name');
+            const roleEl = document.getElementById('user-role-badge');
+            const storeEl = document.getElementById('user-store-badge');
+            const navUsersLink = document.getElementById('nav-users-link');
+
+            if (nameEl && user.full_name) nameEl.textContent = user.full_name;
+            if (roleEl && user.role) roleEl.textContent = user.role;
+            if (storeEl) {
+                if (user.store_code) {
+                    storeEl.textContent = `📍 ${user.store_code}`;
+                    storeEl.title = user.store_name ? `${user.store_name} (${user.store_code})` : user.store_code;
+                    storeEl.classList.remove('hidden');
+                } else if (user.role === 'SUPER_ADMIN' || user.is_superuser) {
+                    storeEl.textContent = '🌐 Toàn chuỗi';
+                    storeEl.classList.remove('hidden');
+                } else {
+                    storeEl.classList.add('hidden');
+                }
+            }
+            if (navUsersLink) {
+                if (user.role === 'SUPER_ADMIN' || user.is_superuser) {
+                    navUsersLink.classList.remove('hidden');
+                } else {
+                    navUsersLink.classList.add('hidden');
+                }
+            }
+        }
+
         // Initialize User Info on Header
-        document.addEventListener('DOMContentLoaded', () => {
-            const user = TokenManager.getUser();
-            if (user && user.full_name) {
-                const nameEl = document.getElementById('user-display-name');
-                const roleEl = document.getElementById('user-role-badge');
-                if (nameEl) nameEl.textContent = user.full_name;
-                if (roleEl) roleEl.textContent = user.role;
+        document.addEventListener('DOMContentLoaded', async () => {
+            const cachedUser = TokenManager.getUser();
+            if (cachedUser && cachedUser.id) {
+                renderHeaderUserInfo(cachedUser);
+            }
+
+            const token = TokenManager.getToken();
+            if (token) {
+                try {
+                    const res = await authFetch('/api/v1/auth/me');
+                    if (res && res.ok) {
+                        const json = await res.json();
+                        if (json.success && json.data) {
+                            TokenManager.setUser(json.data);
+                            renderHeaderUserInfo(json.data);
+                            window.dispatchEvent(new CustomEvent('currentUserLoaded', { detail: json.data }));
+                        }
+                    }
+                } catch(e) {
+                    console.error("Lỗi khi tải thông tin tài khoản:", e);
+                }
             }
         });
     </script>

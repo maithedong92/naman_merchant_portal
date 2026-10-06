@@ -5,11 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import check_store_access, get_current_user, require_store_manager
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.responses import APIResponse
 from app.models.inventory import StoreInventory
 from app.models.store import Store
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.inventory import (
     InventoryBatchUpdateRequest,
@@ -39,8 +39,28 @@ async def get_inventory_overview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    effective_store_code = store_code
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code:
+            return APIResponse.ok(
+                data={
+                    "paginated": PaginatedResponse(items=[], meta=PaginationMeta.create(page=page, page_size=page_size, total_items=0)),
+                    "summary": {
+                        "store_code": "",
+                        "store_name": "",
+                        "total_skus": 0,
+                        "in_stock_skus": 0,
+                        "out_of_stock_skus": 0,
+                        "low_stock_skus": 0,
+                        "categories_count": 0,
+                    }
+                },
+                message="Người dùng chưa được phân công chi nhánh."
+            )
+        effective_store_code = current_user.store_code
+
     items, total, summary = await InventoryService.get_store_inventory_overview(
-        store_code=store_code,
+        store_code=effective_store_code,
         category_id=category_id,
         status=status,
         search=search,
@@ -68,6 +88,10 @@ async def toggle_item_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code or current_user.store_code != payload.store_code:
+            raise ForbiddenError(f"Bạn không có quyền thao tác trên chi nhánh '{payload.store_code}'.")
+
     inv, sync_results = await InventoryService.toggle_item_status(payload, db)
     status_text = "HẾT HÀNG (Tạm ngưng nhận món)" if payload.is_out_of_stock else "CÒN HÀNG (Đang mở bán)"
     return APIResponse.ok(
@@ -86,6 +110,10 @@ async def quick_update_stock(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code or current_user.store_code != payload.store_code:
+            raise ForbiddenError(f"Bạn không có quyền thao tác trên chi nhánh '{payload.store_code}'.")
+
     inv, sync_results = await InventoryService.quick_update_stock(
         store_code=payload.store_code,
         sku=payload.sku,
@@ -109,6 +137,10 @@ async def sync_all_inventory(
     current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
+    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+        if not current_user.store_code or current_user.store_code != store_code:
+            raise ForbiddenError(f"Bạn không có quyền thao tác trên chi nhánh '{store_code}'.")
+
     sync_results = await InventoryService.sync_all_store_inventory(store_code, db)
     return APIResponse.ok(
         data={"sync_results": sync_results},

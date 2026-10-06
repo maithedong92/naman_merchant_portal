@@ -1,0 +1,893 @@
+{% extends "base.html" %}
+
+{% block title %}Quản Lý Người Dùng & Phân Quyền - Nam An Merchant Portal{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-primary text-xs font-semibold tracking-wide mb-2">
+                <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                <span>ACCESS CONTROL & TEAM MANAGEMENT</span>
+            </div>
+            <h1 class="text-2xl sm:text-3xl font-display font-extrabold text-charcoal tracking-tight">
+                Quản Lý Người Dùng & Phân Quyền Chi Nhánh
+            </h1>
+            <p class="text-xs sm:text-sm text-charcoal-muted mt-1">
+                Phân quyền truy cập theo chi nhánh (Store Isolation). Nhân viên mỗi siêu thị chỉ xem và xử lý đơn hàng của đúng chi nhánh mình phụ trách.
+            </p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center gap-2.5">
+            <button onclick="openSecurityLogsModal()" class="px-4 py-2.5 rounded-full bg-white text-xs font-bold text-charcoal shadow-sm hover:bg-surface-low border border-gray-200 transition-colors flex items-center space-x-1.5">
+                <svg class="w-4 h-4 text-charcoal-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <span>Nhật Ký Bảo Mật</span>
+            </button>
+            <button onclick="openCreateUserModal()" class="px-5 py-2.5 rounded-full bg-primary text-white text-xs font-bold hover:bg-primary-light shadow-md shadow-primary/20 transition-all flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                <span>Thêm Người Dùng Mới</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Quick Stat KPI Tiles -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+        <!-- Total Users -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <span class="text-[11px] font-bold text-charcoal-muted uppercase tracking-wider">Tổng Nhân Sự</span>
+            <div id="stat-total-users" class="mt-2 text-2xl font-display font-extrabold text-charcoal">0</div>
+            <p class="text-[10px] text-gray-400 mt-1">Tài khoản trong hệ thống</p>
+        </div>
+        <!-- Super Admins -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <span class="text-[11px] font-bold text-rose-700 uppercase tracking-wider">Super Admin</span>
+            <div id="stat-super-admins" class="mt-2 text-2xl font-display font-extrabold text-rose-600">0</div>
+            <p class="text-[10px] text-gray-400 mt-1">Toàn quyền hệ thống</p>
+        </div>
+        <!-- Store Managers -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <span class="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Cửa Hàng Trưởng</span>
+            <div id="stat-store-managers" class="mt-2 text-2xl font-display font-extrabold text-purple-700">0</div>
+            <p class="text-[10px] text-gray-400 mt-1">Quản lý kho & đơn chi nhánh</p>
+        </div>
+        <!-- Staff -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Nhân Viên Bán Hàng</span>
+            <div id="stat-staff" class="mt-2 text-2xl font-display font-extrabold text-primary">0</div>
+            <p class="text-[10px] text-gray-400 mt-1">Xử lý & đóng gói đơn</p>
+        </div>
+        <!-- Active -->
+        <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <span class="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Đang Hoạt Động</span>
+            <div id="stat-active-users" class="mt-2 text-2xl font-display font-extrabold text-blue-600">0</div>
+            <p class="text-[10px] text-gray-400 mt-1">Đủ điều kiện truy cập</p>
+        </div>
+    </div>
+
+    <!-- Filter & Search Toolbar -->
+    <div class="bg-white rounded-3xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Role Filter -->
+                <select id="filter-user-role" onchange="onUserFilterChange()" class="px-3.5 py-2 rounded-2xl bg-surface-low border-0 text-xs font-semibold text-charcoal focus:ring-2 focus:ring-primary">
+                    <option value="">Tất cả vai trò</option>
+                    <option value="SUPER_ADMIN">Super Admin (Toàn quyền)</option>
+                    <option value="STORE_MANAGER">Cửa hàng trưởng (STORE_MANAGER)</option>
+                    <option value="STAFF">Nhân viên chi nhánh (STAFF)</option>
+                    <option value="READ_ONLY">Chỉ xem (READ_ONLY)</option>
+                </select>
+
+                <!-- Store Filter (Dynamically populated from API) -->
+                <select id="filter-user-store" onchange="onUserFilterChange()" class="px-3.5 py-2 rounded-2xl bg-surface-low border-0 text-xs font-semibold text-charcoal focus:ring-2 focus:ring-primary">
+                    <option value="">Tất cả chi nhánh</option>
+                </select>
+
+                <!-- Status Filter -->
+                <select id="filter-user-status" onchange="onUserFilterChange()" class="px-3.5 py-2 rounded-2xl bg-surface-low border-0 text-xs font-semibold text-charcoal focus:ring-2 focus:ring-primary">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="true">Đang hoạt động</option>
+                    <option value="false">Đã vô hiệu hóa</option>
+                </select>
+            </div>
+
+            <!-- Search box -->
+            <div class="relative w-full lg:w-80">
+                <input type="text" id="filter-user-search" onkeyup="if(event.key==='Enter') onUserFilterChange()" placeholder="Tìm theo tên, username, email, SĐT..." class="w-full pl-9 pr-4 py-2 rounded-2xl bg-surface-low border-0 text-xs text-charcoal placeholder-gray-400 focus:ring-2 focus:ring-primary">
+                <svg class="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Table Container -->
+    <div class="bg-white rounded-3xl shadow-sm overflow-hidden border border-gray-100">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-surface-low text-[11px] font-bold text-charcoal-muted uppercase tracking-wider border-b border-gray-200/60">
+                        <th class="py-3.5 px-5">Người Dùng</th>
+                        <th class="py-3.5 px-4">Email & SĐT</th>
+                        <th class="py-3.5 px-4">Vai Trò</th>
+                        <th class="py-3.5 px-4">Chi Nhánh Phụ Trách</th>
+                        <th class="py-3.5 px-4">Trạng Thái</th>
+                        <th class="py-3.5 px-4">Đăng Nhập Gần Nhất</th>
+                        <th class="py-3.5 px-5 text-right">Thao Tác</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body" class="divide-y divide-gray-100 text-xs">
+                    <tr>
+                        <td colspan="7" class="py-12 text-center text-gray-400">
+                            <svg class="w-7 h-7 mx-auto mb-2 animate-spin text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                            </svg>
+                            <span>Đang tải danh sách người dùng...</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div id="users-pagination-bar" class="hidden flex items-center justify-between p-4 bg-surface-low/50 text-xs text-charcoal-muted border-t border-gray-100">
+            <div>Hiển thị <span id="users-item-range" class="font-bold text-charcoal">0</span> trên tổng số <span id="users-total-items" class="font-bold text-charcoal">0</span> người dùng</div>
+            <div class="flex items-center space-x-2">
+                <button id="btn-users-prev" onclick="changeUserPage(-1)" class="px-3 py-1.5 rounded-full bg-white hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 shadow-sm border border-gray-200">&larr; Trước</button>
+                <span id="users-page-current" class="font-bold px-2">Trang 1</span>
+                <button id="btn-users-next" onclick="changeUserPage(1)" class="px-3 py-1.5 rounded-full bg-white hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 shadow-sm border border-gray-200">Sau &rarr;</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 1: Create New User -->
+<!-- ======================================================================= -->
+<div id="create-user-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative animate-fadeIn">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-4">
+            <div>
+                <h3 class="font-display font-extrabold text-xl text-charcoal">Thêm Người Dùng Mới</h3>
+                <p class="text-xs text-charcoal-muted mt-0.5">Tạo tài khoản và phân quyền chi nhánh cho nhân sự siêu thị.</p>
+            </div>
+            <button onclick="closeCreateUserModal()" class="w-8 h-8 rounded-full bg-surface-low hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-charcoal-muted transition-colors">✕</button>
+        </div>
+
+        <form id="create-user-form" onsubmit="submitCreateUser(event)" class="space-y-4 text-xs">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Họ và Tên <span class="text-rose-500">*</span></label>
+                    <input type="text" id="create-fullname" required placeholder="Nguyễn Văn A" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Tên Đăng Nhập <span class="text-rose-500">*</span></label>
+                    <input type="text" id="create-username" required placeholder="staff_thaodien01" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Email <span class="text-rose-500">*</span></label>
+                    <input type="email" id="create-email" required placeholder="nhanvien@namanmarket.com" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Số Điện Thoại</label>
+                    <input type="tel" id="create-phone" placeholder="0901234567" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+            </div>
+
+            <div>
+                <label class="block font-bold text-charcoal mb-1">Mật Khẩu Khởi Tạo <span class="text-rose-500">*</span></label>
+                <input type="password" id="create-password" required minlength="8" placeholder="Tối thiểu 8 ký tự" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Vai Trò Hệ Thống <span class="text-rose-500">*</span></label>
+                    <select id="create-role" onchange="onCreateRoleChange()" required class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs font-semibold">
+                        <option value="STAFF">STAFF (Nhân viên cửa hàng)</option>
+                        <option value="STORE_MANAGER">STORE_MANAGER (Cửa hàng trưởng)</option>
+                        <option value="READ_ONLY">READ_ONLY (Chỉ xem báo cáo)</option>
+                        <option value="SUPER_ADMIN">SUPER_ADMIN (Toàn quyền hệ thống)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Chi Nhánh Phụ Trách</label>
+                    <select id="create-store-id" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs font-semibold">
+                        <option value="">-- Toàn chuỗi / Không gán --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-800 leading-relaxed" id="create-role-hint">
+                💡 <strong>Phân quyền cách ly dữ liệu:</strong> Nhân viên với vai trò <strong>STAFF</strong> hoặc <strong>STORE_MANAGER</strong> cần được gán chi nhánh cụ thể để hệ thống tự động khóa dữ liệu đơn hàng và thực đơn theo đúng siêu thị làm việc.
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100">
+                <button type="button" onclick="closeCreateUserModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-charcoal-muted font-bold hover:bg-gray-200 transition-colors">Hủy bỏ</button>
+                <button type="submit" id="btn-submit-create-user" class="px-6 py-2.5 rounded-full bg-primary text-white font-bold hover:bg-primary-light shadow-md shadow-primary/20 transition-all flex items-center space-x-2">
+                    <span>Tạo Tài Khoản</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 2: Edit User Profile & Permissions -->
+<!-- ======================================================================= -->
+<div id="edit-user-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative animate-fadeIn">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-4">
+            <div>
+                <h3 class="font-display font-extrabold text-xl text-charcoal">Chỉnh Sửa Người Dùng</h3>
+                <p class="text-xs text-charcoal-muted mt-0.5">Cập nhật vai trò, phân bổ chi nhánh hoặc kích hoạt tài khoản.</p>
+            </div>
+            <button onclick="closeEditUserModal()" class="w-8 h-8 rounded-full bg-surface-low hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-charcoal-muted transition-colors">✕</button>
+        </div>
+
+        <form id="edit-user-form" onsubmit="submitEditUser(event)" class="space-y-4 text-xs">
+            <input type="hidden" id="edit-user-id">
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Tên Đăng Nhập</label>
+                    <input type="text" id="edit-username" disabled class="w-full px-3.5 py-2.5 rounded-xl bg-gray-100 border border-gray-200 text-gray-500 font-mono text-xs cursor-not-allowed">
+                </div>
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Họ và Tên <span class="text-rose-500">*</span></label>
+                    <input type="text" id="edit-fullname" required class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Email <span class="text-rose-500">*</span></label>
+                    <input type="email" id="edit-email" required class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Số Điện Thoại</label>
+                    <input type="tel" id="edit-phone" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Vai Trò Hệ Thống <span class="text-rose-500">*</span></label>
+                    <select id="edit-role" required class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs font-semibold">
+                        <option value="STAFF">STAFF (Nhân viên cửa hàng)</option>
+                        <option value="STORE_MANAGER">STORE_MANAGER (Cửa hàng trưởng)</option>
+                        <option value="READ_ONLY">READ_ONLY (Chỉ xem báo cáo)</option>
+                        <option value="SUPER_ADMIN">SUPER_ADMIN (Toàn quyền hệ thống)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Chi Nhánh Phụ Trách</label>
+                    <select id="edit-store-id" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs font-semibold">
+                        <option value="">-- Toàn chuỗi / Không gán --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="pt-2">
+                <label class="flex items-center space-x-3 cursor-pointer">
+                    <input type="checkbox" id="edit-is-active" class="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary">
+                    <span class="font-bold text-charcoal">Tài khoản đang hoạt động (Được phép đăng nhập)</span>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100">
+                <button type="button" onclick="closeEditUserModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-charcoal-muted font-bold hover:bg-gray-200 transition-colors">Hủy bỏ</button>
+                <button type="submit" id="btn-submit-edit-user" class="px-6 py-2.5 rounded-full bg-primary text-white font-bold hover:bg-primary-light shadow-md shadow-primary/20 transition-all flex items-center space-x-2">
+                    <span>Lưu Thay Đổi</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 3: Reset Password Modal -->
+<!-- ======================================================================= -->
+<div id="reset-password-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-6 relative animate-fadeIn">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-4">
+            <div>
+                <h3 class="font-display font-extrabold text-xl text-charcoal">Đặt Lại Mật Khẩu</h3>
+                <p class="text-xs text-charcoal-muted mt-0.5">Tài khoản: <span id="reset-pwd-username" class="font-bold text-primary font-mono"></span></p>
+            </div>
+            <button onclick="closeResetPasswordModal()" class="w-8 h-8 rounded-full bg-surface-low hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-charcoal-muted transition-colors">✕</button>
+        </div>
+
+        <form id="reset-password-form" onsubmit="submitResetPassword(event)" class="space-y-4 text-xs">
+            <input type="hidden" id="reset-pwd-user-id">
+
+            <div>
+                <label class="block font-bold text-charcoal mb-1">Mật Khẩu Mới <span class="text-rose-500">*</span></label>
+                <input type="password" id="reset-new-password" required minlength="8" placeholder="Tối thiểu 8 ký tự" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+            </div>
+
+            <div>
+                <label class="block font-bold text-charcoal mb-1">Xác Nhận Mật Khẩu Mới <span class="text-rose-500">*</span></label>
+                <input type="password" id="reset-confirm-password" required minlength="8" placeholder="Nhập lại mật khẩu mới" class="w-full px-3.5 py-2.5 rounded-xl bg-surface-low border border-gray-200 focus:ring-2 focus:ring-primary focus:bg-white text-xs">
+            </div>
+
+            <p class="text-[11px] text-gray-500">
+                🔒 Khi đặt lại mật khẩu, tất cả các phiên đăng nhập đang hoạt động của người dùng này sẽ tự động bị thu hồi ngay lập tức.
+            </p>
+
+            <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100">
+                <button type="button" onclick="closeResetPasswordModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-charcoal-muted font-bold hover:bg-gray-200 transition-colors">Hủy</button>
+                <button type="submit" id="btn-submit-reset-pwd" class="px-6 py-2.5 rounded-full bg-primary text-white font-bold hover:bg-primary-light shadow-md shadow-primary/20 transition-all">
+                    <span>Xác Nhận Đổi Mật Khẩu</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 4: Security Audit Logs Modal -->
+<!-- ======================================================================= -->
+<div id="security-logs-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative animate-fadeIn max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-4 shrink-0">
+            <div>
+                <h3 class="font-display font-extrabold text-xl text-charcoal">Nhật Ký Kiểm Toán Bảo Mật</h3>
+                <p class="text-xs text-charcoal-muted mt-0.5">Lịch sử đăng nhập, đăng xuất, khóa tài khoản và thay đổi mật khẩu.</p>
+            </div>
+            <button onclick="closeSecurityLogsModal()" class="w-8 h-8 rounded-full bg-surface-low hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-charcoal-muted transition-colors">✕</button>
+        </div>
+
+        <div class="overflow-y-auto flex-1">
+            <table class="w-full text-left border-collapse">
+                <thead class="sticky top-0 bg-surface-low text-[11px] font-bold text-charcoal-muted uppercase tracking-wider">
+                    <tr>
+                        <th class="py-3 px-4">Thời Gian</th>
+                        <th class="py-3 px-4">Tài Khoản</th>
+                        <th class="py-3 px-4">Sự Kiện</th>
+                        <th class="py-3 px-4">Địa Chỉ IP</th>
+                        <th class="py-3 px-4">Chi Tiết</th>
+                    </tr>
+                </thead>
+                <tbody id="security-logs-table-body" class="divide-y divide-gray-100 text-xs">
+                    <tr>
+                        <td colspan="5" class="py-8 text-center text-gray-400">Đang tải nhật ký...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex justify-end pt-3 border-t border-gray-100 shrink-0">
+            <button onclick="closeSecurityLogsModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-charcoal font-bold hover:bg-gray-200 text-xs transition-colors">Đóng</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // State
+    let storesList = [];
+    let usersList = [];
+    let currentUserFilter = {
+        role: '',
+        store_id: '',
+        store_code: '',
+        is_active: '',
+        search: '',
+        page: 1,
+        page_size: 20
+    };
+
+    // Role badge mapping
+    function getRoleBadge(role) {
+        const map = {
+            'SUPER_ADMIN': { label: 'SUPER ADMIN', class: 'bg-rose-100 text-rose-800 border-rose-300' },
+            'STORE_MANAGER': { label: 'CỬA HÀNG TRƯỞNG', class: 'bg-purple-100 text-purple-800 border-purple-300' },
+            'STAFF': { label: 'NHÂN VIÊN', class: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+            'READ_ONLY': { label: 'CHỈ XEM', class: 'bg-gray-100 text-gray-700 border-gray-300' },
+        };
+        const r = map[role] || { label: role, class: 'bg-gray-100 text-gray-700' };
+        return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${r.class}">${r.label}</span>`;
+    }
+
+    // Format Datetime
+    function formatDateTime(dateStr) {
+        if (!dateStr) return 'Chưa đăng nhập';
+        const d = new Date(dateStr);
+        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString('vi-VN');
+    }
+
+    // Load Stores from API dynamically
+    async function loadStores() {
+        try {
+            const res = await authFetch('/api/v1/stores');
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    storesList = json.data;
+                    populateStoreDropdowns();
+                }
+            }
+        } catch(e) {
+            console.error("Lỗi khi tải danh sách chi nhánh:", e);
+        }
+    }
+
+    function populateStoreDropdowns() {
+        // Filter dropdown
+        const filterEl = document.getElementById('filter-user-store');
+        if (filterEl) {
+            filterEl.innerHTML = '<option value="">Tất cả chi nhánh</option>';
+            storesList.forEach(s => {
+                filterEl.innerHTML += `<option value="${s.id}">${s.name} (${s.code})</option>`;
+            });
+        }
+
+        // Create modal store dropdown
+        const createStoreEl = document.getElementById('create-store-id');
+        if (createStoreEl) {
+            createStoreEl.innerHTML = '<option value="">-- Toàn chuỗi / Không gán --</option>';
+            storesList.forEach(s => {
+                createStoreEl.innerHTML += `<option value="${s.id}">${s.name} (${s.code})</option>`;
+            });
+        }
+
+        // Edit modal store dropdown
+        const editStoreEl = document.getElementById('edit-store-id');
+        if (editStoreEl) {
+            editStoreEl.innerHTML = '<option value="">-- Toàn chuỗi / Không gán --</option>';
+            storesList.forEach(s => {
+                editStoreEl.innerHTML += `<option value="${s.id}">${s.name} (${s.code})</option>`;
+            });
+        }
+    }
+
+    // Load Users List from API
+    async function loadUsers() {
+        const tbody = document.getElementById('users-table-body');
+        try {
+            const params = new URLSearchParams();
+            params.append('page', currentUserFilter.page);
+            params.append('page_size', currentUserFilter.page_size);
+            if (currentUserFilter.role) params.append('role', currentUserFilter.role);
+            if (currentUserFilter.store_id) params.append('store_id', currentUserFilter.store_id);
+            if (currentUserFilter.is_active !== '') params.append('is_active', currentUserFilter.is_active);
+            if (currentUserFilter.search) params.append('search', currentUserFilter.search);
+
+            const res = await authFetch(`/api/v1/users?${params.toString()}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    usersList = json.data.items || [];
+                    renderUsersTable(usersList);
+                    renderUsersPagination(json.data.meta);
+                    updateStatsCounters(usersList, json.data.meta.total_items);
+                }
+            } else if (res.status === 403) {
+                tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-rose-600 font-bold">Bạn không có quyền SuperAdmin để xem danh sách người dùng.</td></tr>`;
+            }
+        } catch(e) {
+            console.error("Lỗi khi tải danh sách người dùng:", e);
+            tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-rose-500 font-bold">Lỗi khi tải dữ liệu người dùng.</td></tr>`;
+        }
+    }
+
+    // Render Table Body
+    function renderUsersTable(items) {
+        const tbody = document.getElementById('users-table-body');
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-gray-400">Không tìm thấy người dùng nào phù hợp với bộ lọc.</td></tr>`;
+            return;
+        }
+
+        let html = '';
+        items.forEach(u => {
+            const initials = (u.full_name || 'U').split(' ').map(n => n[0]).join('').slice(-2).toUpperCase();
+            
+            // Store badge
+            let storeBadge = `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-bold">Toàn chuỗi</span>`;
+            if (u.store_code) {
+                storeBadge = `<span class="px-2.5 py-1 rounded-xl bg-emerald-50 text-primary border border-emerald-200 text-xs font-bold inline-flex items-center space-x-1"><span>📍</span><span>${u.store_name || 'Chi nhánh ' + u.store_code} (${u.store_code})</span></span>`;
+            }
+
+            // Status badge
+            const statusBadge = u.is_active
+                ? `<span class="inline-flex items-center space-x-1 text-emerald-700 font-bold"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Hoạt động</span></span>`
+                : `<span class="inline-flex items-center space-x-1 text-rose-600 font-bold"><span class="w-2 h-2 rounded-full bg-rose-400"></span><span>Đã khóa</span></span>`;
+
+            html += `
+                <tr class="hover:bg-surface-low/50 transition-colors">
+                    <!-- User Info -->
+                    <td class="py-3.5 px-5">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center shrink-0 text-xs">
+                                ${initials}
+                            </div>
+                            <div>
+                                <div class="font-bold text-charcoal text-xs">${u.full_name}</div>
+                                <div class="text-[11px] text-gray-400 font-mono">@${u.username}</div>
+                            </div>
+                        </div>
+                    </td>
+
+                    <!-- Contact -->
+                    <td class="py-3.5 px-4">
+                        <div class="text-charcoal font-medium">${u.email}</div>
+                        <div class="text-[11px] text-gray-400">${u.phone_number || '--'}</div>
+                    </td>
+
+                    <!-- Role -->
+                    <td class="py-3.5 px-4">
+                        ${getRoleBadge(u.role)}
+                    </td>
+
+                    <!-- Store Assignment -->
+                    <td class="py-3.5 px-4">
+                        ${storeBadge}
+                    </td>
+
+                    <!-- Status -->
+                    <td class="py-3.5 px-4">
+                        ${statusBadge}
+                    </td>
+
+                    <!-- Last Login -->
+                    <td class="py-3.5 px-4 text-gray-500 text-[11px]">
+                        ${formatDateTime(u.last_login_at)}
+                    </td>
+
+                    <!-- Actions -->
+                    <td class="py-3.5 px-5 text-right">
+                        <div class="inline-flex items-center space-x-1.5">
+                            <button onclick="openEditUserModal('${u.id}')" title="Chỉnh sửa thông tin & phân quyền" class="p-1.5 rounded-lg bg-surface-low hover:bg-emerald-100 hover:text-primary transition-colors text-charcoal-muted">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            </button>
+                            <button onclick="openResetPasswordModal('${u.id}', '${u.username}')" title="Đặt lại mật khẩu" class="p-1.5 rounded-lg bg-surface-low hover:bg-amber-100 hover:text-amber-800 transition-colors text-charcoal-muted">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                            </button>
+                            <button onclick="toggleUserStatus('${u.id}', ${u.is_active})" title="${u.is_active ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}" class="p-1.5 rounded-lg bg-surface-low hover:${u.is_active ? 'bg-rose-100 hover:text-rose-600' : 'bg-emerald-100 hover:text-emerald-700'} transition-colors text-charcoal-muted">
+                                ${u.is_active 
+                                    ? `<svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>`
+                                    : `<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`
+                                }
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    // Render Pagination
+    function renderUsersPagination(meta) {
+        const bar = document.getElementById('users-pagination-bar');
+        if (!meta || meta.total_pages <= 1) {
+            bar.classList.add('hidden');
+            return;
+        }
+        bar.classList.remove('hidden');
+
+        const start = (meta.page - 1) * meta.page_size + 1;
+        const end = Math.min(meta.page * meta.page_size, meta.total_items);
+        document.getElementById('users-item-range').textContent = `${start} - ${end}`;
+        document.getElementById('users-total-items').textContent = meta.total_items;
+        document.getElementById('users-page-current').textContent = `Trang ${meta.page} / ${meta.total_pages}`;
+
+        document.getElementById('btn-users-prev').disabled = (meta.page <= 1);
+        document.getElementById('btn-users-next').disabled = (meta.page >= meta.total_pages);
+    }
+
+    function changeUserPage(delta) {
+        currentUserFilter.page += delta;
+        loadUsers();
+    }
+
+    // Update Quick KPI Stats
+    function updateStatsCounters(items, totalCount) {
+        document.getElementById('stat-total-users').textContent = totalCount || items.length;
+        let superCount = 0, managerCount = 0, staffCount = 0, activeCount = 0;
+        items.forEach(u => {
+            if (u.role === 'SUPER_ADMIN') superCount++;
+            if (u.role === 'STORE_MANAGER') managerCount++;
+            if (u.role === 'STAFF') staffCount++;
+            if (u.is_active) activeCount++;
+        });
+        document.getElementById('stat-super-admins').textContent = superCount;
+        document.getElementById('stat-store-managers').textContent = managerCount;
+        document.getElementById('stat-staff').textContent = staffCount;
+        document.getElementById('stat-active-users').textContent = activeCount;
+    }
+
+    // On Filter Change
+    function onUserFilterChange() {
+        currentUserFilter.role = document.getElementById('filter-user-role').value;
+        currentUserFilter.store_id = document.getElementById('filter-user-store').value;
+        currentUserFilter.is_active = document.getElementById('filter-user-status').value;
+        currentUserFilter.search = document.getElementById('filter-user-search').value.trim();
+        currentUserFilter.page = 1;
+        loadUsers();
+    }
+
+    // Create Modal Handlers
+    function openCreateUserModal() {
+        document.getElementById('create-user-form').reset();
+        onCreateRoleChange();
+        document.getElementById('create-user-modal').classList.remove('hidden');
+    }
+
+    function closeCreateUserModal() {
+        document.getElementById('create-user-modal').classList.add('hidden');
+    }
+
+    function onCreateRoleChange() {
+        const role = document.getElementById('create-role').value;
+        const hint = document.getElementById('create-role-hint');
+        const storeSelect = document.getElementById('create-store-id');
+        if (role === 'SUPER_ADMIN') {
+            storeSelect.value = '';
+            storeSelect.disabled = true;
+            hint.innerHTML = '🛡️ Tài khoản <strong>SUPER_ADMIN</strong> có quyền truy cập toàn bộ 4 chi nhánh siêu thị và quản trị cài đặt nền tảng.';
+        } else {
+            storeSelect.disabled = false;
+            hint.innerHTML = '💡 <strong>Phân quyền cách ly dữ liệu:</strong> Nhân viên với vai trò <strong>STAFF</strong> hoặc <strong>STORE_MANAGER</strong> cần được gán chi nhánh để hệ thống tự động khóa đơn hàng và thực đơn theo đúng siêu thị làm việc.';
+        }
+    }
+
+    async function submitCreateUser(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btn-submit-create-user');
+        btn.disabled = true;
+        btn.innerHTML = '<span>Đang tạo...</span>';
+
+        try {
+            const role = document.getElementById('create-role').value;
+            const storeId = document.getElementById('create-store-id').value || null;
+
+            const payload = {
+                full_name: document.getElementById('create-fullname').value.trim(),
+                username: document.getElementById('create-username').value.trim(),
+                email: document.getElementById('create-email').value.trim(),
+                phone_number: document.getElementById('create-phone').value.trim() || null,
+                password: document.getElementById('create-password').value,
+                role: role,
+                store_id: storeId
+            };
+
+            const res = await authFetch('/api/v1/users', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
+
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`Đã tạo người dùng "${payload.username}" thành công!`, 'success');
+                closeCreateUserModal();
+                loadUsers();
+            } else {
+                showToast(json.detail || json.message || 'Lỗi khi tạo người dùng', 'error');
+            }
+        } catch(err) {
+            showToast('Lỗi kết nối máy chủ', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span>Tạo Tài Khoản</span>';
+        }
+    }
+
+    // Edit Modal Handlers
+    async function openEditUserModal(userId) {
+        try {
+            const res = await authFetch(`/api/v1/users/${userId}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    const u = json.data;
+                    document.getElementById('edit-user-id').value = u.id;
+                    document.getElementById('edit-username').value = u.username;
+                    document.getElementById('edit-fullname').value = u.full_name;
+                    document.getElementById('edit-email').value = u.email;
+                    document.getElementById('edit-phone').value = u.phone_number || '';
+                    document.getElementById('edit-role').value = u.role;
+                    document.getElementById('edit-store-id').value = u.store_id || '';
+                    document.getElementById('edit-is-active').checked = u.is_active;
+
+                    document.getElementById('edit-user-modal').classList.remove('hidden');
+                }
+            } else {
+                showToast('Không thể lấy thông tin người dùng', 'error');
+            }
+        } catch(e) {
+            showToast('Lỗi khi tải thông tin người dùng', 'error');
+        }
+    }
+
+    function closeEditUserModal() {
+        document.getElementById('edit-user-modal').classList.add('hidden');
+    }
+
+    async function submitEditUser(e) {
+        e.preventDefault();
+        const userId = document.getElementById('edit-user-id').value;
+        const btn = document.getElementById('btn-submit-edit-user');
+        btn.disabled = true;
+        btn.innerHTML = '<span>Đang lưu...</span>';
+
+        try {
+            const payload = {
+                full_name: document.getElementById('edit-fullname').value.trim(),
+                email: document.getElementById('edit-email').value.trim(),
+                phone_number: document.getElementById('edit-phone').value.trim() || null,
+                role: document.getElementById('edit-role').value,
+                store_id: document.getElementById('edit-store-id').value || null,
+                is_active: document.getElementById('edit-is-active').checked
+            };
+
+            const res = await authFetch(`/api/v1/users/${userId}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`Đã cập nhật thông tin người dùng thành công!`, 'success');
+                closeEditUserModal();
+                loadUsers();
+            } else {
+                showToast(json.detail || json.message || 'Lỗi khi cập nhật người dùng', 'error');
+            }
+        } catch(err) {
+            showToast('Lỗi kết nối máy chủ', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span>Lưu Thay Đổi</span>';
+        }
+    }
+
+    // Reset Password Handlers
+    function openResetPasswordModal(userId, username) {
+        document.getElementById('reset-pwd-user-id').value = userId;
+        document.getElementById('reset-pwd-username').textContent = `@${username}`;
+        document.getElementById('reset-password-form').reset();
+        document.getElementById('reset-password-modal').classList.remove('hidden');
+    }
+
+    function closeResetPasswordModal() {
+        document.getElementById('reset-password-modal').classList.add('hidden');
+    }
+
+    async function submitResetPassword(e) {
+        e.preventDefault();
+        const p1 = document.getElementById('reset-new-password').value;
+        const p2 = document.getElementById('reset-confirm-password').value;
+
+        if (p1 !== p2) {
+            showToast('Mật khẩu xác nhận không trùng khớp!', 'error');
+            return;
+        }
+
+        const userId = document.getElementById('reset-pwd-user-id').value;
+        const btn = document.getElementById('btn-submit-reset-pwd');
+        btn.disabled = true;
+        btn.innerHTML = '<span>Đang cập nhật...</span>';
+
+        try {
+            const res = await authFetch(`/api/v1/users/${userId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ password: p1 })
+            });
+
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast('Đặt lại mật khẩu thành công! Tất cả phiên làm việc cũ đã bị thu hồi.', 'success');
+                closeResetPasswordModal();
+            } else {
+                showToast(json.detail || json.message || 'Lỗi khi đặt lại mật khẩu', 'error');
+            }
+        } catch(err) {
+            showToast('Lỗi kết nối máy chủ', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span>Xác Nhận Đổi Mật Khẩu</span>';
+        }
+    }
+
+    // Toggle Active Status
+    async function toggleUserStatus(userId, currentStatus) {
+        const actionText = currentStatus ? 'khóa' : 'mở khóa';
+        if (!confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản người dùng này?`)) return;
+
+        try {
+            const res = await authFetch(`/api/v1/users/${userId}`, {
+                method: 'PUT',
+                body: JSON.stringify({ is_active: !currentStatus })
+            });
+
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`Đã ${actionText} tài khoản thành công!`, 'success');
+                loadUsers();
+            } else {
+                showToast(json.detail || json.message || 'Lỗi cập nhật trạng thái', 'error');
+            }
+        } catch(e) {
+            showToast('Lỗi kết nối máy chủ', 'error');
+        }
+    }
+
+    // Security Audit Logs Modal Handlers
+    async function openSecurityLogsModal() {
+        document.getElementById('security-logs-modal').classList.remove('hidden');
+        const tbody = document.getElementById('security-logs-table-body');
+        tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">Đang tải nhật ký bảo mật...</td></tr>`;
+
+        try {
+            const res = await authFetch('/api/v1/users/security-logs?limit=50');
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    renderSecurityLogs(json.data);
+                }
+            } else {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-500 font-bold">Không thể tải nhật ký.</td></tr>`;
+            }
+        } catch(e) {
+            tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-500 font-bold">Lỗi kết nối máy chủ.</td></tr>`;
+        }
+    }
+
+    function closeSecurityLogsModal() {
+        document.getElementById('security-logs-modal').classList.add('hidden');
+    }
+
+    function renderSecurityLogs(logs) {
+        const tbody = document.getElementById('security-logs-table-body');
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">Chưa có bản ghi nhật ký nào.</td></tr>`;
+            return;
+        }
+
+        let html = '';
+        logs.forEach(l => {
+            let eventBadge = `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 text-[10px] font-bold">${l.event_type}</span>`;
+            if (l.event_type === 'LOGIN_SUCCESS') {
+                eventBadge = `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">ĐĂNG NHẬP THÀNH CÔNG</span>`;
+            } else if (l.event_type === 'LOGIN_FAILED') {
+                eventBadge = `<span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold">ĐĂNG NHẬP SAI MẬT KHẨU</span>`;
+            } else if (l.event_type === 'ACCOUNT_LOCKED') {
+                eventBadge = `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">KHÓA TÀI KHOẢN TỰ ĐỘNG</span>`;
+            } else if (l.event_type === 'PASSWORD_CHANGED') {
+                eventBadge = `<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">ĐÃ ĐỔI MẬT KHẨU</span>`;
+            }
+
+            html += `
+                <tr class="hover:bg-surface-low/50">
+                    <td class="py-2.5 px-4 text-gray-500 font-mono text-[11px]">${formatDateTime(l.created_at)}</td>
+                    <td class="py-2.5 px-4 font-bold text-charcoal">@${l.username || 'unknown'}</td>
+                    <td class="py-2.5 px-4">${eventBadge}</td>
+                    <td class="py-2.5 px-4 font-mono text-gray-500">${l.ip_address || '--'}</td>
+                    <td class="py-2.5 px-4 text-gray-600 truncate max-w-xs text-[11px]">${l.details || '--'}</td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    // Initialize Page
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadStores();
+        await loadUsers();
+    });
+</script>
+{% endblock %}

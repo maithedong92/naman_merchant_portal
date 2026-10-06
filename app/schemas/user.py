@@ -38,6 +38,8 @@ class UserResponse(BaseModel):
     phone_number: Optional[str] = None
     role: UserRole
     store_id: Optional[str] = None
+    store_code: Optional[str] = None
+    store_name: Optional[str] = None
     is_active: bool
     is_superuser: bool
     last_login_at: Optional[datetime] = None

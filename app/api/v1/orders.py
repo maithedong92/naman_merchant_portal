@@ -23,6 +23,7 @@ router = APIRouter(prefix="/orders", tags=["Unified Orders"])
 @router.get("/summary", response_model=APIResponse[OrderSummaryResponse])
 async def get_order_summary(
     store_id: Optional[str] = Query(None, description="Filter summary by store UUID"),
+    store_code: Optional[str] = Query(None, description="Filter summary by store code e.g. 10001"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -32,8 +33,25 @@ async def get_order_summary(
     """
     effective_store_id = store_id
     if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
-        if current_user.store_id:
-            effective_store_id = current_user.store_id
+        if not current_user.store_id:
+            # Tài khoản nhân viên chưa được gán chi nhánh -> không xem KPI toàn chuỗi
+            return APIResponse.ok(
+                data=OrderSummaryResponse(
+                    pending_count=0,
+                    preparing_count=0,
+                    ready_count=0,
+                    delivering_count=0,
+                    delivered_today_count=0,
+                    cancelled_today_count=0,
+                    revenue_today=0.0,
+                )
+            )
+        effective_store_id = current_user.store_id
+    elif store_code and not effective_store_id:
+        from app.models.store import Store
+        from sqlalchemy import select
+        res = await db.execute(select(Store.id).where(Store.code == store_code))
+        effective_store_id = res.scalar_one_or_none()
 
     summary = await OrderService.get_order_summary(effective_store_id, db)
     return APIResponse.ok(data=OrderSummaryResponse(**summary))
@@ -57,19 +75,33 @@ async def list_orders(
     """
     Omnichannel Unified Order Feed.
     Returns real-time orders from all platforms (ShopeeFood, GrabMart, Shopee) in one single place.
-    Staff and Store Managers are automatically scoped to their designated store.
+    Staff and Store Managers are automatically scoped strictly to their designated store.
     """
-    # Enforce store scoping if user is restricted to a branch
+    # Enforce strict store scoping if user is not SUPER_ADMIN
     effective_store_id = store_id
+    effective_store_code = store_code
     if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
-        if current_user.store_id:
-            effective_store_id = current_user.store_id
+        if not current_user.store_id:
+            # Tài khoản nhân viên chưa được gán chi nhánh -> trả về danh sách rỗng bảo vệ dữ liệu
+            return APIResponse.ok(
+                data=PaginatedResponse(
+                    items=[],
+                    meta=PaginationMeta(
+                        page=page,
+                        page_size=page_size,
+                        total_items=0,
+                        total_pages=0,
+                    ),
+                )
+            )
+        effective_store_id = current_user.store_id
+        effective_store_code = None  # Không cho phép ghi đè chi nhánh khác
 
     params = OrderFilterParams(
         page=page,
         page_size=page_size,
         store_id=effective_store_id,
-        store_code=store_code,
+        store_code=effective_store_code,
         channel_id=channel_id,
         channel_code=channel_code,
         status=status,

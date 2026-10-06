@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from sqlalchemy import desc, or_, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -169,6 +170,7 @@ class AuthService:
             "username": user.username,
             "role": user.role,
             "store_id": user.store_id,
+            "store_code": user.store_code,
             "is_superuser": user.is_superuser,
         }
         access_token, access_exp = create_access_token(token_payload)
@@ -461,18 +463,32 @@ class AuthService:
         db: AsyncSession,
         role: Optional[UserRole] = None,
         store_id: Optional[str] = None,
+        store_code: Optional[str] = None,
+        search: Optional[str] = None,
         is_active: Optional[bool] = None,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[User], int]:
         """List users with filtering and pagination."""
-        query = select(User)
+        query = select(User).options(selectinload(User.store))
         if role:
             query = query.where(User.role == role.value)
         if store_id:
             query = query.where(User.store_id == store_id)
+        if store_code:
+            query = query.join(User.store).where(Store.code == store_code)
         if is_active is not None:
             query = query.where(User.is_active == is_active)
+        if search:
+            search_pattern = f"%{search.strip()}%"
+            query = query.where(
+                or_(
+                    User.username.ilike(search_pattern),
+                    User.full_name.ilike(search_pattern),
+                    User.email.ilike(search_pattern),
+                    User.phone_number.ilike(search_pattern),
+                )
+            )
 
         # Count total
         from sqlalchemy import func
@@ -487,7 +503,7 @@ class AuthService:
 
     async def get_user_by_id(self, db: AsyncSession, user_id: str) -> User:
         """Fetch user by primary ID."""
-        stmt = select(User).where(User.id == user_id)
+        stmt = select(User).where(User.id == user_id).options(selectinload(User.store))
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
         if not user:

@@ -99,6 +99,22 @@ async def inventory_page(request: Request):
     )
 
 
+@web_router.get("/users", response_class=HTMLResponse)
+@web_router.get("/admin/users", response_class=HTMLResponse)
+async def users_management_page(request: Request):
+    """Serve User Management & Store RBAC Administration page."""
+    return templates.TemplateResponse(
+        request=request,
+        name="users.html",
+        context={
+            "request": request,
+            "active_page": "users",
+            "app_name": settings.APP_NAME,
+            "app_version": settings.APP_VERSION,
+        }
+    )
+
+
 @web_router.get("/admin/login", response_class=HTMLResponse)
 async def admin_login_page(request: Request):
     """Serve Admin Login page."""
