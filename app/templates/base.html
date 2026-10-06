@@ -119,8 +119,8 @@
                         <a href="/admin/inventory" class="px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'inventory' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
                             Kho & Thực đơn
                         </a>
-                        <a href="/admin/users" id="nav-users-link" class="hidden px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'users' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
-                            Người dùng
+                        <a href="/admin/users" id="nav-users-link" class="px-4 py-2 rounded-full text-sm font-medium transition-colors relative {% if active_page == 'users' %}bg-primary text-white shadow-md shadow-primary/20{% else %}text-charcoal-muted hover:text-primary hover:bg-surface-low{% endif %}">
+                            Phân quyền & User
                         </a>
                         <a href="/docs" target="_blank" class="px-4 py-2 rounded-full text-sm font-medium text-charcoal-muted hover:text-primary hover:bg-surface-low transition-colors flex items-center space-x-1">
                             <span>OpenAPI Docs</span>
@@ -296,11 +296,7 @@
                 }
             }
             if (navUsersLink) {
-                if (user.role === 'SUPER_ADMIN' || user.is_superuser) {
-                    navUsersLink.classList.remove('hidden');
-                } else {
-                    navUsersLink.classList.add('hidden');
-                }
+                navUsersLink.classList.remove('hidden');
             }
         }
 
