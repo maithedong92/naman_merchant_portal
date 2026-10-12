@@ -85,6 +85,19 @@ flowchart TD
     Web_Dashboard <-->|REST API / WebSockets| Core_API
 ```
 
+### 2.1. Quy Định Nghiệp Vụ Phân Định Đơn Hàng (Order Dispatch Rules)
+> 📖 *Chi tiết xem tại tài liệu:* [`docs/ORDER_DISPATCH_AND_LIFECYCLE_GUIDE.md`](file:///c:/python/naman_merchant_portal/docs/ORDER_DISPATCH_AND_LIFECYCLE_GUIDE.md)
+
+- **Đơn từ Platform (ShopeeFood, GrabMart, ShopeeMart):**
+  - **TỰ ĐỘNG PHÂN BỔ, KHÔNG CẦN PHÂN TUYẾN THỦ CÔNG.**
+  - Sàn đã chỉ định đích danh chi nhánh tiếp nhận dựa trên vị trí GPS của khách hàng. Webhook gửi về kèm mã chi nhánh (`10001`, `10004`, `10005`, `10006`).
+  - Đơn chuyển thẳng vào hàng đợi chuẩn bị hàng của siêu thị đó.
+- **Đơn từ Haravan Omnichannel (Website namanmarket.com, Hotline, Haravan POS):**
+  - **BẮT BUỘC PHẢI PHÂN TUYẾN (DISPATCH REQUIRED).**
+  - Đơn đổ về trung tâm với trạng thái `Đơn hàng mới` (`assigned_store = null`).
+  - Điều phối viên tổng đài tra cứu tồn kho thực tế qua **Arito ERP** (`AritoInventoryService`) để chọn chi nhánh tối ưu (gần khách nhất và đủ hàng nhất) $\rightarrow$ bấm **"Phân Tuyến Cửa Hàng"**.
+  - Khi đó, nhân viên chi nhánh được gán mới nhìn thấy đơn hàng trong tài khoản của mình. Nếu siêu thị thiếu hàng, nhân viên có quyền bấm **"Yêu Cầu Phân Tuyến Lại"** để gỡ `assigned_store = null`, trả đơn về tổng đài đổi chi nhánh khác.
+
 ### 2.2. Kiến Trúc Hạ Tầng & Triển Khai 3 Lớp (3-Tier Deployment Architecture)
 
 Hệ thống triển khai theo mô hình mạng **3 lớp bảo vệ độc lập**, tối ưu giữa bảo mật biên và hiệu năng cơ sở dữ liệu:
