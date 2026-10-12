@@ -23,6 +23,7 @@ class AritoInventoryService:
         "10004": "46 Hưng Phúc, Phú Mỹ Hưng Q.7",
         "10005": "17 Mai Chí Thọ, Thủ Đức",
         "10006": "303 Nguyễn Văn Trỗi, Phú Nhuận",
+        "10008": "Kho Tổng",
     }
 
     def __init__(self, mongo_uri: Optional[str] = None):
@@ -126,9 +127,15 @@ class AritoInventoryService:
 
                 if sku in inventory_map:
                     inventory_map[sku]["raw_locations"][loc] = qty
-                    # Nếu location trùng với một trong các mã chi nhánh chuẩn
-                    if loc in inventory_map[sku]["branches"]:
-                        inventory_map[sku]["branches"][loc]["stock"] = qty
+                    # Thử match trực tiếp hoặc loại bỏ hậu tố vị trí kho (ví dụ: 10001A -> 10001)
+                    clean_loc = loc.rstrip("AaBb")
+                    target_branch = (
+                        loc
+                        if loc in inventory_map[sku]["branches"]
+                        else (clean_loc if clean_loc in inventory_map[sku]["branches"] else None)
+                    )
+                    if target_branch:
+                        inventory_map[sku]["branches"][target_branch]["stock"] += qty
                         inventory_map[sku]["total_stock_all_branches"] += qty
 
             return inventory_map

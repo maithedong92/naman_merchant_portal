@@ -366,3 +366,29 @@ async def cancel_haravan_order(
         data=updated,
         message="Đã hủy đơn hàng thành công.",
     )
+
+
+class AdminNoteRequest(BaseModel):
+    note: str = Field(..., description="Ghi chú nội bộ admin")
+
+
+@router.post(
+    "/orders/{order_id}/admin-note",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Cập nhật ghi chú nội bộ admin cho đơn hàng",
+    description="Lưu ghi chú nội bộ (admin_notes) và tự động ghi lịch sử thay đổi (Follow 100% pmdonhang).",
+)
+async def update_haravan_admin_note(
+    order_id: str,
+    payload: AdminNoteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    updated = await haravan_order_service.update_admin_note(
+        order_id_or_sn=order_id,
+        note=payload.note,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message="Đã lưu ghi chú nội bộ thành công.",
+    )

@@ -46,6 +46,14 @@ def test_admin_orders_html_route(client):
     assert "text/html" in response.headers["content-type"]
     assert "Điều Phối & Xử Lý Đơn Hàng Hợp Nhất" in response.text
     assert "80mm" in response.text
+    assert "order-details-modal" in response.text
+    assert "detail-modal-status-pipeline" in response.text
+    assert "detail-tab-btn-basic" in response.text
+    assert "detail-tab-btn-products" in response.text
+    assert "detail-tab-btn-history" in response.text
+    assert "10001A" in response.text
+    assert "10008A" in response.text
+    assert "Lưu Ghi Chú Nội Bộ" in response.text
 
 
 def test_get_order_summary_endpoint(client, mock_admin_user):

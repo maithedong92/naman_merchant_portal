@@ -594,6 +594,41 @@ class HaravanOrderService:
         logger.info(f"❌ Đã hủy đơn {order.get('order_number')} - Lý do: {reason}.")
         return await self.get_order_detail(order["id"], current_user)
 
+    async def update_admin_note(
+        self,
+        order_id_or_sn: str,
+        note: str,
+        current_user: User,
+    ) -> Dict[str, Any]:
+        """
+        Nghiệp vụ: Cập nhật ghi chú nội bộ (admin) cho đơn hàng Haravan (Follow 100% pmdonhang)
+        - Lưu internal.admin_notes
+        - Thêm lịch sử 'Chỉnh sửa ghi chú admin'
+        """
+        order = await self.get_order_detail(order_id_or_sn, current_user)
+        now_str = datetime.now(timezone.utc).isoformat()
+        username = current_user.username
+
+        col = self._get_orders_collection()
+        col.update_one(
+            {"id": order["id"]},
+            {
+                "$set": {
+                    "internal.admin_notes": note,
+                },
+                "$push": {
+                    "internal.history": {
+                        "timestamp": now_str,
+                        "action": "Chỉnh sửa ghi chú admin",
+                        "user": username,
+                        "details": f"Cập nhật ghi chú nội bộ: {note}",
+                    }
+                },
+            },
+        )
+        logger.info(f"📝 Đã cập nhật ghi chú admin cho đơn {order.get('order_number')} bởi {username}.")
+        return await self.get_order_detail(order["id"], current_user)
+
 
 # Singleton instance
 haravan_order_service = HaravanOrderService()

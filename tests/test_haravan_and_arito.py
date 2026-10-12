@@ -400,3 +400,26 @@ def test_haravan_incomplete_count_api_endpoint(mock_admin_user):
     app.dependency_overrides.clear()
 
 
+def test_haravan_update_admin_note_endpoint(mock_admin_user):
+    """Verify POST /api/v1/haravan/orders/{order_id}/admin-note endpoint."""
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
+    client = TestClient(app)
+
+    with patch("app.api.v1.haravan.haravan_order_service.update_admin_note", new_callable=AsyncMock) as mock_update:
+        mock_update.return_value = {
+            "id": 12345,
+            "order_number": "#NA12345",
+            "internal": {"admin_notes": "Khách VIP, giao buổi sáng"},
+        }
+        res = client.post(
+            "/api/v1/haravan/orders/12345/admin-note",
+            json={"note": "Khách VIP, giao buổi sáng"},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["data"]["internal"]["admin_notes"] == "Khách VIP, giao buổi sáng"
+
+    app.dependency_overrides.clear()
+
+
