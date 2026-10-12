@@ -7,7 +7,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -15,73 +15,77 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: {
-                            DEFAULT: '#004d37',
-                            light: '#00674b',
-                            dark: '#003626',
-                        },
-                        surface: {
-                            canvas: '#fbf9f8',
-                            low: '#f6f3f2',
-                            lowest: '#ffffff',
-                        },
-                        charcoal: '#1b1c1c',
-                        organic: {
-                            lime: '#b8f649',
+                        notion: {
+                            text: '#37352F',
+                            muted: '#787774',
+                            border: '#E9E9E7',
+                            bg: '#FFFFFF',
+                            hover: '#F7F6F3',
+                            sidebar: '#F7F6F3',
+                            dark: '#2F3437',
                         }
                     },
                     fontFamily: {
-                        display: ['"Plus Jakarta Sans"', 'sans-serif'],
-                        sans: ['"Work Sans"', 'sans-serif'],
+                        sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    boxShadow: {
+                        '2xs': '0 1px 2px rgba(55, 53, 47, 0.08)',
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="min-h-full flex items-center justify-center bg-[#F5F7FA] px-4 py-12">
+<body class="min-h-full flex items-center justify-center bg-[#FAFAFA] text-[#37352F] px-4 py-12 font-sans antialiased">
 
-    <div class="max-w-md w-full space-y-8">
+    <div class="max-w-sm w-full space-y-6">
         <!-- Logo & Header -->
         <div class="text-center">
-            <div class="inline-flex w-16 h-16 rounded-3xl bg-gradient-to-br from-primary to-primary-light items-center justify-center text-white font-display font-black text-2xl shadow-xl shadow-primary/25 mb-4">
-                NA
+            <div class="inline-flex w-12 h-12 rounded-lg bg-[#F7F6F3] border border-[#E9E9E7] items-center justify-center text-xl shadow-2xs mb-3">
+                🏬
             </div>
-            <h2 class="text-3xl font-display font-extrabold text-charcoal tracking-tight">Nam An Market</h2>
-            <p class="mt-1 text-sm text-gray-600">Cổng Quản Trị & Điều Phối Đa Kênh (NAM-UMP)</p>
-            <div class="inline-block mt-3 px-3 py-1 bg-emerald-50 text-primary text-xs font-semibold rounded-full">
-                Bảo mật JWT • Cổng chuẩn 3002
+            <h1 class="text-xl font-bold text-[#37352F] tracking-tight">Nam An Market</h1>
+            <p class="text-xs text-[#787774] mt-1">Cổng Quản Trị & Điều Phối Đa Kênh (NAM-UMP)</p>
+            <div class="inline-flex items-center space-x-1.5 mt-2.5 px-2 py-0.5 bg-[#F1F1EF] text-[#787774] text-[11px] font-medium rounded border border-[#E9E9E7]">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#0F7B6C]"></span>
+                <span>Bảo mật JWT • Cổng chuẩn 3002</span>
             </div>
         </div>
 
         <!-- Login Card -->
-        <div class="bg-white rounded-3xl p-8 sm:p-10 shadow-xl shadow-gray-200/50 space-y-6">
-            <div id="error-alert" class="hidden p-4 rounded-2xl bg-rose-50 text-rose-800 text-sm font-medium"></div>
+        <div class="bg-white rounded-lg border border-[#E9E9E7] p-6 shadow-2xs space-y-4">
+            <div class="border-b border-[#E9E9E7] pb-2">
+                <h2 class="text-sm font-semibold text-[#37352F]">Đăng nhập Quản Trị</h2>
+                <p class="text-xs text-[#787774] mt-0.5">Nhập thông tin tài khoản nhân sự được cấp</p>
+            </div>
 
-            <form id="login-form" class="space-y-5" onsubmit="handleLogin(event)">
+            <div id="error-alert" class="hidden p-3 rounded border border-[#FFE2DD] bg-[#FFE2DD]/30 text-[#D44C47] text-xs font-medium"></div>
+
+            <form id="login-form" class="space-y-3.5" onsubmit="handleLogin(event)">
                 <div>
-                    <label for="username" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Tài khoản / Email</label>
+                    <label for="username" class="block text-[11px] font-medium text-[#787774] uppercase tracking-wider mb-1">Tài khoản / Email</label>
                     <input id="username" name="username" type="text" required autofocus
-                           class="w-full px-4 py-3.5 rounded-2xl bg-surface-low border border-gray-200 focus:bg-white focus:ring-2 focus:ring-primary text-charcoal text-sm transition-all duration-200"
-                           placeholder="Nhập tên đăng nhập hoặc email">
+                           class="w-full px-2.5 py-1.5 rounded border border-[#E9E9E7] bg-white text-xs text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:border-[#2F3437] transition-colors"
+                           placeholder="admin hoặc email">
                 </div>
 
                 <div>
-                    <label for="password" class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Mật khẩu</label>
+                    <label for="password" class="block text-[11px] font-medium text-[#787774] uppercase tracking-wider mb-1">Mật khẩu</label>
                     <input id="password" name="password" type="password" required
-                           class="w-full px-4 py-3.5 rounded-2xl bg-surface-low border border-gray-200 focus:bg-white focus:ring-2 focus:ring-primary text-charcoal text-sm transition-all duration-200"
-                           placeholder="Nhập mật khẩu tài khoản">
+                           class="w-full px-2.5 py-1.5 rounded border border-[#E9E9E7] bg-white text-xs text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:border-[#2F3437] transition-colors"
+                           placeholder="••••••••">
                 </div>
 
-                <div class="flex items-center justify-between text-xs text-gray-500">
-                    <span class="text-gray-400">Tài khoản được phân quyền bởi Quản trị viên</span>
-                    <span class="text-gray-400">Khóa sau 5 lần sai</span>
+                <div class="flex items-center justify-between text-[11px] text-[#787774]">
+                    <span>Phân quyền theo chi nhánh</span>
+                    <span>Khóa sau 5 lần sai</span>
                 </div>
 
                 <button type="submit" id="submit-btn"
-                        class="w-full py-4 px-6 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-sm tracking-wide shadow-lg shadow-primary/25 transition-all duration-200 hover:shadow-xl hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center space-x-2">
+                        class="w-full py-2 px-3 rounded bg-[#2F3437] hover:bg-[#474C50] text-white text-xs font-medium shadow-2xs transition-colors flex items-center justify-center space-x-2">
                     <span id="btn-text">Đăng Nhập Vào Hệ Thống</span>
-                    <svg id="btn-spinner" class="hidden animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                    <svg id="btn-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                     </svg>
@@ -89,43 +93,35 @@
             </form>
 
             <!-- Quick Demo Account Selector (Onboarding / Testing helper) -->
-            <div class="pt-2 border-t border-gray-100">
+            <div class="pt-2 border-t border-[#E9E9E7]/60">
                 <details class="group text-xs">
-                    <summary class="cursor-pointer text-gray-500 hover:text-primary font-bold flex items-center justify-between select-none py-1">
+                    <summary class="cursor-pointer text-[#787774] hover:text-[#37352F] font-medium flex items-center justify-between select-none py-1 transition-colors">
                         <span class="flex items-center space-x-1.5">
                             <span>🔑</span>
-                            <span>Tài khoản dùng thử phân quyền (Onboarding Demo)</span>
+                            <span>Tài khoản dùng thử phân quyền</span>
                         </span>
-                        <span class="transition-transform group-open:rotate-180 text-gray-400">▾</span>
+                        <span class="transition-transform group-open:rotate-180 text-[#9B9A97]">▾</span>
                     </summary>
-                    <div class="mt-3 p-3 rounded-2xl bg-surface-low space-y-2 border border-gray-200/60">
-                        <p class="text-[11px] text-gray-500 mb-2 leading-relaxed">
-                            Bấm chọn 1 tài khoản để tự động điền form và trải nghiệm sự khác biệt về cách ly dữ liệu chi nhánh:
+                    <div class="mt-2 p-2 rounded bg-[#F7F6F3] border border-[#E9E9E7]/80 space-y-1.5">
+                        <p class="text-[11px] text-[#787774] leading-relaxed">
+                            Bấm chọn 1 tài khoản để tự động điền form:
                         </p>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                            <button type="button" onclick="selectDemoAccount('admin', 'phhthtnkhk')" class="p-2 rounded-xl bg-white hover:bg-rose-50 text-left border border-gray-100 transition-colors">
-                                <div class="font-bold text-rose-700">🛡️ Super Admin</div>
-                                <div class="text-[10px] text-gray-400 font-mono">admin (Toàn quyền 4 store)</div>
+                        <div class="space-y-1">
+                            <button type="button" onclick="selectDemoAccount('admin', 'phhthtnkhk')" class="w-full p-1.5 rounded bg-white hover:bg-[#F1F1EF] text-left border border-[#E9E9E7] transition-colors flex items-center justify-between">
+                                <div class="font-medium text-[#D44C47] text-xs">Super Admin</div>
+                                <div class="text-[10px] text-[#787774] font-mono">admin (4 stores)</div>
                             </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10001', 'NamAn@2026')" class="p-2 rounded-xl bg-white hover:bg-emerald-50 text-left border border-gray-100 transition-colors">
-                                <div class="font-bold text-primary">📍 CHT Thảo Điền</div>
-                                <div class="text-[10px] text-gray-400 font-mono">manager_10001 (Store 10001)</div>
+                            <button type="button" onclick="selectDemoAccount('manager_10001', 'NamAn@2026')" class="w-full p-1.5 rounded bg-white hover:bg-[#F1F1EF] text-left border border-[#E9E9E7] transition-colors flex items-center justify-between">
+                                <div class="font-medium text-[#28456C] text-xs">CHT Thảo Điền</div>
+                                <div class="text-[10px] text-[#787774] font-mono">manager_10001</div>
                             </button>
-                            <button type="button" onclick="selectDemoAccount('staff_10001', 'NamAn@2026')" class="p-2 rounded-xl bg-white hover:bg-emerald-50 text-left border border-gray-100 transition-colors">
-                                <div class="font-bold text-emerald-700">🛒 NV Thảo Điền</div>
-                                <div class="text-[10px] text-gray-400 font-mono">staff_10001 (Chỉ đơn 10001)</div>
+                            <button type="button" onclick="selectDemoAccount('staff_10001', 'NamAn@2026')" class="w-full p-1.5 rounded bg-white hover:bg-[#F1F1EF] text-left border border-[#E9E9E7] transition-colors flex items-center justify-between">
+                                <div class="font-medium text-[#0F7B6C] text-xs">NV Thảo Điền</div>
+                                <div class="text-[10px] text-[#787774] font-mono">staff_10001</div>
                             </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10004', 'NamAn@2026')" class="p-2 rounded-xl bg-white hover:bg-purple-50 text-left border border-gray-100 transition-colors">
-                                <div class="font-bold text-purple-700">📍 CHT Phú Mỹ Hưng</div>
-                                <div class="text-[10px] text-gray-400 font-mono">manager_10004 (Store 10004)</div>
-                            </button>
-                            <button type="button" onclick="selectDemoAccount('staff_10004', 'NamAn@2026')" class="p-2 rounded-xl bg-white hover:bg-purple-50 text-left border border-gray-100 transition-colors">
-                                <div class="font-bold text-purple-600">🛒 NV Phú Mỹ Hưng</div>
-                                <div class="text-[10px] text-gray-400 font-mono">staff_10004 (Chỉ đơn 10004)</div>
-                            </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10005', 'NamAn@2026')" class="p-2 rounded-xl bg-white hover:bg-blue-50 text-left border border-gray-100 transition-colors">
-                                <div class="font-bold text-blue-700">📍 CHT Mai Chí Thọ</div>
-                                <div class="text-[10px] text-gray-400 font-mono">manager_10005 (Store 10005)</div>
+                            <button type="button" onclick="selectDemoAccount('manager_10004', 'NamAn@2026')" class="w-full p-1.5 rounded bg-white hover:bg-[#F1F1EF] text-left border border-[#E9E9E7] transition-colors flex items-center justify-between">
+                                <div class="font-medium text-[#6940A5] text-xs">CHT Phú Mỹ Hưng</div>
+                                <div class="text-[10px] text-[#787774] font-mono">manager_10004</div>
                             </button>
                         </div>
                     </div>
@@ -133,7 +129,7 @@
             </div>
         </div>
 
-        <p class="text-center text-xs text-gray-400">
+        <p class="text-center text-[11px] text-[#9B9A97]">
             © 2026 Nam An Market Inc. Kiến trúc đa kênh độc lập ShopeeFood • GrabMart • ShopeeMart.
         </p>
     </div>

@@ -3,108 +3,107 @@
 {% block title %}Quản Lý Thực Đơn & Tồn Kho Đa Kênh - Nam An Merchant Portal{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="space-y-4">
 
     <!-- Header Section -->
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-            <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-50 text-primary text-xs font-semibold tracking-wide mb-2">
-                <span class="w-2 h-2 rounded-full bg-primary"></span>
-                <span>OMNI-CHANNEL REAL-TIME MENU & STOCK SYNC</span>
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-[rgba(55,53,47,0.09)]">
+        <div class="flex items-center space-x-2.5">
+            <span class="text-2xl">🥬</span>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-[#37352F]">
+                    Quản Lý Thực Đơn & Tồn Kho Đa Kênh
+                </h1>
+                <p class="text-[12px] text-[#787774]">
+                    Kiểm soát số lượng tồn kho khả dụng và bật/tắt món tức thì trên <strong>ShopeeFood, GrabMart & ShopeeMart</strong> cho từng chi nhánh Nam An Market.
+                </p>
             </div>
-            <h1 class="text-2xl sm:text-3xl font-display font-extrabold text-charcoal tracking-tight">
-                Quản Lý Thực Đơn & Tồn Kho Đa Kênh
-            </h1>
-            <p class="text-xs sm:text-sm text-charcoal-muted mt-1">
-                Kiểm soát số lượng tồn kho khả dụng và bật/tắt món tức thì trên <strong>ShopeeFood, GrabMart & ShopeeMart</strong> cho từng chi nhánh Nam An Market.
-            </p>
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex flex-wrap items-center gap-2.5">
-            <button onclick="triggerSyncAll()" class="px-4 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md shadow-primary/20 flex items-center space-x-2 transition-all">
-                <svg id="sync-all-spinner" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        <div class="flex flex-wrap items-center gap-2 text-[12px]">
+            <button onclick="triggerSyncAll()" class="px-3 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium flex items-center space-x-1.5 transition-colors">
+                <svg id="sync-all-spinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 <span>⚡ Đồng Bộ Tồn Kho Đa Sàn</span>
             </button>
-            <button onclick="seedSampleCatalog()" class="px-4 py-2.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold text-xs transition-colors flex items-center space-x-1.5" title="Khởi tạo danh mục & sản phẩm mẫu">
+            <button onclick="seedSampleCatalog()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#37352F] font-medium transition-colors flex items-center space-x-1" title="Khởi tạo danh mục & sản phẩm mẫu">
                 <span>🌱 Khởi Tạo Dữ Liệu Mẫu</span>
             </button>
         </div>
     </div>
 
-    <!-- Store Branch Selector Tabs (4 branches) -->
-    <div class="bg-white rounded-3xl p-3 shadow-sm border border-gray-100 flex flex-wrap items-center gap-2">
-        <span class="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 hidden sm:inline">Chi Nhánh:</span>
-        <button type="button" onclick="switchStoreBranch('10001')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-primary text-white shadow-sm flex items-center space-x-2" data-store="10001">
-            <span>📍 21 Thảo Điền (10001)</span>
+    <!-- Store Branch Selector Tabs (Notion Database Views) -->
+    <div class="bg-white rounded-md p-1.5 border border-[rgba(55,53,47,0.09)] flex flex-wrap items-center gap-1.5 text-[12px]">
+        <span class="text-[11px] font-semibold text-[#787774] px-2 hidden sm:inline">Chi Nhánh:</span>
+        <button type="button" onclick="switchStoreBranch('10001')" class="store-tab-pill px-2.5 py-1 rounded font-medium transition-colors bg-[#F1F1EF] text-[#37352F]" data-store="10001">
+            📍 21 Thảo Điền (10001)
         </button>
-        <button type="button" onclick="switchStoreBranch('10004')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2" data-store="10004">
-            <span>📍 46 Hưng Phúc, Q.7 (10004)</span>
+        <button type="button" onclick="switchStoreBranch('10004')" class="store-tab-pill px-2.5 py-1 rounded font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]" data-store="10004">
+            📍 46 Hưng Phúc, Q.7 (10004)
         </button>
-        <button type="button" onclick="switchStoreBranch('10005')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2" data-store="10005">
-            <span>📍 17 Mai Chí Thọ (10005)</span>
+        <button type="button" onclick="switchStoreBranch('10005')" class="store-tab-pill px-2.5 py-1 rounded font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]" data-store="10005">
+            📍 17 Mai Chí Thọ (10005)
         </button>
-        <button type="button" onclick="switchStoreBranch('10006')" class="store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2" data-store="10006">
-            <span>📍 303 Nguyễn Văn Trỗi (10006)</span>
+        <button type="button" onclick="switchStoreBranch('10006')" class="store-tab-pill px-2.5 py-1 rounded font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]" data-store="10006">
+            📍 303 Nguyễn Văn Trỗi (10006)
         </button>
     </div>
 
-    <!-- 4 KPI Summary Cards -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+    <!-- 4 KPI Summary Cards (Notion Metric Blocks) -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         <!-- KPI 1: Total SKUs -->
-        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+        <div class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] transition-colors">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-charcoal-muted uppercase tracking-wider">Tổng Mặt Hàng</span>
-                <span class="text-sm">🏷️</span>
+                <span class="text-[11px] font-medium text-[#787774]">Tổng Mặt Hàng</span>
+                <span class="text-xs">🏷️</span>
             </div>
-            <div id="kpi-total-skus" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-charcoal">0</div>
-            <p class="text-[11px] text-gray-400 mt-1">Sản phẩm trong thực đơn</p>
+            <div id="kpi-total-skus" class="mt-1 text-2xl font-bold font-mono text-[#37352F]">0</div>
+            <p class="text-[10px] text-[#9B9A97] mt-0.5">Sản phẩm trong thực đơn</p>
         </div>
 
         <!-- KPI 2: In Stock -->
-        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-emerald-400 transition-all" onclick="filterByStatus('IN_STOCK')">
+        <div class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] transition-colors cursor-pointer" onclick="filterByStatus('IN_STOCK')">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Đang Mở Bán</span>
-                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                <span class="text-[11px] font-medium text-[#448361]">Đang Mở Bán</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-[#448361]"></span>
             </div>
-            <div id="kpi-in-stock" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-emerald-700">0</div>
-            <p class="text-[11px] text-gray-400 mt-1">Còn hàng trên các sàn</p>
+            <div id="kpi-in-stock" class="mt-1 text-2xl font-bold font-mono text-[#448361]">0</div>
+            <p class="text-[10px] text-[#9B9A97] mt-0.5">Còn hàng trên các sàn</p>
         </div>
 
         <!-- KPI 3: Out of Stock -->
-        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-rose-400 transition-all" onclick="filterByStatus('OUT_OF_STOCK')">
+        <div class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] transition-colors cursor-pointer" onclick="filterByStatus('OUT_OF_STOCK')">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-rose-700 uppercase tracking-wider">Tạm Hết Hàng</span>
-                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+                <span class="text-[11px] font-medium text-[#D44C47]">Tạm Hết Hàng</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-[#D44C47]"></span>
             </div>
-            <div id="kpi-out-of-stock" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-rose-600">0</div>
-            <p class="text-[11px] text-gray-400 mt-1">Đã tắt món trên sàn</p>
+            <div id="kpi-out-of-stock" class="mt-1 text-2xl font-bold font-mono text-[#D44C47]">0</div>
+            <p class="text-[10px] text-[#9B9A97] mt-0.5">Đã tắt món trên sàn</p>
         </div>
 
         <!-- KPI 4: Low Stock Alert -->
-        <div class="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-amber-400 transition-all" onclick="filterByStatus('LOW_STOCK')">
+        <div class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] transition-colors cursor-pointer" onclick="filterByStatus('LOW_STOCK')">
             <div class="flex items-center justify-between">
-                <span class="text-xs font-bold text-amber-700 uppercase tracking-wider">Tồn Kho Thấp</span>
-                <span class="text-sm">⚠️</span>
+                <span class="text-[11px] font-medium text-[#CB912F]">Tồn Kho Thấp</span>
+                <span class="text-xs">⚠️</span>
             </div>
-            <div id="kpi-low-stock" class="mt-2 text-2xl sm:text-3xl font-display font-extrabold text-amber-600">0</div>
-            <p class="text-[11px] text-gray-400 mt-1">Dưới 5 đơn vị khả dụng</p>
+            <div id="kpi-low-stock" class="mt-1 text-2xl font-bold font-mono text-[#CB912F]">0</div>
+            <p class="text-[10px] text-[#9B9A97] mt-0.5">Dưới 5 đơn vị khả dụng</p>
         </div>
     </div>
 
-    <!-- Filter & Search Controls -->
-    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-4">
+    <!-- Filter & Search Controls (Notion Database Toolbar) -->
+    <div class="bg-white rounded-md p-2.5 border border-[rgba(55,53,47,0.09)] space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2.5">
             <!-- Search Bar -->
-            <div class="relative flex-1 min-w-[260px]">
-                <input type="text" id="inventory-search" oninput="debounceSearch()" placeholder="Tìm theo tên sản phẩm, mã SKU, mã vạch..." class="w-full pl-10 pr-4 py-2.5 rounded-full bg-surface-low text-xs text-charcoal border-none focus:ring-2 focus:ring-primary">
-                <svg class="w-4 h-4 text-gray-400 absolute left-3.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <div class="relative flex-1 min-w-[240px]">
+                <input type="text" id="inventory-search" oninput="debounceSearch()" placeholder="Tìm theo tên sản phẩm, mã SKU, mã vạch..." class="w-full pl-7 pr-3 py-1 rounded bg-[#F7F6F3] text-[12px] text-[#37352F] placeholder-[#9B9A97] border border-[rgba(55,53,47,0.09)] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <svg class="w-3.5 h-3.5 text-[#9B9A97] absolute left-2 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             </div>
 
             <!-- Status Filter Dropdown -->
-            <div class="flex items-center space-x-2">
-                <span class="text-xs font-bold text-gray-500">Trạng thái:</span>
-                <select id="filter-inventory-status" onchange="onFilterChange()" class="px-4 py-2 rounded-full bg-surface-low text-xs text-charcoal font-semibold border-none focus:ring-2 focus:ring-primary cursor-pointer">
+            <div class="flex items-center space-x-1.5 text-[12px]">
+                <span class="text-[11px] font-semibold text-[#787774]">Trạng thái:</span>
+                <select id="filter-inventory-status" onchange="onFilterChange()" class="px-2.5 py-1 rounded bg-[#F7F6F3] text-[12px] text-[#37352F] font-medium border border-[rgba(55,53,47,0.09)] focus:outline-none focus:bg-white focus:border-[#2383E2]">
                     <option value="">Tất cả trạng thái</option>
                     <option value="IN_STOCK">Đang mở bán (Còn hàng)</option>
                     <option value="OUT_OF_STOCK">Tạm ngưng (Hết hàng)</option>
@@ -114,46 +113,46 @@
         </div>
 
         <!-- Category Pills -->
-        <div class="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2" id="category-pills-container">
-            <button type="button" onclick="setCategoryFilter('')" class="cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm" data-cat="">
+        <div class="pt-2 border-t border-[rgba(55,53,47,0.06)] flex flex-wrap items-center gap-1.5" id="category-pills-container">
+            <button type="button" onclick="setCategoryFilter('')" class="cat-pill px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors bg-[#F1F1EF] text-[#37352F]" data-cat="">
                 Tất cả danh mục
             </button>
             <!-- Dynamically populated categories -->
         </div>
     </div>
 
-    <!-- Products & Inventory Table -->
-    <div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-4">
+    <!-- Products & Inventory Table (Notion Table View) -->
+    <div class="bg-white rounded-md border border-[rgba(55,53,47,0.09)] overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
+            <table class="w-full text-left text-[12px]">
                 <thead>
-                    <tr class="text-gray-400 font-bold uppercase tracking-wider border-b border-gray-100">
-                        <th class="pb-3 pr-3">Sản Phẩm</th>
-                        <th class="pb-3 px-3">Mã SKU / Barcode</th>
-                        <th class="pb-3 px-3">Danh Mục</th>
-                        <th class="pb-3 px-3 text-right">Giá Niêm Yết</th>
-                        <th class="pb-3 px-3 text-center">Tồn Khả Dụng</th>
-                        <th class="pb-3 px-3">Đồng Bộ Sàn</th>
-                        <th class="pb-3 pl-3 text-center">Thao Tác Bật/Tắt Món</th>
+                    <tr class="bg-[#F7F6F3] text-[11px] font-semibold text-[#787774] border-b border-[rgba(55,53,47,0.09)]">
+                        <th class="py-2.5 px-3">Sản Phẩm</th>
+                        <th class="py-2.5 px-3">Mã SKU / Barcode</th>
+                        <th class="py-2.5 px-3">Danh Mục</th>
+                        <th class="py-2.5 px-3 text-right">Giá Niêm Yết</th>
+                        <th class="py-2.5 px-3 text-center">Tồn Khả Dụng</th>
+                        <th class="py-2.5 px-3">Đồng Bộ Sàn</th>
+                        <th class="py-2.5 px-3 text-center">Thao Tác Bật/Tắt Món</th>
                     </tr>
                 </thead>
-                <tbody id="inventory-table-body" class="divide-y divide-gray-50">
+                <tbody id="inventory-table-body" class="divide-y divide-[rgba(55,53,47,0.06)]">
                     <!-- Populated dynamically -->
                 </tbody>
             </table>
         </div>
 
         <!-- Pagination -->
-        <div id="inventory-pagination" class="pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3 text-xs text-charcoal-muted">
+        <div id="inventory-pagination" class="p-2.5 bg-[#F7F6F3] border-t border-[rgba(55,53,47,0.09)] flex flex-wrap items-center justify-between gap-2.5 text-[12px] text-[#787774]">
             <div>
-                Hiển thị <span id="inv-page-range" class="font-bold text-charcoal">0 - 0</span> trong tổng số <span id="inv-total-count" class="font-bold text-charcoal">0</span> mặt hàng
+                Hiển thị <span id="inv-page-range" class="font-mono font-semibold text-[#37352F]">0 - 0</span> trong tổng số <span id="inv-total-count" class="font-mono font-semibold text-[#37352F]">0</span> mặt hàng
             </div>
-            <div class="flex items-center space-x-2">
-                <button id="btn-prev-inv" onclick="changeInventoryPage(-1)" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 transition-colors">
+            <div class="flex items-center space-x-1.5">
+                <button id="btn-prev-inv" onclick="changeInventoryPage(-1)" class="px-2.5 py-1 rounded bg-white hover:bg-[rgba(55,53,47,0.08)] text-[#37352F] font-medium disabled:opacity-40 border border-[rgba(55,53,47,0.09)] transition-colors">
                     &larr; Trang trước
                 </button>
-                <span id="inv-current-page" class="font-bold text-primary px-2">Trang 1 / 1</span>
-                <button id="btn-next-inv" onclick="changeInventoryPage(1)" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-charcoal font-bold disabled:opacity-40 transition-colors">
+                <span id="inv-current-page" class="font-mono font-semibold text-[#37352F] px-2">Trang 1 / 1</span>
+                <button id="btn-next-inv" onclick="changeInventoryPage(1)" class="px-2.5 py-1 rounded bg-white hover:bg-[rgba(55,53,47,0.08)] text-[#37352F] font-medium disabled:opacity-40 border border-[rgba(55,53,47,0.09)] transition-colors">
                     Trang sau &rarr;
                 </button>
             </div>
@@ -162,34 +161,37 @@
 
 </div>
 
-<!-- Quick Edit Stock Modal -->
-<div id="modal-quick-stock" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-6">
-        <div>
-            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-primary flex items-center justify-center mb-3">
-                <span class="text-xl">📦</span>
+<!-- Quick Edit Stock Modal (Notion Page Dialog) -->
+<div id="modal-quick-stock" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg max-w-md w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl space-y-3.5 relative text-[#37352F]">
+        <div class="flex items-center justify-between border-b border-[rgba(55,53,47,0.09)] pb-3">
+            <div class="flex items-center space-x-2">
+                <span class="text-base">📦</span>
+                <div>
+                    <h3 class="text-base font-semibold text-[#37352F]">Điều Chỉnh Số Lượng Tồn Kho</h3>
+                    <p class="text-[12px] text-[#787774]" id="modal-product-title">Tên sản phẩm</p>
+                </div>
             </div>
-            <h3 class="text-xl font-display font-bold text-charcoal">Điều Chỉnh Số Lượng Tồn Kho</h3>
-            <p class="text-xs text-charcoal-muted mt-1" id="modal-product-title">Tên sản phẩm</p>
+            <button onclick="closeQuickStockModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
         </div>
 
-        <form onsubmit="submitQuickStockUpdate(event)" class="space-y-4">
+        <form onsubmit="submitQuickStockUpdate(event)" class="space-y-3 text-[12px]">
             <input type="hidden" id="modal-sku-input">
 
             <div>
-                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Số lượng tồn kho khả dụng mới</label>
-                <input type="number" id="modal-stock-input" min="0" step="1" required class="w-full px-4 py-2.5 rounded-xl bg-surface-low text-sm font-bold text-charcoal focus:ring-2 focus:ring-primary focus:bg-white">
-                <p class="text-[11px] text-gray-400 mt-1">Nếu nhập = 0, món sẽ tự động chuyển sang trạng thái "Hết hàng".</p>
+                <label class="block font-semibold text-[#787774] mb-1">Số lượng tồn kho khả dụng mới</label>
+                <input type="number" id="modal-stock-input" min="0" step="1" required class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] text-[12px] font-mono font-bold text-[#37352F] border border-[rgba(55,53,47,0.09)] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <p class="text-[11px] text-[#787774] mt-1">Nếu nhập = 0, món sẽ tự động chuyển sang trạng thái "Hết hàng".</p>
             </div>
 
-            <div class="p-3 rounded-xl bg-emerald-50 text-primary text-xs flex items-center space-x-2">
-                <input type="checkbox" id="modal-sync-channels" checked class="rounded text-primary focus:ring-primary">
-                <label for="modal-sync-channels" class="font-medium cursor-pointer">Tự động đẩy tồn kho sang ShopeeFood, GrabMart & ShopeeMart</label>
+            <div class="p-2.5 rounded-md bg-[#EDF3EC]/70 text-[#448361] border border-[#B3D6B5] flex items-center space-x-2">
+                <input type="checkbox" id="modal-sync-channels" checked class="rounded text-[#2F3437] focus:ring-0">
+                <label for="modal-sync-channels" class="font-medium cursor-pointer text-[11px]">Tự động đẩy tồn kho sang ShopeeFood, GrabMart & ShopeeMart</label>
             </div>
 
-            <div class="flex items-center justify-end space-x-3 pt-2">
-                <button type="button" onclick="closeQuickStockModal()" class="px-5 py-2.5 rounded-full bg-surface-low text-xs font-bold hover:bg-gray-200">Hủy</button>
-                <button type="submit" id="btn-save-stock" class="px-6 py-2.5 rounded-full bg-primary hover:bg-primary-light text-white font-display font-bold text-xs shadow-md">
+            <div class="flex items-center justify-end space-x-2 pt-3 border-t border-[rgba(55,53,47,0.09)]">
+                <button type="button" onclick="closeQuickStockModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Hủy</button>
+                <button type="submit" id="btn-save-stock" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium transition-colors">
                     Lưu & Đồng Bộ Ngay
                 </button>
             </div>
@@ -219,9 +221,9 @@
 
         document.querySelectorAll('.store-tab-pill').forEach(btn => {
             if (btn.getAttribute('data-store') === storeCode) {
-                btn.className = "store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-primary text-white shadow-sm flex items-center space-x-2";
+                btn.className = "store-tab-pill px-2.5 py-1 rounded font-medium transition-colors bg-[#F1F1EF] text-[#37352F]";
             } else {
-                btn.className = "store-tab-pill px-4 py-2.5 rounded-2xl text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-2";
+                btn.className = "store-tab-pill px-2.5 py-1 rounded font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]";
             }
         });
 
@@ -234,9 +236,9 @@
 
         document.querySelectorAll('.cat-pill').forEach(btn => {
             if (btn.getAttribute('data-cat') === catId) {
-                btn.className = "cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm";
+                btn.className = "cat-pill px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors bg-[#F1F1EF] text-[#37352F]";
             } else {
-                btn.className = "cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50";
+                btn.className = "cat-pill px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]";
             }
         });
 
@@ -324,58 +326,58 @@
 
         items.forEach(item => {
             const tr = document.createElement('tr');
-            tr.className = "hover:bg-surface-low/50 transition-colors";
+            tr.className = "hover:bg-[#F7F6F3]/50 transition-colors border-b border-[#E9E9E7]/60";
 
             const isOutOfStock = Boolean(item.is_out_of_stock) || Number(item.available_stock) <= 0;
             const statusBadge = isOutOfStock
-                ? '<span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-rose-100 text-rose-800">TẠM HẾT HÀNG</span>'
-                : '<span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] bg-emerald-100 text-emerald-800">ĐANG MỞ BÁN</span>';
+                ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FFE2DD] text-[#D44C47]">Hết hàng</span>'
+                : '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#DBEDDB] text-[#28456C]">Đang bán</span>';
 
             const toggleBtn = isOutOfStock
-                ? `<button onclick="toggleItemStock('${item.sku}', false)" class="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-all shadow-xs flex items-center space-x-1">
-                     <span>✅ Bật Bán Lại</span>
+                ? `<button onclick="toggleItemStock('${item.sku}', false)" class="px-2.5 py-1 rounded text-xs font-medium text-[#2F3437] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
+                     <span>Bật bán lại</span>
                    </button>`
-                : `<button onclick="toggleItemStock('${item.sku}', true)" class="px-3 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] transition-all shadow-xs flex items-center space-x-1">
-                     <span>🛑 Tắt Món (Hết)</span>
+                : `<button onclick="toggleItemStock('${item.sku}', true)" class="px-2.5 py-1 rounded text-xs font-medium text-[#D44C47] bg-[#FFE2DD]/30 border border-[#FFE2DD] hover:bg-[#FFE2DD]/60 transition-colors">
+                     <span>Tắt món</span>
                    </button>`;
 
-            const syncTime = item.last_synced_at ? new Date(item.last_synced_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'}) : 'Chưa đồng bộ';
+            const syncTime = item.last_synced_at ? new Date(item.last_synced_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'}) : 'Chưa sync';
 
             tr.innerHTML = `
-                <td class="py-3.5 pr-3">
-                    <div class="flex items-center space-x-3">
-                        <img src="${item.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80'}" alt="${item.name}" class="w-10 h-10 rounded-xl object-cover border border-gray-100 shrink-0">
+                <td class="py-2.5 pr-3">
+                    <div class="flex items-center space-x-2.5">
+                        <img src="${item.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80'}" alt="${item.name}" class="w-8 h-8 rounded object-cover border border-[#E9E9E7] shrink-0">
                         <div>
-                            <div class="font-bold text-charcoal font-display text-xs">${item.name}</div>
-                            <div class="text-[11px] text-gray-400 mt-0.5">ĐVT: ${item.unit}</div>
+                            <div class="font-medium text-[#2F3437] text-xs">${item.name}</div>
+                            <div class="text-[11px] text-[#787774]">ĐVT: ${item.unit}</div>
                         </div>
                     </div>
                 </td>
-                <td class="py-3.5 px-3 font-mono">
-                    <div class="font-bold text-charcoal">${item.sku}</div>
-                    <div class="text-[10px] text-gray-400">${item.barcode || 'N/A'}</div>
+                <td class="py-2.5 px-3 font-mono">
+                    <div class="font-medium text-[#2F3437] text-xs">${item.sku}</div>
+                    <div class="text-[11px] text-[#9B9A97]">${item.barcode || '—'}</div>
                 </td>
-                <td class="py-3.5 px-3">
-                    <span class="px-2.5 py-1 rounded-lg bg-surface-low text-charcoal font-medium text-[11px]">${item.category_name}</span>
+                <td class="py-2.5 px-3">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F1F1EF] text-[#787774]">${item.category_name}</span>
                 </td>
-                <td class="py-3.5 px-3 text-right font-mono font-bold text-charcoal">
+                <td class="py-2.5 px-3 text-right font-mono font-medium text-[#2F3437] text-xs">
                     ${formatVND(item.base_price)}
                 </td>
-                <td class="py-3.5 px-3 text-center">
-                    <div class="inline-flex items-center space-x-2">
-                        <span class="font-mono font-extrabold ${isOutOfStock ? 'text-rose-600' : 'text-primary'} text-sm">${item.available_stock}</span>
-                        <button onclick="openQuickStockModal('${item.sku}', '${item.name.replace(/'/g, "\\'")}', ${item.available_stock})" class="p-1 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-charcoal transition-colors" title="Chỉnh sửa tồn kho">
+                <td class="py-2.5 px-3 text-center">
+                    <div class="inline-flex items-center justify-center space-x-1.5">
+                        <span class="font-mono font-semibold ${isOutOfStock ? 'text-[#D44C47]' : 'text-[#2F3437]'} text-xs">${item.available_stock}</span>
+                        <button onclick="openQuickStockModal('${item.sku}', '${item.name.replace(/'/g, "\\'")}', ${item.available_stock})" class="p-1 rounded hover:bg-[#E9E9E7] text-[#9B9A97] hover:text-[#2F3437] transition-colors" title="Chỉnh sửa tồn kho">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                         </button>
                     </div>
                 </td>
-                <td class="py-3.5 px-3">
-                    <div class="flex items-center space-x-1.5">
-                        <span class="w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
-                        <span class="text-[11px] text-gray-500">${syncTime}</span>
+                <td class="py-2.5 px-3">
+                    <div class="flex items-center space-x-1.5 text-xs text-[#787774]">
+                        <span class="w-1.5 h-1.5 rounded-full ${isOutOfStock ? 'bg-[#D44C47]' : 'bg-[#0F7B6C]'}"></span>
+                        <span>${syncTime}</span>
                     </div>
                 </td>
-                <td class="py-3.5 pl-3 text-center whitespace-nowrap space-y-1">
+                <td class="py-2.5 pl-3 text-center whitespace-nowrap">
                     <div class="flex items-center justify-center space-x-2">
                         ${statusBadge}
                         ${toggleBtn}
@@ -530,13 +532,13 @@
                 if (data.success && data.data) {
                     const container = document.getElementById('category-pills-container');
                     let html = `
-                        <button type="button" onclick="setCategoryFilter('')" class="cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${currentCategoryId === '' ? 'bg-primary text-white shadow-sm' : 'bg-surface-low text-charcoal hover:bg-emerald-50'}" data-cat="">
+                        <button type="button" onclick="setCategoryFilter('')" class="cat-pill px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors ${currentCategoryId === '' ? 'bg-[#F1F1EF] text-[#37352F]' : 'text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]'}" data-cat="">
                             Tất cả danh mục
                         </button>
                     `;
                     data.data.forEach(c => {
                         html += `
-                            <button type="button" onclick="setCategoryFilter('${c.id}')" class="cat-pill px-3.5 py-1.5 rounded-full text-xs font-bold transition-all ${currentCategoryId === c.id ? 'bg-primary text-white shadow-sm' : 'bg-surface-low text-charcoal hover:bg-emerald-50'}" data-cat="${c.id}">
+                            <button type="button" onclick="setCategoryFilter('${c.id}')" class="cat-pill px-2.5 py-0.5 rounded text-[11px] font-medium transition-colors ${currentCategoryId === c.id ? 'bg-[#F1F1EF] text-[#37352F]' : 'text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]'}" data-cat="${c.id}">
                                 ${c.name}
                             </button>
                         `;
