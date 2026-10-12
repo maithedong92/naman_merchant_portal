@@ -9,6 +9,7 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.stores import router as stores_router
 from app.api.v1.system import router as system_router
 from app.api.v1.users import router as users_router
+from app.api.v1.haravan import router as haravan_router
 
 api_v1_router = APIRouter(prefix="/api/v1")
 
@@ -23,5 +24,6 @@ api_v1_router.include_router(products_router)
 api_v1_router.include_router(inventory_router)
 api_v1_router.include_router(orders_router)
 api_v1_router.include_router(reports_router)
+api_v1_router.include_router(haravan_router)
 
 

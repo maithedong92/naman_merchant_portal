@@ -78,6 +78,19 @@ class Settings(BaseSettings):
     SHOPEEMART_SHOP_ID: str = ""
     SHOPEEMART_BASE_URL: str = "https://partner.shopeemobile.com"
 
+    # MongoDB & Haravan Omnichannel Sync Settings
+    MONGO_URI: str = "mongodb://user_donhang:phhthtnkhk_donhang@103.175.248.250:27011/?authSource=pmdonhang"
+    MONGO_DB: str = "pmdonhang"
+    MONGO_ORDERS_COLLECTION: str = "donhang"
+    ARITO_DB: str = "arito_database"
+    ARITO_INVENTORY_COLLECTION: str = "cttk"
+
+    HARAVAN_ENABLED: bool = True
+    HARAVAN_TOKEN: str = "C1524959DBF63FD832CB79A18C50A9DAC2D1A4FAB178B7AC6528A98E045F33C8"
+    HARAVAN_BASE_URL: str = "https://apis.haravan.com/com"
+    HARAVAN_SYNC_INTERVAL_SECONDS: int = 60
+    HARAVAN_SYNC_LIMIT: int = 100
+
 
 @lru_cache()
 def get_settings() -> Settings:
