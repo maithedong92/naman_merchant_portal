@@ -338,3 +338,65 @@ def test_haravan_orders_html_ui_components():
     assert "haravan-complete-modal" in html
     assert "Tổng tiền thực tế" in html
 
+    # 4. Incomplete Orders Filter (pmdonhang parity)
+    assert "btn-incomplete-filter" in html
+    assert "Chưa Hoàn Thành" in html
+    assert "incomplete-counter-badge" in html
+
+
+@pytest.mark.asyncio
+async def test_haravan_incomplete_orders_filter_query(mock_admin_user):
+    """Verify that incomplete orders filter uses $nin: ['Hoàn thành', 'Đã hủy'] matching pmdonhang."""
+    from app.services.haravan_order_service import HaravanOrderService
+    svc = HaravanOrderService()
+
+    with patch.object(svc, "_get_orders_collection") as mock_get_col:
+        mock_col = MagicMock()
+        mock_col.count_documents.return_value = 10
+        mock_col.find.return_value.sort.return_value.skip.return_value.limit.return_value = []
+        mock_get_col.return_value = mock_col
+
+        # Test incomplete_only=True
+        items, total = await svc.list_orders(current_user=mock_admin_user, incomplete_only=True)
+        query = mock_col.find.call_args[0][0]
+        assert query["internal.order_processing_status"] == {"$nin": ["Hoàn thành", "Đã hủy"]}
+
+        # Test status="Chưa hoàn thành"
+        items, total = await svc.list_orders(current_user=mock_admin_user, status="Chưa hoàn thành")
+        query2 = mock_col.find.call_args[0][0]
+        assert query2["internal.order_processing_status"] == {"$nin": ["Hoàn thành", "Đã hủy"]}
+
+
+@pytest.mark.asyncio
+async def test_haravan_count_incomplete_orders(mock_admin_user):
+    """Verify counting incomplete orders."""
+    from app.services.haravan_order_service import HaravanOrderService
+    svc = HaravanOrderService()
+
+    with patch.object(svc, "_get_orders_collection") as mock_get_col:
+        mock_col = MagicMock()
+        mock_col.count_documents.return_value = 28
+        mock_get_col.return_value = mock_col
+
+        cnt = await svc.count_incomplete_orders(current_user=mock_admin_user)
+        assert cnt == 28
+        query = mock_col.count_documents.call_args[0][0]
+        assert query["internal.order_processing_status"] == {"$nin": ["Hoàn thành", "Đã hủy"]}
+
+
+def test_haravan_incomplete_count_api_endpoint(mock_admin_user):
+    """Verify GET /api/v1/haravan/incomplete-count endpoint."""
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
+    client = TestClient(app)
+
+    with patch("app.api.v1.haravan.haravan_order_service.count_incomplete_orders", new_callable=AsyncMock) as mock_count:
+        mock_count.return_value = 28
+        res = client.get("/api/v1/haravan/incomplete-count")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["data"]["count"] == 28
+
+    app.dependency_overrides.clear()
+
+

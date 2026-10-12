@@ -65,7 +65,7 @@ async def list_orders(
     store_code: Optional[str] = Query(None, description="Filter by store code e.g. 10001"),
     channel_id: Optional[str] = Query(None, description="Filter by channel UUID"),
     channel_code: Optional[str] = Query(None, description="Filter by channel code e.g. SHOPEEFOOD, GRABMART"),
-    status: Optional[UnifiedOrderStatus] = Query(None, description="Filter by unified order status"),
+    status: Optional[str] = Query(None, description="Filter by unified order status or 'INCOMPLETE' / 'Chưa hoàn thành'"),
     search: Optional[str] = Query(None, description="Search by order code, customer name, phone, etc."),
     from_date: Optional[datetime] = Query(None),
     to_date: Optional[datetime] = Query(None),

@@ -163,6 +163,7 @@ async def list_haravan_orders(
     source: Optional[str] = Query(None, description="Lọc theo nguồn: checkout_next, shopee, lazada, pos, manual"),
     search: Optional[str] = Query(None, description="Tìm theo mã đơn (#NA...), SĐT, tên khách hàng"),
     unassigned_only: bool = Query(False, description="Chỉ lấy các đơn CHƯA PHÂN TUYẾN (Cần tổng đài điều phối)"),
+    incomplete_only: bool = Query(False, description="Chỉ lấy các đơn CHƯA HOÀN THÀNH (khác Hoàn thành và Đã hủy)"),
     page: int = Query(1, ge=1, description="Trang hiện tại"),
     page_size: int = Query(25, ge=1, le=100, description="Số đơn mỗi trang"),
     current_user: User = Depends(get_current_user),
@@ -174,6 +175,7 @@ async def list_haravan_orders(
         source=source,
         search=search,
         unassigned_only=unassigned_only,
+        incomplete_only=incomplete_only,
         page=page,
         page_size=page_size,
     )
@@ -186,6 +188,26 @@ async def list_haravan_orders(
             "total_pages": (total + page_size - 1) // page_size if total > 0 else 1,
         },
         message=f"Lấy {len(items)} đơn hàng Haravan thành công.",
+    )
+
+
+@router.get(
+    "/incomplete-count",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Đếm số lượng đơn Haravan chưa hoàn thành",
+    description="Đếm các đơn hàng Haravan có trạng thái chưa hoàn thành (ngoại trừ Hoàn thành và Đã hủy) theo phân quyền chi nhánh.",
+)
+async def get_incomplete_count(
+    store_code: Optional[str] = Query(None, description="Lọc theo mã chi nhánh"),
+    current_user: User = Depends(get_current_user),
+):
+    count = await haravan_order_service.count_incomplete_orders(
+        current_user=current_user,
+        store_code=store_code,
+    )
+    return APIResponse.ok(
+        data={"count": count},
+        message=f"Có {count} đơn hàng Haravan chưa hoàn thành.",
     )
 
 

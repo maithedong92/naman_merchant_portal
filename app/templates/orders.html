@@ -171,9 +171,14 @@
                 <button onclick="setChannelFilter('SHOPEEMART')" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-rose-50 hover:text-rose-600" data-channel="SHOPEEMART">
                     ShopeeMart
                 </button>
-                <button onclick="setChannelFilter('HARAVAN')" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-1.5" data-channel="HARAVAN">
+                <button id="btn-haravan-filter" onclick="setChannelFilter('HARAVAN')" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-1.5" data-channel="HARAVAN">
                     <span>🌐</span>
                     <span>Haravan Omnichannel</span>
+                </button>
+                <button id="btn-incomplete-filter" onclick="setIncompleteFilter()" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 flex items-center space-x-1.5 shadow-sm" data-channel="INCOMPLETE">
+                    <span>⏳</span>
+                    <span>Chưa Hoàn Thành</span>
+                    <span id="incomplete-counter-badge" class="px-1.5 py-0.5 rounded-full bg-primary text-white text-[10px] font-extrabold leading-none">0</span>
                 </button>
                 <button id="btn-unassigned-filter" onclick="setHaravanUnassignedFilter()" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 flex items-center space-x-1.5 shadow-sm" data-channel="HARAVAN_UNASSIGNED">
                     <span>⚡</span>
@@ -750,8 +755,8 @@
 
         if (isHaravan) {
             select.innerHTML = `
+                <option value="Chưa hoàn thành">⏳ Chưa hoàn thành (Đang xử lý)</option>
                 <option value="">Tất cả trạng thái (Haravan)</option>
-                <option value="Chưa hoàn thành">Chưa hoàn thành (Đang xử lý)</option>
                 <option value="Đơn hàng mới">Đơn hàng mới (Chờ phân tuyến)</option>
                 <option value="Đã phân tuyến">Đã phân tuyến</option>
                 <option value="Yêu cầu phân tuyến lại">⚠️ Yêu cầu phân tuyến lại</option>
@@ -762,6 +767,7 @@
             `;
         } else {
             select.innerHTML = `
+                <option value="INCOMPLETE">⏳ Chưa hoàn thành (Đang xử lý)</option>
                 <option value="">Tất cả trạng thái</option>
                 <option value="PENDING">Chờ duyệt (PENDING)</option>
                 <option value="ACCEPTED">Đã nhận (ACCEPTED)</option>
@@ -772,7 +778,7 @@
                 <option value="CANCELLED">Đã hủy (CANCELLED)</option>
             `;
         }
-        select.value = currentFilter.status || '';
+        select.value = currentFilter.status !== undefined ? currentFilter.status : '';
     }
 
     // Check Haravan unassigned count for notification badge
@@ -790,6 +796,31 @@
                         badge.classList.add('bg-amber-500', 'animate-pulse');
                     } else {
                         badge.classList.remove('animate-pulse');
+                    }
+                }
+            }
+        } catch(e) {
+            // Silently ignore
+        }
+    }
+
+    // Check Haravan incomplete count for notification badge (theo chuẩn pmdonhang)
+    async function checkHaravanIncompleteCount() {
+        try {
+            const storeParam = currentFilter.store_code ? `?store_code=${encodeURIComponent(currentFilter.store_code)}` : '';
+            const res = await authFetch(`/api/v1/haravan/incomplete-count${storeParam}`);
+            if (res.ok) {
+                const json = await res.json();
+                const total = (json.data && json.data.count) || 0;
+                const badge = document.getElementById('incomplete-counter-badge');
+                if (badge) {
+                    badge.textContent = total;
+                    if (total > 0) {
+                        badge.classList.remove('bg-gray-400');
+                        badge.classList.add('bg-primary');
+                    } else {
+                        badge.classList.remove('bg-primary');
+                        badge.classList.add('bg-gray-400');
                     }
                 }
             }
@@ -830,6 +861,7 @@
 
         try {
             checkHaravanUnassignedCount();
+            checkHaravanIncompleteCount();
 
             if (currentFilter.is_haravan) {
                 // Fetch Haravan Orders from MongoDB
@@ -1426,6 +1458,17 @@
         loadOrdersFeed();
     }
 
+    function setIncompleteFilter() {
+        currentFilter.is_haravan = true;
+        currentFilter.unassigned_only = false;
+        currentFilter.channel_code = 'HARAVAN';
+        currentFilter.status = 'Chưa hoàn thành';
+        currentFilter.page = 1;
+        updateStatusDropdown(true);
+        updateChannelPillsActive('INCOMPLETE');
+        loadOrdersFeed();
+    }
+
     function updateChannelPillsActive(activeKey) {
         document.querySelectorAll('.channel-pill').forEach(btn => {
             const btnKey = btn.getAttribute('data-channel');
@@ -1433,6 +1476,8 @@
                 btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm flex items-center space-x-1.5";
             } else if (btnKey === 'HARAVAN_UNASSIGNED') {
                 btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 flex items-center space-x-1.5 shadow-sm";
+            } else if (btnKey === 'INCOMPLETE') {
+                btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-emerald-50 text-emerald-900 border border-emerald-300 hover:bg-emerald-100 flex items-center space-x-1.5 shadow-sm";
             } else {
                 btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-1.5";
             }
@@ -1467,8 +1512,11 @@
         }
         currentFilter.status = document.getElementById('filter-status').value;
         currentFilter.search = document.getElementById('search-input').value.trim();
-        // If user changed status dropdown directly while in unassigned mode, turn off unassigned_only flag
-        if (currentFilter.status && currentFilter.status !== 'Đơn hàng mới') {
+        // If user changed status dropdown directly
+        if (currentFilter.status === 'Chưa hoàn thành') {
+            updateChannelPillsActive('INCOMPLETE');
+            currentFilter.unassigned_only = false;
+        } else if (currentFilter.status && currentFilter.status !== 'Đơn hàng mới') {
             currentFilter.unassigned_only = false;
         }
         currentFilter.page = 1;

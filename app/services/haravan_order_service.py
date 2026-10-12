@@ -106,13 +106,14 @@ class HaravanOrderService:
         source: Optional[str] = None,
         search: Optional[str] = None,
         unassigned_only: bool = False,
+        incomplete_only: bool = False,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         Lấy danh sách đơn hàng từ MongoDB kèm Store-Level Isolation RBAC:
         - Staff / Store Manager chỉ thấy đơn hàng có assigned_store khớp với chi nhánh của họ.
-        - SuperAdmin / Dispatcher thấy tất cả và có thể lọc đơn chưa phân tuyến.
+        - SuperAdmin / Dispatcher thấy tất cả và có thể lọc đơn chưa phân tuyến hoặc chưa hoàn thành.
         """
         col = self._get_orders_collection()
         query: Dict[str, Any] = {}
@@ -139,12 +140,11 @@ class HaravanOrderService:
             elif store_code:
                 query["internal.assigned_store"] = store_code
 
-        # 2. Bộ lọc trạng thái xử lý nội bộ
-        if status and status != "Tất cả trạng thái":
-            if status == "Chưa hoàn thành":
-                query["internal.order_processing_status"] = {"$nin": ["Hoàn thành", "Đã hủy"]}
-            else:
-                query["internal.order_processing_status"] = status
+        # 2. Bộ lọc trạng thái xử lý nội bộ (hỗ trợ filter "Chưa hoàn thành" như pmdonhang cũ)
+        if incomplete_only or (status and status == "Chưa hoàn thành"):
+            query["internal.order_processing_status"] = {"$nin": ["Hoàn thành", "Đã hủy"]}
+        elif status and status != "Tất cả trạng thái":
+            query["internal.order_processing_status"] = status
 
         # 3. Bộ lọc nguồn đơn hàng
         if source and source != "Tất cả nguồn":
@@ -183,6 +183,7 @@ class HaravanOrderService:
         source: Optional[str] = None,
         search: Optional[str] = None,
         unassigned_only: bool = False,
+        incomplete_only: bool = False,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[Dict[str, Any]], int]:
@@ -196,8 +197,48 @@ class HaravanOrderService:
             source,
             search,
             unassigned_only,
+            incomplete_only,
             page,
             page_size,
+        )
+
+    def count_incomplete_orders_sync(
+        self,
+        current_user: User,
+        store_code: Optional[str] = None,
+    ) -> int:
+        """
+        Đếm tổng số đơn hàng Haravan chưa hoàn thành theo phân quyền (giống pmdonhang):
+        - Staff / Store Manager: Đếm các đơn chưa hoàn thành của chi nhánh mình.
+        - SuperAdmin: Đếm toàn bộ đơn chưa hoàn thành của toàn chuỗi (hoặc theo store_code).
+        """
+        col = self._get_orders_collection()
+        query: Dict[str, Any] = {
+            "internal.order_processing_status": {"$nin": ["Hoàn thành", "Đã hủy"]}
+        }
+        is_admin = current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value
+        user_store = current_user.store_code or (
+            current_user.store.code if current_user.store else None
+        )
+        if not is_admin:
+            if not user_store:
+                return 0
+            query["internal.assigned_store"] = user_store
+        elif store_code:
+            query["internal.assigned_store"] = store_code
+        return col.count_documents(query)
+
+    async def count_incomplete_orders(
+        self,
+        current_user: User,
+        store_code: Optional[str] = None,
+    ) -> int:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            self.count_incomplete_orders_sync,
+            current_user,
+            store_code,
         )
 
     def get_order_by_id_or_number_sync(self, order_id_or_sn: str) -> Optional[Dict[str, Any]]:

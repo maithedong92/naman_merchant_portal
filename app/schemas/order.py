@@ -79,7 +79,7 @@ class OrderFilterParams(BaseModel):
     store_code: Optional[str] = None
     channel_id: Optional[str] = None
     channel_code: Optional[str] = None
-    status: Optional[UnifiedOrderStatus] = None
+    status: Optional[str] = None
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None
     search: Optional[str] = None

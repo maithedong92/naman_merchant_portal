@@ -222,7 +222,16 @@ class OrderService:
         if params.channel_code:
             query = query.join(UnifiedOrder.channel).where(Channel.code == params.channel_code.upper())
         if params.status:
-            query = query.where(UnifiedOrder.status == params.status)
+            if params.status.upper() in ("INCOMPLETE", "CHUA_HOAN_THANH") or params.status == "Chưa hoàn thành":
+                query = query.where(
+                    UnifiedOrder.status.not_in([UnifiedOrderStatus.DELIVERED, UnifiedOrderStatus.CANCELLED])
+                )
+            else:
+                try:
+                    target_status = UnifiedOrderStatus(params.status)
+                    query = query.where(UnifiedOrder.status == target_status)
+                except ValueError:
+                    pass
         if params.from_date:
             query = query.where(UnifiedOrder.created_at >= params.from_date)
         if params.to_date:
