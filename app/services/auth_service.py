@@ -621,5 +621,95 @@ class AuthService:
             await db.rollback()
             return None
 
+    async def seed_branch_staff_users(
+        self,
+        db: AsyncSession,
+        default_password: str = "NamAn@2026",
+    ) -> List[dict]:
+        """
+        Idempotent function that seeds Store Managers and Staff accounts for all 4 Nam An branches.
+        Creates 1 Manager and 1 Staff per branch if they don't already exist.
+        """
+        from app.services.channel_service import DEFAULT_STORES
+
+        created_accounts = []
+        try:
+            # 1. Ensure all default stores exist in DB
+            for store_data in DEFAULT_STORES:
+                code = store_data["code"]
+                stmt = select(Store).where(Store.code == code)
+                res = await db.execute(stmt)
+                store = res.scalar_one_or_none()
+                if not store:
+                    store = Store(
+                        code=code,
+                        name=store_data["name"],
+                        address=store_data.get("address"),
+                        phone=store_data.get("phone"),
+                        is_active=True,
+                    )
+                    db.add(store)
+                    await db.flush()
+
+                # 2. Seed Manager for this store
+                mgr_username = f"manager_{code}"
+                mgr_stmt = select(User).where(User.username == mgr_username)
+                if not (await db.execute(mgr_stmt)).scalar_one_or_none():
+                    store_short = store.name.replace("Nam An Market - ", "")
+                    mgr_user = User(
+                        username=mgr_username,
+                        email=f"manager.{code}@namanmarket.com",
+                        hashed_password=hash_password(default_password),
+                        full_name=f"Cửa Hàng Trưởng - {store_short}",
+                        phone_number=store.phone,
+                        role=UserRole.STORE_MANAGER.value,
+                        store_id=store.id,
+                        is_active=True,
+                        is_superuser=False,
+                    )
+                    db.add(mgr_user)
+                    created_accounts.append({
+                        "username": mgr_username,
+                        "full_name": mgr_user.full_name,
+                        "role": mgr_user.role,
+                        "store_code": store.code,
+                        "store_name": store.name,
+                        "default_password": default_password,
+                    })
+
+                # 3. Seed Staff for this store
+                staff_username = f"staff_{code}"
+                staff_stmt = select(User).where(User.username == staff_username)
+                if not (await db.execute(staff_stmt)).scalar_one_or_none():
+                    store_short = store.name.replace("Nam An Market - ", "")
+                    staff_user = User(
+                        username=staff_username,
+                        email=f"staff.{code}@namanmarket.com",
+                        hashed_password=hash_password(default_password),
+                        full_name=f"Nhân Viên - {store_short}",
+                        phone_number=store.phone,
+                        role=UserRole.STAFF.value,
+                        store_id=store.id,
+                        is_active=True,
+                        is_superuser=False,
+                    )
+                    db.add(staff_user)
+                    created_accounts.append({
+                        "username": staff_username,
+                        "full_name": staff_user.full_name,
+                        "role": staff_user.role,
+                        "store_code": store.code,
+                        "store_name": store.name,
+                        "default_password": default_password,
+                    })
+
+            await db.commit()
+            logger.info(f"✅ Đã khởi tạo {len(created_accounts)} tài khoản nhân sự chi nhánh mới.")
+            return created_accounts
+        except Exception as e:
+            logger.error(f"Lỗi khi khởi tạo tài khoản nhân viên chi nhánh: {str(e)}")
+            await db.rollback()
+            raise
+
 
 auth_service = AuthService()

@@ -80,9 +80,11 @@ async def test_e2e_shopeemart_complete_pipeline(client, mock_admin_user):
         assert res_stock.json()["success"] is True
 
         # Step 4: Ingest Inbound Order Webhook for ShopeeMart
+        import uuid
+        test_order_sn = f"E2ESHP_{uuid.uuid4().hex[:8].upper()}"
         order_webhook_payload = {
             "data": {
-                "order_sn": "261005E2ESHP001",
+                "order_sn": test_order_sn,
                 "order_status": "READY_TO_SHIP",
                 "shop_id": 10001,
                 "buyer_username": "khachhang_naman",
@@ -108,23 +110,23 @@ async def test_e2e_shopeemart_complete_pipeline(client, mock_admin_user):
         assert res_hook.json()["code"] == 0
 
         # Step 5: Query Tracking Number & Create AWB Airway Bill
-        res_tracking = client.get("/api/v1/shopeemart/orders/261005E2ESHP001/tracking?shop_id=10001")
+        res_tracking = client.get(f"/api/v1/shopeemart/orders/{test_order_sn}/tracking?shop_id=10001")
         assert res_tracking.status_code == 200
         assert res_tracking.json()["success"] is True
 
         awb_payload = {
             "document_type": "THERMAL_AIR_WAYBILL"
         }
-        res_awb = client.post("/api/v1/shopeemart/orders/261005E2ESHP001/create-awb?shop_id=10001", json=awb_payload)
+        res_awb = client.post(f"/api/v1/shopeemart/orders/{test_order_sn}/create-awb?shop_id=10001", json=awb_payload)
         assert res_awb.status_code == 200
         assert res_awb.json()["success"] is True
 
-        res_download = client.get("/api/v1/shopeemart/orders/261005E2ESHP001/download-awb?shop_id=10001")
+        res_download = client.get(f"/api/v1/shopeemart/orders/{test_order_sn}/download-awb?shop_id=10001")
         assert res_download.status_code == 200
         assert res_download.json()["success"] is True
 
         # Step 6: Verify Escrow Payouts & Wallet Reconciliation
-        res_escrow = client.get("/api/v1/shopeemart/orders/261005E2ESHP001/escrow?shop_id=10001")
+        res_escrow = client.get(f"/api/v1/shopeemart/orders/{test_order_sn}/escrow?shop_id=10001")
         assert res_escrow.status_code == 200
         assert res_escrow.json()["success"] is True
         assert res_escrow.json()["data"]["response"]["path"] == "/api/v2/payment/get_escrow_detail"

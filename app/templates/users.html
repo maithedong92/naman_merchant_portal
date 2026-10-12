@@ -22,6 +22,9 @@
 
         <!-- Action Buttons -->
         <div class="flex flex-wrap items-center gap-2.5">
+            <button onclick="triggerSeedStaff()" class="px-4 py-2.5 rounded-full bg-emerald-50 text-xs font-bold text-primary shadow-sm hover:bg-emerald-100 border border-emerald-200 transition-colors flex items-center space-x-1.5" title="Tự động tạo bộ tài khoản Cửa hàng trưởng và Nhân viên cho 4 siêu thị">
+                <span>⚡ Khởi Tạo Nhân Sự Mẫu (4 Chi Nhánh)</span>
+            </button>
             <button onclick="openSecurityLogsModal()" class="px-4 py-2.5 rounded-full bg-white text-xs font-bold text-charcoal shadow-sm hover:bg-surface-low border border-gray-200 transition-colors flex items-center space-x-1.5">
                 <svg class="w-4 h-4 text-charcoal-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -882,6 +885,28 @@
             `;
         });
         tbody.innerHTML = html;
+    }
+
+    // Seed Sample Staff for 4 Branches
+    async function triggerSeedStaff() {
+        if (!confirm("Hệ thống sẽ tự động tạo bộ tài khoản mẫu (Cửa hàng trưởng & Nhân viên) cho 4 chi nhánh Nam An Market:\n• 10001 (21 Thảo Điền)\n• 10004 (46 Hưng Phúc, Q.7)\n• 10005 (17 Mai Chí Thọ)\n• 10006 (303 Nguyễn Văn Trỗi)\n\nMật khẩu mặc định: 'NamAn@2026'.\n\nBạn có muốn tiếp tục?")) {
+            return;
+        }
+
+        try {
+            const res = await authFetch('/api/v1/users/seed-sample-staff', {
+                method: 'POST'
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(json.message || "Đã khởi tạo tài khoản nhân sự chi nhánh thành công!", "success");
+                await loadUsers();
+            } else {
+                showToast(json.message || "Không thể khởi tạo tài khoản", "error");
+            }
+        } catch(e) {
+            showToast("Lỗi kết nối máy chủ khi tạo nhân sự mẫu", "error");
+        }
     }
 
     // Initialize Page

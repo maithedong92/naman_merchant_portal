@@ -183,3 +183,68 @@ async def test_staff_cannot_toggle_inventory_of_another_store():
         assert "không có quyền thao tác trên chi nhánh '10004'" in (res.json().get("message") or "")
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_login_page_renders_clean_without_hardcoded_values():
+    """Verify login page has no hardcoded values in input elements and includes demo account switcher."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        res = await ac.get("/admin/login")
+        assert res.status_code == 200
+        # Inputs must be clean (no hardcoded prefilled values)
+        assert 'value="admin"' not in res.text
+        assert 'value="phhthtnkhk"' not in res.text
+        assert 'Mặc định SuperAdmin: admin' not in res.text
+        # Must have demo switcher helper
+        assert "selectDemoAccount" in res.text
+        assert "manager_10001" in res.text
+
+
+@pytest.mark.asyncio
+async def test_seed_sample_staff_endpoint():
+    """Verify superadmin can trigger seed-sample-staff endpoint while regular staff gets 403."""
+    admin_user = User(
+        id="user-superadmin",
+        username="admin",
+        email="admin@naman.com",
+        full_name="Super Administrator",
+        role=UserRole.SUPER_ADMIN.value,
+        is_active=True,
+        is_superuser=True,
+    )
+    staff_user = User(
+        id="user-staff",
+        username="staff_only",
+        email="staff@naman.com",
+        full_name="Staff Regular",
+        role=UserRole.STAFF.value,
+        is_active=True,
+        is_superuser=False,
+    )
+
+    from app.api.deps import get_current_user
+
+    # 1. Staff is rejected with 403
+    app.dependency_overrides[get_current_user] = lambda: staff_user
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        res_denied = await ac.post("/api/v1/users/seed-sample-staff")
+        # RoleChecker raises ForbiddenError (403)
+        assert res_denied.status_code == 403
+
+    # 2. SuperAdmin succeeds
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    with patch("app.services.auth_service.auth_service.seed_branch_staff_users", new_callable=AsyncMock) as mock_seed:
+        mock_seed.return_value = [
+            {"username": "manager_10001", "role": "STORE_MANAGER", "store_code": "10001"}
+        ]
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            res_ok = await ac.post("/api/v1/users/seed-sample-staff")
+            assert res_ok.status_code == 200
+            data = res_ok.json()
+            assert data["success"] is True
+            assert data["data"]["count"] == 1
+
+    app.dependency_overrides.clear()
+

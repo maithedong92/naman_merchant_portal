@@ -77,6 +77,23 @@ async def create_user(
     )
 
 
+@router.post(
+    "/seed-sample-staff",
+    response_model=APIResponse[dict],
+    summary="Khởi tạo tài khoản nhân sự mẫu cho 4 chi nhánh",
+    description="Tự động tạo các tài khoản Cửa hàng trưởng và Nhân viên cho 4 siêu thị Nam An Market nếu chưa tồn tại (Chỉ SuperAdmin).",
+)
+async def seed_sample_staff(
+    current_admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    created = await auth_service.seed_branch_staff_users(db=db)
+    return APIResponse.ok(
+        data={"created_accounts": created, "count": len(created)},
+        message=f"Đã khởi tạo {len(created)} tài khoản nhân sự chi nhánh (Mật khẩu: 'NamAn@2026')."
+    )
+
+
 @router.get(
     "/security-logs",
     response_model=APIResponse[List[AuditSecurityLogResponse]],
