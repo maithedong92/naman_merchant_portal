@@ -46,12 +46,20 @@
                 Điều Phối & Xử Lý Đơn Hàng Hợp Nhất
             </h1>
             <p class="text-xs sm:text-sm text-charcoal-muted mt-1">
-                Tiếp nhận đơn hàng tự động từ <strong>ShopeeFood, GrabMart, ShopeeMart</strong>. Duyệt đơn 1-chạm và đồng bộ trạng thái ngược về các sàn.
+                Tiếp nhận đơn hàng tự động từ <strong>ShopeeFood, GrabMart, ShopeeMart</strong> & điều phối phân tuyến đa kênh <strong>Haravan Omnichannel</strong> theo tồn kho Arito ERP.
             </p>
         </div>
 
-        <!-- Controls: Sound Chime, Auto-refresh, Manual Refresh -->
+        <!-- Controls: Sound Chime, Auto-refresh, Manual Refresh, Haravan Sync -->
         <div class="flex flex-wrap items-center gap-2.5">
+            <!-- Manual Haravan Sync -->
+            <button id="btn-sync-haravan" onclick="triggerManualHaravanSync()" class="px-3.5 py-2 rounded-full bg-white text-xs font-bold text-primary shadow-sm hover:bg-emerald-50 transition-colors flex items-center space-x-1.5 border border-gray-100" title="Đồng bộ ngay đơn hàng từ Haravan API">
+                <svg id="haravan-sync-spinner" class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span>Đồng bộ Haravan</span>
+            </button>
+
             <!-- Audio Chime Toggle -->
             <button id="btn-toggle-sound" onclick="toggleAudioChime()" class="px-3.5 py-2 rounded-full bg-white text-xs font-bold text-charcoal shadow-sm hover:bg-emerald-50 transition-colors flex items-center space-x-1.5 border border-gray-100">
                 <span id="sound-icon">🔔</span>
@@ -162,6 +170,15 @@
                 </button>
                 <button onclick="setChannelFilter('SHOPEEMART')" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-rose-50 hover:text-rose-600" data-channel="SHOPEEMART">
                     ShopeeMart
+                </button>
+                <button onclick="setChannelFilter('HARAVAN')" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-blue-50 hover:text-blue-600 flex items-center space-x-1.5" data-channel="HARAVAN">
+                    <span>🌐</span>
+                    <span>Haravan Omnichannel</span>
+                </button>
+                <button id="btn-unassigned-filter" onclick="setHaravanUnassignedFilter()" class="channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 flex items-center space-x-1.5 shadow-sm" data-channel="HARAVAN_UNASSIGNED">
+                    <span>⚡</span>
+                    <span>Cần Phân Tuyến (Haravan)</span>
+                    <span id="unassigned-counter-badge" class="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold leading-none">0</span>
                 </button>
             </div>
 
@@ -330,6 +347,271 @@
         </div>
     </div>
 </div>
+
+<!-- ======================================================================= -->
+<!-- Modal 5: Haravan Order Store Assignment Modal with Live Arito ERP Stock -->
+<!-- ======================================================================= -->
+<div id="haravan-assign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl relative text-charcoal max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-gray-100">
+            <div>
+                <div class="flex items-center space-x-2">
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">HARAVAN OMNICHANNEL</span>
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800">DISPATCHING</span>
+                </div>
+                <h3 class="font-display font-extrabold text-xl text-charcoal mt-1">
+                    ⚡ Phân Tuyến Cửa Hàng & Tra Cứu Tồn Kho Arito ERP
+                </h3>
+                <p class="text-xs text-charcoal-muted mt-0.5" id="assign-modal-order-subtitle">Đang tải thông tin đơn hàng...</p>
+            </div>
+            <button onclick="closeHaravanAssignModal()" class="w-8 h-8 rounded-full bg-surface-low text-gray-500 hover:text-charcoal flex items-center justify-center">✕</button>
+        </div>
+
+        <!-- Order Quick Info -->
+        <div id="assign-modal-order-summary" class="my-4 p-4 rounded-2xl bg-surface-low text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Injected via JS -->
+        </div>
+
+        <!-- Arito ERP Live Stock Table -->
+        <div class="my-4 space-y-2">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm font-bold text-charcoal">📦 Tồn Kho Thực Tế Arito ERP (4 Siêu Thị)</span>
+                    <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">LIVE SYNC</span>
+                </div>
+                <span class="text-[11px] text-gray-400">Dữ liệu thực tế từ Arito DB (cttk)</span>
+            </div>
+
+            <!-- Recommendation Banner -->
+            <div id="assign-modal-recommendation-box" class="hidden p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Stock Table Container -->
+            <div class="border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-gray-50 border-b border-gray-100 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="px-3 py-2.5">Mặt hàng / SKU</th>
+                                <th class="px-2 py-2.5 text-center">SL Cần</th>
+                                <th class="px-2 py-2.5 text-center bg-blue-50/50">10001 (21TD)</th>
+                                <th class="px-2 py-2.5 text-center bg-amber-50/50">10004 (46NLB)</th>
+                                <th class="px-2 py-2.5 text-center bg-emerald-50/50">10005 (17MCT)</th>
+                                <th class="px-2 py-2.5 text-center bg-purple-50/50">10006 (303NVT)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assign-modal-stock-tbody" class="divide-y divide-gray-100 font-mono">
+                            <!-- Injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Assignment Form -->
+        <div class="my-4 p-4 rounded-2xl bg-amber-50/40 border border-amber-200/60 space-y-3 text-xs">
+            <div class="font-display font-bold text-sm text-charcoal">Quyết Định Phân Tuyến (Follow Chuẩn PMDONHANG):</div>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Cửa hàng tiếp nhận (*):</label>
+                    <select id="assign-select-store" class="w-full px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs font-bold text-charcoal focus:ring-2 focus:ring-primary">
+                        <option value="10001">10001 - 21TD (21 Thảo Điền)</option>
+                        <option value="10004">10004 - 46NLB (46 Hưng Phúc Q.7)</option>
+                        <option value="10005">10005 - 17MCT (17 Mai Chí Thọ)</option>
+                        <option value="10006">10006 - 303NVT (303 Nguyễn Văn Trỗi)</option>
+                        <option value="10008">10008 - Ecom (Kho Online)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-charcoal mb-1">Lý do phân tuyến (*):</label>
+                    <select id="assign-select-reason" class="w-full px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs font-semibold text-charcoal focus:ring-2 focus:ring-primary">
+                        <option value="Gần cửa hàng">Gần cửa hàng</option>
+                        <option value="Cửa hàng có sẵn hàng">Cửa hàng có sẵn hàng</option>
+                        <option value="Shipper gần nhất">Shipper gần nhất</option>
+                        <option value="Khách yêu cầu">Khách yêu cầu</option>
+                        <option value="Khác">Khác</option>
+                    </select>
+                </div>
+            </div>
+
+            <div>
+                <label class="block font-bold text-charcoal mb-1">Ghi chú phân tuyến bổ sung:</label>
+                <input type="text" id="assign-input-note" placeholder="Nhập lưu ý gửi cửa hàng (ví dụ: liên hệ khách trước khi giao, hàng tươi sống giao gấp)..." class="w-full px-3 py-2 rounded-xl bg-white border border-gray-200 text-xs text-charcoal focus:ring-2 focus:ring-primary">
+            </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex items-center justify-end space-x-2 pt-4 border-t border-gray-100">
+            <button onclick="closeHaravanAssignModal()" class="px-4 py-2 rounded-full bg-surface-low text-xs font-bold text-charcoal hover:bg-gray-200">Hủy Bỏ</button>
+            <button id="btn-confirm-assign" onclick="executeHaravanAssign()" class="px-5 py-2.5 rounded-full bg-primary text-xs font-extrabold text-white shadow-md hover:bg-primary-light flex items-center space-x-1.5">
+                <span>⚡</span>
+                <span>Xác Nhận Phân Tuyến Cửa Hàng</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 6: Request Reassignment Modal (Cửa hàng báo thiếu hàng / quá tải) -->
+<!-- ======================================================================= -->
+<div id="haravan-reassign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-charcoal">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+            <h3 class="font-display font-bold text-base text-rose-600 flex items-center space-x-2">
+                <span>⚠️ Yêu Cầu Phân Tuyến Lại</span>
+            </h3>
+            <button onclick="closeHaravanReassignModal()" class="text-gray-400 hover:text-charcoal text-lg">✕</button>
+        </div>
+        <p class="text-xs text-charcoal-muted mt-2">
+            Cửa hàng không thể thực hiện đơn này? Hệ thống sẽ gỡ bỏ phân tuyến và chuyển đơn về hàng đợi <strong>Tổng Đài Điều Phối</strong> để chuyển chi nhánh khác.
+        </p>
+
+        <div class="mt-4 space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Mã đơn Haravan:</label>
+                <div id="reassign-modal-order-number" class="font-mono text-xs text-gray-700 bg-surface-low p-2 rounded-xl font-bold">--</div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Lý do yêu cầu phân tuyến lại (*):</label>
+                <select id="reassign-select-reason" class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs font-semibold text-charcoal focus:ring-2 focus:ring-rose-500">
+                    <option value="Cửa hàng không có hàng">Cửa hàng không có hàng (Hết tồn kho)</option>
+                    <option value="Cửa hàng quá tải">Cửa hàng quá tải (Không kịp chuẩn bị)</option>
+                    <option value="Địa chỉ giao hàng quá xa">Địa chỉ giao hàng quá xa</option>
+                    <option value="Khách hàng yêu cầu đổi cửa hàng">Khách hàng yêu cầu đổi cửa hàng</option>
+                    <option value="Lỗi phân tuyến ban đầu">Lỗi phân tuyến ban đầu</option>
+                    <option value="Khác">Khác</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Ghi chú chi tiết cho điều phối viên:</label>
+                <input type="text" id="reassign-input-note" placeholder="Chi tiết món hết hàng hoặc lý do..." class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs text-charcoal focus:ring-2 focus:ring-rose-500">
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 mt-6 pt-4 border-t border-gray-100">
+            <button onclick="closeHaravanReassignModal()" class="px-4 py-2 rounded-full bg-surface-low text-xs font-bold text-charcoal hover:bg-gray-200">Hủy</button>
+            <button id="btn-confirm-reassign" onclick="executeHaravanReassign()" class="px-5 py-2.5 rounded-full bg-rose-600 text-xs font-bold text-white shadow-md hover:bg-rose-700 transition-colors">
+                ⚠️ Trả Đơn Về Tổng Đài
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 7: Ship Order Modal (Bàn giao vận chuyển) -->
+<!-- ======================================================================= -->
+<div id="haravan-ship-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-charcoal">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+            <h3 class="font-display font-bold text-base text-purple-700 flex items-center space-x-2">
+                <span>🚚 Xác Nhận Gửi Vận Đơn</span>
+            </h3>
+            <button onclick="closeHaravanShipModal()" class="text-gray-400 hover:text-charcoal text-lg">✕</button>
+        </div>
+        <p class="text-xs text-charcoal-muted mt-2">
+            Bàn giao hàng cho tài xế hoặc đối tác giao nhận 3PL.
+        </p>
+
+        <div class="mt-4 space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Mã đơn Haravan:</label>
+                <div id="ship-modal-order-number" class="font-mono text-xs text-gray-700 bg-surface-low p-2 rounded-xl font-bold">--</div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Đơn vị vận chuyển (*):</label>
+                <select id="ship-select-carrier" class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs font-semibold text-charcoal focus:ring-2 focus:ring-purple-500">
+                    <option value="Nam An Market">Nam An Market (Tài xế nội bộ)</option>
+                    <option value="Ahamove">Ahamove</option>
+                    <option value="Giao Hang Nhanh (GHN)">Giao Hàng Nhanh (GHN)</option>
+                    <option value="Grab Express">Grab Express</option>
+                    <option value="Đối tác (sàn TMDT)">Đối tác (sàn TMDT Shopee/Lazada)</option>
+                    <option value="Khác">Khác</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Mã vận đơn (Tracking Code) (*):</label>
+                <input type="text" id="ship-input-tracking" placeholder="VD: AHA-123456, GHN987654..." class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs text-charcoal font-mono font-bold focus:ring-2 focus:ring-purple-500">
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Ghi chú giao hàng:</label>
+                <input type="text" id="ship-input-note" placeholder="Tên tài xế, SĐT tài xế..." class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs text-charcoal focus:ring-2 focus:ring-purple-500">
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 mt-6 pt-4 border-t border-gray-100">
+            <button onclick="closeHaravanShipModal()" class="px-4 py-2 rounded-full bg-surface-low text-xs font-bold text-charcoal hover:bg-gray-200">Hủy</button>
+            <button id="btn-confirm-ship" onclick="executeHaravanShip()" class="px-5 py-2.5 rounded-full bg-purple-600 text-xs font-bold text-white shadow-md hover:bg-purple-700 transition-colors">
+                🚚 Lưu Vận Đơn & Chuyển Đang Giao
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- Modal 8: Complete Order Modal (Chốt thực tế pmdonhang) -->
+<!-- ======================================================================= -->
+<div id="haravan-complete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-charcoal/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative text-charcoal">
+        <div class="flex items-center justify-between pb-3 border-b border-gray-100">
+            <h3 class="font-display font-bold text-base text-primary flex items-center space-x-2">
+                <span>✅ Xác Nhận Hoàn Thành Đơn Hàng</span>
+            </h3>
+            <button onclick="closeHaravanCompleteModal()" class="text-gray-400 hover:text-charcoal text-lg">✕</button>
+        </div>
+        <p class="text-xs text-charcoal-muted mt-2">
+            Chốt số tiền thực tế (sau cân/đo/soạn thực phẩm tươi sống) và lưu thông tin hoàn tất theo chuẩn pmdonhang.
+        </p>
+
+        <div class="mt-4 space-y-3">
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Mã đơn Haravan:</label>
+                <div id="complete-modal-order-number" class="font-mono text-xs text-gray-700 bg-surface-low p-2 rounded-xl font-bold">--</div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-charcoal mb-1">Tổng tiền thực tế (*):</label>
+                    <input type="number" id="complete-input-total" class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs font-mono font-extrabold text-primary focus:ring-2 focus:ring-primary">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-charcoal mb-1">Cước ship thực tế:</label>
+                    <input type="number" id="complete-input-shipping" value="0" class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs font-mono text-charcoal focus:ring-2 focus:ring-primary">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-bold text-charcoal mb-1">Đơn vị vận chuyển:</label>
+                    <input type="text" id="complete-input-carrier" value="Nam An Market" class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs text-charcoal focus:ring-2 focus:ring-primary">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-charcoal mb-1">Mã vận đơn:</label>
+                    <input type="text" id="complete-input-tracking" placeholder="Mã vận đơn..." class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs font-mono text-charcoal focus:ring-2 focus:ring-primary">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-charcoal mb-1">Ghi chú hoàn thành:</label>
+                <input type="text" id="complete-input-note" placeholder="Ghi chú hoàn tất..." class="w-full px-3 py-2 rounded-xl bg-surface-low border-0 text-xs text-charcoal focus:ring-2 focus:ring-primary">
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end space-x-2 mt-6 pt-4 border-t border-gray-100">
+            <button onclick="closeHaravanCompleteModal()" class="px-4 py-2 rounded-full bg-surface-low text-xs font-bold text-charcoal hover:bg-gray-200">Hủy</button>
+            <button id="btn-confirm-complete" onclick="executeHaravanComplete()" class="px-5 py-2.5 rounded-full bg-primary text-xs font-bold text-white shadow-md hover:bg-primary-light transition-colors">
+                ✅ Hoàn Thành Đơn
+            </button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -337,6 +619,8 @@
     // Global State
     let currentFilter = {
         channel_code: '',
+        is_haravan: false,
+        unassigned_only: false,
         store_code: '',
         status: '',
         search: '',
@@ -347,7 +631,10 @@
     let audioChimeEnabled = true;
     let knownPendingIds = new Set();
     let currentCancellingOrderId = null;
+    let currentCancellingOrderIsHaravan = false;
     let currentOrdersCache = [];
+    let currentHaravanOrderId = null;
+    let currentHaravanOrderDetail = null;
 
     // Synthesizer Audio Ding-Dong Chime (HTML5 Web Audio API)
     function playOrderChime() {
@@ -420,11 +707,13 @@
             return `<span class="px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold inline-flex items-center space-x-1"><span>🟢</span><span>GrabMart</span></span>`;
         } else if (c === 'SHOPEEMART') {
             return `<span class="px-2.5 py-1 rounded-xl bg-rose-100 text-rose-700 text-xs font-bold inline-flex items-center space-x-1"><span>🛒</span><span>ShopeeMart</span></span>`;
+        } else if (c === 'HARAVAN') {
+            return `<span class="px-2.5 py-1 rounded-xl bg-blue-100 text-blue-800 text-xs font-bold inline-flex items-center space-x-1"><span>🌐</span><span>Haravan Omnichannel</span></span>`;
         }
         return `<span class="px-2.5 py-1 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold">${c}</span>`;
     }
 
-    // Status Badge Helpers
+    // Status Badge Helpers (Platform Orders)
     function getStatusBadge(status) {
         const map = {
             'PENDING': { label: 'Chờ Duyệt', class: 'bg-amber-100 text-amber-800 border-amber-300' },
@@ -439,41 +728,163 @@
         return `<span class="px-3 py-1 rounded-full text-xs font-extrabold border ${s.class}">${s.label}</span>`;
     }
 
-    // Load Order Feed
+    // Status Badge Helpers (Haravan Omnichannel Orders - Follow 100% PMDONHANG)
+    function getHaravanStatusBadge(status) {
+        const map = {
+            'Đơn hàng mới': { label: 'Đơn Hàng Mới', class: 'bg-amber-100 text-amber-800 border-amber-300' },
+            'Đã phân tuyến': { label: 'Đã Phân Tuyến', class: 'bg-blue-100 text-blue-800 border-blue-300' },
+            'Yêu cầu phân tuyến lại': { label: '⚠️ Y/C Phân Tuyến Lại', class: 'bg-rose-100 text-rose-800 border-rose-300' },
+            'Đã đóng gói': { label: 'Đã Đóng Gói', class: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+            'Đã gửi vận đơn': { label: 'Đã Gửi Vận Đơn', class: 'bg-purple-100 text-purple-800 border-purple-300' },
+            'Hoàn thành': { label: 'Hoàn Thành', class: 'bg-gray-100 text-gray-700 border-gray-300' },
+            'Đã hủy': { label: 'Đã Hủy', class: 'bg-rose-50 text-rose-600 border-rose-200' },
+        };
+        const s = map[status] || { label: status || 'Chờ xử lý', class: 'bg-gray-100 text-gray-700' };
+        return `<span class="px-3 py-1 rounded-full text-xs font-extrabold border ${s.class}">${s.label}</span>`;
+    }
+
+    // Dynamic Status Dropdown Switcher (Platform vs Haravan)
+    function updateStatusDropdown(isHaravan) {
+        const select = document.getElementById('filter-status');
+        if (!select) return;
+
+        if (isHaravan) {
+            select.innerHTML = `
+                <option value="">Tất cả trạng thái (Haravan)</option>
+                <option value="Chưa hoàn thành">Chưa hoàn thành (Đang xử lý)</option>
+                <option value="Đơn hàng mới">Đơn hàng mới (Chờ phân tuyến)</option>
+                <option value="Đã phân tuyến">Đã phân tuyến</option>
+                <option value="Yêu cầu phân tuyến lại">⚠️ Yêu cầu phân tuyến lại</option>
+                <option value="Đã đóng gói">Đã đóng gói</option>
+                <option value="Đã gửi vận đơn">Đã gửi vận đơn</option>
+                <option value="Hoàn thành">Hoàn thành</option>
+                <option value="Đã hủy">Đã hủy</option>
+            `;
+        } else {
+            select.innerHTML = `
+                <option value="">Tất cả trạng thái</option>
+                <option value="PENDING">Chờ duyệt (PENDING)</option>
+                <option value="ACCEPTED">Đã nhận (ACCEPTED)</option>
+                <option value="PREPARING">Đang soạn hàng (PREPARING)</option>
+                <option value="READY">Sẵn sàng (READY)</option>
+                <option value="PICKED_UP">Đang giao (PICKED_UP)</option>
+                <option value="DELIVERED">Hoàn tất (DELIVERED)</option>
+                <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+            `;
+        }
+        select.value = currentFilter.status || '';
+    }
+
+    // Check Haravan unassigned count for notification badge
+    async function checkHaravanUnassignedCount() {
+        try {
+            const res = await authFetch('/api/v1/haravan/orders?unassigned_only=true&page=1&page_size=1');
+            if (res.ok) {
+                const json = await res.json();
+                const total = (json.data && json.data.total) || 0;
+                const badge = document.getElementById('unassigned-counter-badge');
+                if (badge) {
+                    badge.textContent = total;
+                    if (total > 0) {
+                        badge.classList.remove('bg-gray-400');
+                        badge.classList.add('bg-amber-500', 'animate-pulse');
+                    } else {
+                        badge.classList.remove('animate-pulse');
+                    }
+                }
+            }
+        } catch(e) {
+            // Silently ignore
+        }
+    }
+
+    // Manual Haravan Sync Trigger
+    async function triggerManualHaravanSync() {
+        const btn = document.getElementById('btn-sync-haravan');
+        const spinner = document.getElementById('haravan-sync-spinner');
+        if (spinner) spinner.classList.add('animate-spin');
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await authFetch('/api/v1/haravan/sync?limit=50', { method: 'POST' });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`Đã đồng bộ ${json.data.processed || 0} đơn hàng từ Haravan API!`, 'success');
+                loadOrdersFeed(true);
+            } else {
+                showToast(`Lỗi đồng bộ Haravan: ${json.message || 'Thất bại'}`, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi kích hoạt đồng bộ Haravan.', 'error');
+        } finally {
+            if (spinner) spinner.classList.remove('animate-spin');
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // Load Order Feed (Omnichannel: Platform + Haravan)
     async function loadOrdersFeed(isManual = false) {
         const spinner = document.getElementById('refresh-spinner');
         if (spinner && isManual) spinner.classList.add('animate-spin');
 
         try {
-            // Build Query Params
-            const params = new URLSearchParams();
-            params.append('page', currentFilter.page);
-            params.append('page_size', currentFilter.page_size);
-            if (currentFilter.channel_code) params.append('channel_code', currentFilter.channel_code);
-            if (currentFilter.store_code) params.append('store_code', currentFilter.store_code);
-            if (currentFilter.status) params.append('status', currentFilter.status);
-            if (currentFilter.search) params.append('search', currentFilter.search);
+            checkHaravanUnassignedCount();
 
-            // Fetch Orders and Summary simultaneously
-            const summaryParams = currentFilter.store_code ? `?store_code=${encodeURIComponent(currentFilter.store_code)}` : '';
-            const [ordersRes, summaryRes] = await Promise.all([
-                authFetch(`/api/v1/orders?${params.toString()}`),
-                authFetch(`/api/v1/orders/summary${summaryParams}`)
-            ]);
+            if (currentFilter.is_haravan) {
+                // Fetch Haravan Orders from MongoDB
+                const params = new URLSearchParams();
+                params.append('page', currentFilter.page);
+                params.append('page_size', currentFilter.page_size);
+                if (currentFilter.store_code) params.append('store_code', currentFilter.store_code);
+                if (currentFilter.status) params.append('status', currentFilter.status);
+                if (currentFilter.search) params.append('search', currentFilter.search);
+                if (currentFilter.unassigned_only) params.append('unassigned_only', 'true');
 
-            if (ordersRes.ok) {
-                const ordersJson = await ordersRes.json();
-                if (ordersJson.success && ordersJson.data) {
-                    renderOrders(ordersJson.data.items || []);
-                    renderPagination(ordersJson.data.meta);
-                    checkNewPendingOrders(ordersJson.data.items || []);
+                const res = await authFetch(`/api/v1/haravan/orders?${params.toString()}`);
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.success && json.data) {
+                        renderHaravanOrders(json.data.items || []);
+                        renderPagination({
+                            page: json.data.page,
+                            page_size: json.data.page_size,
+                            total_items: json.data.total,
+                            total_pages: json.data.total_pages
+                        });
+                        renderHaravanSummary(json.data.items || [], json.data.total);
+                    }
                 }
-            }
+            } else {
+                // Fetch Platform Orders from Unified Orders API (ShopeeFood, GrabMart, ShopeeMart)
+                const params = new URLSearchParams();
+                params.append('page', currentFilter.page);
+                params.append('page_size', currentFilter.page_size);
+                if (currentFilter.channel_code) params.append('channel_code', currentFilter.channel_code);
+                if (currentFilter.store_code) params.append('store_code', currentFilter.store_code);
+                if (currentFilter.status) params.append('status', currentFilter.status);
+                if (currentFilter.search) params.append('search', currentFilter.search);
 
-            if (summaryRes.ok) {
-                const summaryJson = await summaryRes.json();
-                if (summaryJson.success && summaryJson.data) {
-                    renderSummary(summaryJson.data);
+                const summaryParams = currentFilter.store_code ? `?store_code=${encodeURIComponent(currentFilter.store_code)}` : '';
+                const [ordersRes, summaryRes] = await Promise.all([
+                    authFetch(`/api/v1/orders?${params.toString()}`),
+                    authFetch(`/api/v1/orders/summary${summaryParams}`)
+                ]);
+
+                if (ordersRes.ok) {
+                    const ordersJson = await ordersRes.json();
+                    if (ordersJson.success && ordersJson.data) {
+                        renderOrders(ordersJson.data.items || []);
+                        renderPagination(ordersJson.data.meta);
+                        checkNewPendingOrders(ordersJson.data.items || []);
+                    }
+                }
+
+                if (summaryRes.ok) {
+                    const summaryJson = await summaryRes.json();
+                    if (summaryJson.success && summaryJson.data) {
+                        renderSummary(summaryJson.data);
+                    }
                 }
             }
         } catch(e) {
@@ -485,7 +896,7 @@
         }
     }
 
-    // Render KPI Metrics
+    // Render Platform KPI Metrics
     function renderSummary(s) {
         document.getElementById('kpi-pending-count').textContent = s.pending_count;
         document.getElementById('kpi-preparing-count').textContent = s.preparing_count;
@@ -504,6 +915,36 @@
                 navBadge.classList.add('hidden');
             }
         }
+    }
+
+    // Render Haravan KPI Metrics
+    function renderHaravanSummary(items, total) {
+        let unassigned = 0;
+        let assigned = 0;
+        let packed = 0;
+        let shipped = 0;
+        let completed = 0;
+        let revenue = 0;
+
+        items.forEach(o => {
+            const st = (o.internal && o.internal.order_processing_status) || 'Đơn hàng mới';
+            const isAssigned = !!(o.internal && o.internal.assigned_store);
+            if (!isAssigned || st === 'Đơn hàng mới' || st === 'Yêu cầu phân tuyến lại') unassigned++;
+            if (st === 'Đã phân tuyến') assigned++;
+            if (st === 'Đã đóng gói') packed++;
+            if (st === 'Đã gửi vận đơn') shipped++;
+            if (st === 'Hoàn thành') {
+                completed++;
+                revenue += (o.internal?.completion_info?.actual_total || o.total_price || 0);
+            }
+        });
+
+        document.getElementById('kpi-pending-count').textContent = unassigned;
+        document.getElementById('kpi-preparing-count').textContent = assigned;
+        document.getElementById('kpi-ready-count').textContent = packed;
+        document.getElementById('kpi-delivering-count').textContent = shipped;
+        document.getElementById('kpi-delivered-count').textContent = completed;
+        document.getElementById('kpi-revenue-today').textContent = formatVND(revenue);
     }
 
     // Play chime when new pending orders appear
@@ -698,6 +1139,241 @@
         container.innerHTML = html;
     }
 
+    // Render Haravan Omnichannel Order Cards (Follow 100% PMDONHANG)
+    function renderHaravanOrders(orders) {
+        currentOrdersCache = orders;
+        const container = document.getElementById('orders-container');
+        if (!orders || orders.length === 0) {
+            container.innerHTML = `
+                <div class="bg-white rounded-3xl p-12 text-center text-charcoal shadow-sm">
+                    <div class="w-16 h-16 rounded-full bg-blue-50 text-3xl mx-auto flex items-center justify-center mb-3">
+                        🌐
+                    </div>
+                    <h3 class="font-display font-bold text-base">Hiện không có đơn hàng Haravan nào</h3>
+                    <p class="text-xs text-charcoal-muted mt-1">Đơn hàng mới từ Website namanmarket.com, Shopee/Lazada qua Haravan sẽ xuất hiện tại đây.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
+        const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
+
+        let html = '';
+        orders.forEach(o => {
+            const internal = o.internal || {};
+            const procStatus = internal.order_processing_status || 'Đơn hàng mới';
+            const assignedStore = internal.assigned_store;
+            const isUnassigned = !assignedStore;
+
+            const channelBadge = `<span class="px-2.5 py-1 rounded-xl bg-blue-100 text-blue-800 text-xs font-bold inline-flex items-center space-x-1"><span>🌐</span><span>Haravan (${(o.source || 'Web').toUpperCase()})</span></span>`;
+            const statusBadge = getHaravanStatusBadge(procStatus);
+            const timeAgo = formatRelativeTime(o.created_at);
+
+            // Store Label
+            let storeBadge = '';
+            if (isUnassigned) {
+                storeBadge = `<span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-extrabold text-[11px] animate-pulse border border-amber-300">⚠️ CHƯA PHÂN TUYẾN</span>`;
+            } else {
+                storeBadge = `<span class="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold text-xs border border-emerald-200">📍 Chi nhánh ${assignedStore}</span>`;
+            }
+
+            // Customer info
+            const custName = (o.customer && (o.customer.first_name || o.customer.last_name)) 
+                ? `${o.customer.first_name || ''} ${o.customer.last_name || ''}`.trim()
+                : (o.billing_address ? o.billing_address.name : 'Khách Vãng Lai');
+            const custPhone = (o.shipping_address && o.shipping_address.phone) || (o.customer && o.customer.phone) || '--';
+            const deliveryAddr = o.shipping_address 
+                ? `${o.shipping_address.address1 || ''}${o.shipping_address.city ? ', ' + o.shipping_address.city : ''}`
+                : 'Nhận tại cửa hàng / Chưa có địa chỉ';
+
+            // Items list preview
+            let itemsHtml = '';
+            (o.line_items || []).forEach(item => {
+                const itemTotal = (item.price || 0) * (item.quantity || 1);
+                itemsHtml += `
+                    <div class="flex items-start justify-between py-1.5 border-b border-gray-50 text-xs">
+                        <div class="pr-2">
+                            <span class="font-bold text-primary mr-1.5">${item.quantity}x</span>
+                            <span class="font-medium text-charcoal">${item.title || item.name}</span>
+                            ${item.sku ? `<span class="ml-1 text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">SKU: ${item.sku}</span>` : ''}
+                        </div>
+                        <span class="font-mono text-gray-600 shrink-0 font-medium">${formatVND(itemTotal)}</span>
+                    </div>
+                `;
+            });
+
+            // Delivery Note
+            let noteHtml = '';
+            if (o.note) {
+                noteHtml = `
+                    <div class="mt-2 p-2 rounded-xl bg-amber-50 text-amber-900 text-xs flex items-center space-x-1.5">
+                        <span>💬</span>
+                        <span class="font-semibold">Ghi chú khách: ${o.note}</span>
+                    </div>
+                `;
+            }
+
+            // Internal Dispatch & Fulfillment Notes
+            let internalInfoHtml = '';
+            if (internal.assignment_reason) {
+                internalInfoHtml += `
+                    <div class="p-2.5 rounded-xl bg-blue-50/60 text-xs text-blue-900 space-y-0.5 border border-blue-100">
+                        <div class="font-bold flex items-center space-x-1">
+                            <span>📌</span><span>Phân tuyến: <strong>${internal.assignment_reason}</strong></span>
+                        </div>
+                        ${internal.assignment_note ? `<div class="text-[11px] text-gray-600 pl-4">${internal.assignment_note}</div>` : ''}
+                    </div>
+                `;
+            }
+            if (internal.reassignment_reason) {
+                internalInfoHtml += `
+                    <div class="p-2.5 rounded-xl bg-rose-50 text-xs text-rose-900 space-y-0.5 border border-rose-200">
+                        <div class="font-bold flex items-center space-x-1">
+                            <span>⚠️</span><span>Lý do y/c phân tuyến lại: <strong>${internal.reassignment_reason}</strong></span>
+                        </div>
+                        ${internal.reassignment_note ? `<div class="text-[11px] text-gray-600 pl-4">${internal.reassignment_note}</div>` : ''}
+                    </div>
+                `;
+            }
+            if (internal.tracking_code) {
+                internalInfoHtml += `
+                    <div class="p-2.5 rounded-xl bg-purple-50 text-xs text-purple-900 space-y-0.5 border border-purple-100">
+                        <div class="font-bold flex items-center space-x-1">
+                            <span>🚚</span><span>Vận đơn: <strong>${internal.tracking_code}</strong> (${internal.carrier || 'Nam An Market'})</span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Totals
+            const subtotal = o.total_line_items_price || o.subtotal_price || o.total_price;
+            const discount = o.total_discounts || 0;
+            const shipping = (o.shipping_lines && o.shipping_lines[0] && o.shipping_lines[0].price) || 0;
+            const totalAmount = o.total_price || 0;
+
+            // Card HTML
+            html += `
+                <div class="bg-white rounded-3xl p-6 shadow-sm border ${isUnassigned ? 'border-amber-400 ring-2 ring-amber-400/20 shadow-amber-100' : 'border-gray-100'} transition-all hover:shadow-md">
+                    <!-- Top Row -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-gray-100">
+                        <div class="flex flex-wrap items-center gap-2">
+                            ${channelBadge}
+                            <span class="text-sm font-display font-extrabold text-charcoal tracking-tight">${o.order_number || ('#' + o.id)}</span>
+                            <span class="px-2 py-0.5 rounded-lg bg-surface-low text-xs font-mono text-gray-500 font-bold">#${o.id}</span>
+                            ${storeBadge}
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs text-gray-400 font-medium">${timeAgo}</span>
+                            ${statusBadge}
+                        </div>
+                    </div>
+
+                    <!-- Middle Grid: Customer + Items -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 my-4">
+                        <!-- Left: Customer & Dispatch Details -->
+                        <div class="lg:col-span-5 space-y-3">
+                            <div class="p-4 rounded-2xl bg-surface-low space-y-2">
+                                <div class="text-[11px] font-bold text-charcoal-muted uppercase tracking-wider">Thông Tin Khách Hàng</div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-charcoal">${custName}</span>
+                                    ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-xs text-primary font-bold hover:underline">📞 ${custPhone}</a>` : ''}
+                                </div>
+                                <div class="text-xs text-gray-600 leading-relaxed">${deliveryAddr}</div>
+                                ${noteHtml}
+                            </div>
+                            ${internalInfoHtml}
+                        </div>
+
+                        <!-- Right: Items list & Totals -->
+                        <div class="lg:col-span-7 flex flex-col justify-between">
+                            <div class="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                ${itemsHtml}
+                            </div>
+
+                            <!-- Financial Summary -->
+                            <div class="mt-4 pt-3 border-t border-gray-100 flex items-baseline justify-between">
+                                <div class="text-xs text-gray-400">
+                                    <span>Tạm tính: ${formatVND(subtotal)}</span>
+                                    ${discount > 0 ? `<span class="ml-2 text-rose-600">-KM: ${formatVND(discount)}</span>` : ''}
+                                    ${shipping > 0 ? `<span class="ml-2">+Ship: ${formatVND(shipping)}</span>` : ''}
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-xs text-gray-500 mr-1">Tổng tiền:</span>
+                                    <span class="text-lg font-display font-extrabold text-primary">${formatVND(totalAmount)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Row: Action Buttons Follow PMDONHANG -->
+                    <div class="pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center space-x-2">
+                            <button onclick="openReceiptModal('${o.id}')" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-xs font-bold text-charcoal transition-colors flex items-center space-x-1">
+                                <svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                <span>In Phiếu 80mm</span>
+                            </button>
+                            <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-full bg-surface-low hover:bg-emerald-50 text-xs font-bold text-charcoal transition-colors">
+                                Chi tiết & Lịch sử
+                            </button>
+                        </div>
+
+                        <!-- Status Action Buttons -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            ${isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại' ? `
+                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-5 py-2 rounded-full bg-primary hover:bg-primary-light text-white text-xs font-extrabold shadow-md shadow-primary/20 transition-all flex items-center space-x-1.5">
+                                    <span>⚡</span>
+                                    <span>PHÂN TUYẾN CỬA HÀNG</span>
+                                </button>
+                            ` : ''}
+
+                            ${!isUnassigned && isSuperAdmin && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-3 py-1.5 rounded-full bg-surface-low hover:bg-blue-50 text-blue-700 text-xs font-bold transition-colors">
+                                    Đổi Chi Nhánh
+                                </button>
+                            ` : ''}
+
+                            ${!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                                <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-3.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300 transition-colors">
+                                    ⚠️ Thiếu Hàng / Trả Đơn
+                                </button>
+                            ` : ''}
+
+                            ${procStatus === 'Đã phân tuyến' ? `
+                                <button onclick="executeHaravanPack('${o.id}')" class="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center space-x-1.5">
+                                    <span>📦</span>
+                                    <span>ĐÃ ĐÓNG GÓI XONG</span>
+                                </button>
+                            ` : ''}
+
+                            ${procStatus === 'Đã đóng gói' ? `
+                                <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md shadow-purple-600/20 transition-all flex items-center space-x-1.5">
+                                    <span>🚚</span>
+                                    <span>GỬI VẬN ĐƠN</span>
+                                </button>
+                            ` : ''}
+
+                            ${(procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
+                                <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-4 py-2 rounded-full bg-primary hover:bg-primary-light text-white text-xs font-extrabold shadow-md transition-all flex items-center space-x-1.5">
+                                    <span>✅</span>
+                                    <span>HOÀN TẤT ĐƠN</span>
+                                </button>
+                            ` : ''}
+
+                            ${procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                                <button onclick="openHaravanCancelModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1.5 rounded-full bg-surface-low hover:bg-rose-50 text-rose-600 text-xs font-bold transition-colors">
+                                    Hủy Đơn
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
     // Render Pagination
     function renderPagination(meta) {
         const bar = document.getElementById('pagination-bar');
@@ -723,24 +1399,63 @@
 
     // Filtering Handlers
     function setChannelFilter(channelCode) {
-        currentFilter.channel_code = channelCode;
+        if (channelCode === 'HARAVAN') {
+            currentFilter.is_haravan = true;
+            currentFilter.unassigned_only = false;
+            currentFilter.channel_code = 'HARAVAN';
+        } else {
+            currentFilter.is_haravan = false;
+            currentFilter.unassigned_only = false;
+            currentFilter.channel_code = channelCode;
+        }
         currentFilter.page = 1;
-
-        // Update active tab styles
-        document.querySelectorAll('.channel-pill').forEach(btn => {
-            if (btn.getAttribute('data-channel') === channelCode) {
-                btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm";
-            } else {
-                btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50";
-            }
-        });
-
+        currentFilter.status = '';
+        updateStatusDropdown(currentFilter.is_haravan);
+        updateChannelPillsActive(channelCode);
         loadOrdersFeed();
     }
 
+    function setHaravanUnassignedFilter() {
+        currentFilter.is_haravan = true;
+        currentFilter.unassigned_only = true;
+        currentFilter.channel_code = 'HARAVAN';
+        currentFilter.page = 1;
+        currentFilter.status = '';
+        updateStatusDropdown(true);
+        updateChannelPillsActive('HARAVAN_UNASSIGNED');
+        loadOrdersFeed();
+    }
+
+    function updateChannelPillsActive(activeKey) {
+        document.querySelectorAll('.channel-pill').forEach(btn => {
+            const btnKey = btn.getAttribute('data-channel');
+            if (btnKey === activeKey) {
+                btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-primary text-white shadow-sm flex items-center space-x-1.5";
+            } else if (btnKey === 'HARAVAN_UNASSIGNED') {
+                btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 flex items-center space-x-1.5 shadow-sm";
+            } else {
+                btn.className = "channel-pill px-4 py-2 rounded-full text-xs font-bold transition-all bg-surface-low text-charcoal hover:bg-emerald-50 flex items-center space-x-1.5";
+            }
+        });
+    }
+
     function filterByStatus(status) {
-        currentFilter.status = status;
-        document.getElementById('filter-status').value = status;
+        if (currentFilter.is_haravan) {
+            const hMap = {
+                'PENDING': 'Đơn hàng mới',
+                'ACCEPTED': 'Đã phân tuyến',
+                'READY': 'Đã đóng gói',
+                'PICKED_UP': 'Đã gửi vận đơn',
+                'DELIVERED': 'Hoàn thành'
+            };
+            currentFilter.status = hMap[status] || status;
+            currentFilter.unassigned_only = (status === 'PENDING');
+        } else {
+            currentFilter.status = status;
+            currentFilter.unassigned_only = false;
+        }
+        const select = document.getElementById('filter-status');
+        if (select) select.value = currentFilter.status;
         currentFilter.page = 1;
         loadOrdersFeed();
     }
@@ -752,6 +1467,10 @@
         }
         currentFilter.status = document.getElementById('filter-status').value;
         currentFilter.search = document.getElementById('search-input').value.trim();
+        // If user changed status dropdown directly while in unassigned mode, turn off unassigned_only flag
+        if (currentFilter.status && currentFilter.status !== 'Đơn hàng mới') {
+            currentFilter.unassigned_only = false;
+        }
         currentFilter.page = 1;
         loadOrdersFeed();
     }
@@ -781,16 +1500,26 @@
         }
     }
 
-    // Cancel Modal Flow
+    // Cancel Modal Flow (Supports both Platform and Haravan)
     function openCancelModal(orderId, orderCode) {
         currentCancellingOrderId = orderId;
+        currentCancellingOrderIsHaravan = false;
         document.getElementById('cancel-modal-order-code').textContent = orderCode;
+        document.getElementById('cancel-modal-note').value = '';
+        document.getElementById('cancel-order-modal').classList.remove('hidden');
+    }
+
+    function openHaravanCancelModal(orderId, orderNumber) {
+        currentCancellingOrderId = orderId;
+        currentCancellingOrderIsHaravan = true;
+        document.getElementById('cancel-modal-order-code').textContent = orderNumber || ('#' + orderId);
         document.getElementById('cancel-modal-note').value = '';
         document.getElementById('cancel-order-modal').classList.remove('hidden');
     }
 
     function closeCancelModal() {
         currentCancellingOrderId = null;
+        currentCancellingOrderIsHaravan = false;
         document.getElementById('cancel-order-modal').classList.add('hidden');
     }
 
@@ -804,23 +1533,41 @@
         btn.disabled = true;
 
         try {
-            const res = await authFetch(`/api/v1/orders/${currentCancellingOrderId}/status`, {
-                method: 'PATCH',
-                body: JSON.stringify({
-                    new_status: 'CANCELLED',
-                    cancellation_reason: fullReason,
-                    note: fullReason,
-                    changed_by: 'OPERATOR_PORTAL'
-                })
-            });
-
-            const data = await res.json();
-            if (res.ok && data.success) {
-                showToast('Đã hủy đơn hàng và đồng bộ lý do lên sàn.', 'success');
-                closeCancelModal();
-                loadOrdersFeed();
+            if (currentCancellingOrderIsHaravan) {
+                const res = await authFetch(`/api/v1/haravan/orders/${currentCancellingOrderId}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        reason: reasonSelect,
+                        note: reasonNote || ''
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast('Đã hủy đơn hàng Haravan thành công.', 'success');
+                    closeCancelModal();
+                    loadOrdersFeed();
+                } else {
+                    showToast(`Lỗi: ${data.message || 'Không thể hủy đơn'}`, 'error');
+                }
             } else {
-                showToast(`Lỗi: ${data.message || 'Không thể hủy đơn'}`, 'error');
+                const res = await authFetch(`/api/v1/orders/${currentCancellingOrderId}/status`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        new_status: 'CANCELLED',
+                        cancellation_reason: fullReason,
+                        note: fullReason,
+                        changed_by: 'OPERATOR_PORTAL'
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    showToast('Đã hủy đơn hàng và đồng bộ lý do lên sàn.', 'success');
+                    closeCancelModal();
+                    loadOrdersFeed();
+                } else {
+                    showToast(`Lỗi: ${data.message || 'Không thể hủy đơn'}`, 'error');
+                }
             }
         } catch(e) {
             console.error(e);
@@ -830,24 +1577,85 @@
         }
     }
 
-    // Thermal Receipt Modal (80mm)
+    // Thermal Receipt Modal (80mm) - Supports Platform & Haravan
     function openReceiptModal(orderId) {
-        const order = currentOrdersCache.find(x => x.id === orderId);
+        const order = currentOrdersCache.find(x => String(x.id) === String(orderId));
         if (!order) return;
 
+        const isHaravan = !!(order.source || order.line_items || order.order_number);
         const dateStr = new Date(order.created_at || order.order_time).toLocaleString('vi-VN');
-        const storeLabel = order.store_name || (order.store_code ? `Chi nhánh ${order.store_code}` : 'Nam An Market');
-
+        
+        let storeLabel = 'Nam An Market';
+        let channelTitle = '';
+        let orderCodeStr = '';
+        let channelCodeStr = '';
+        let custNameStr = '';
+        let custPhoneStr = '';
+        let deliveryAddrStr = '';
+        let driverStr = '';
+        let subtotalVal = 0;
+        let discountVal = 0;
+        let shippingVal = 0;
+        let totalVal = 0;
         let itemsLines = '';
-        (order.items || []).forEach(itm => {
-            itemsLines += `
-                <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
-                    <span style="flex:1;">${itm.quantity}x ${itm.item_name}</span>
-                    <span style="font-weight:bold;">${formatVND(itm.total_price)}</span>
-                </div>
-                ${itm.notes ? `<div style="font-size:10px; color:#555; padding-left:10px; font-style:italic;">* ${itm.notes}</div>` : ''}
-            `;
-        });
+
+        if (isHaravan) {
+            const internal = order.internal || {};
+            storeLabel = internal.assigned_store ? `Chi nhánh ${internal.assigned_store}` : 'Tổng Đài Điều Phối (Chưa phân tuyến)';
+            channelTitle = `HARAVAN OMNICHANNEL (${(order.source || 'WEB').toUpperCase()})`;
+            orderCodeStr = order.order_number || ('#' + order.id);
+            channelCodeStr = '#' + order.id;
+            custNameStr = (order.customer && (order.customer.first_name || order.customer.last_name))
+                ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
+                : (order.billing_address ? order.billing_address.name : 'Khách Vãng Lai');
+            custPhoneStr = (order.shipping_address && order.shipping_address.phone) || (order.customer && order.customer.phone) || '--';
+            deliveryAddrStr = order.shipping_address 
+                ? `${order.shipping_address.address1 || ''}${order.shipping_address.city ? ', ' + order.shipping_address.city : ''}`
+                : 'Nhận tại quầy / Chưa có địa chỉ';
+            if (internal.carrier || internal.tracking_code) {
+                driverStr = `<div><strong>Vận chuyển:</strong> ${internal.carrier || 'Nam An Market'} (Mã VĐ: ${internal.tracking_code || 'Chưa có'})</div>`;
+            }
+            subtotalVal = order.total_line_items_price || order.subtotal_price || order.total_price || 0;
+            discountVal = order.total_discounts || 0;
+            shippingVal = (order.shipping_lines && order.shipping_lines[0] && order.shipping_lines[0].price) || 0;
+            totalVal = order.total_price || 0;
+
+            (order.line_items || []).forEach(itm => {
+                const itmTotal = (itm.price || 0) * (itm.quantity || 1);
+                itemsLines += `
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                        <span style="flex:1;">${itm.quantity}x ${itm.title || itm.name}</span>
+                        <span style="font-weight:bold;">${formatVND(itmTotal)}</span>
+                    </div>
+                    ${itm.sku ? `<div style="font-size:10px; color:#666; padding-left:10px;">SKU: ${itm.sku}</div>` : ''}
+                `;
+            });
+        } else {
+            storeLabel = order.store_name || (order.store_code ? `Chi nhánh ${order.store_code}` : 'Nam An Market');
+            channelTitle = `ĐƠN HÀNG: ${order.channel_code}`;
+            orderCodeStr = order.order_code;
+            channelCodeStr = '#' + (order.display_order_id || order.channel_order_id);
+            custNameStr = order.customer_name || 'Khách vãng lai';
+            custPhoneStr = order.customer_phone || '--';
+            deliveryAddrStr = order.delivery_address || 'Quầy thu ngân';
+            if (order.driver_name) {
+                driverStr = `<div><strong>Tài xế:</strong> ${order.driver_name} (${order.driver_phone || ''})</div>`;
+            }
+            subtotalVal = order.subtotal_amount || 0;
+            discountVal = order.discount_amount || 0;
+            shippingVal = order.delivery_fee || 0;
+            totalVal = order.total_amount || 0;
+
+            (order.items || []).forEach(itm => {
+                itemsLines += `
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
+                        <span style="flex:1;">${itm.quantity}x ${itm.item_name}</span>
+                        <span style="font-weight:bold;">${formatVND(itm.total_price)}</span>
+                    </div>
+                    ${itm.notes ? `<div style="font-size:10px; color:#555; padding-left:10px; font-style:italic;">* ${itm.notes}</div>` : ''}
+                `;
+            });
+        }
 
         const receiptHtml = `
             <div style="text-align:center; padding-bottom: 6px; border-bottom: 1px dashed #000;">
@@ -855,18 +1663,18 @@
                 <div style="font-size:11px;">Thực Phẩm Tươi Sống Hữu Cơ</div>
                 <div style="font-size:10px; color:#444;">${storeLabel}</div>
                 <div style="font-weight:bold; margin-top:4px; font-size:13px; text-transform:uppercase;">
-                    PHIẾU ĐƠN HÀNG: ${order.channel_code}
+                    ${channelTitle}
                 </div>
             </div>
 
             <div style="margin: 8px 0; font-size:11px;">
-                <div><strong>Mã đơn:</strong> ${order.order_code}</div>
-                <div><strong>Mã sàn:</strong> #${order.display_order_id || order.channel_order_id}</div>
+                <div><strong>Mã đơn:</strong> ${orderCodeStr}</div>
+                <div><strong>Mã sàn:</strong> ${channelCodeStr}</div>
                 <div><strong>Thời gian:</strong> ${dateStr}</div>
-                <div><strong>Khách hàng:</strong> ${order.customer_name || 'Khách vãng lai'}</div>
-                <div><strong>SĐT:</strong> ${order.customer_phone || '--'}</div>
-                <div><strong>Địa chỉ:</strong> ${order.delivery_address || 'Quầy thu ngân'}</div>
-                ${order.driver_name ? `<div><strong>Tài xế:</strong> ${order.driver_name} (${order.driver_phone || ''})</div>` : ''}
+                <div><strong>Khách hàng:</strong> ${custNameStr}</div>
+                <div><strong>SĐT:</strong> ${custPhoneStr}</div>
+                <div><strong>Địa chỉ:</strong> ${deliveryAddrStr}</div>
+                ${driverStr}
             </div>
 
             <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; margin: 6px 0;">
@@ -874,12 +1682,12 @@
             </div>
 
             <div style="font-size:11px; margin-bottom: 8px;">
-                <div style="display:flex; justify-content:space-between;"><span>Tạm tính:</span><span>${formatVND(order.subtotal_amount)}</span></div>
-                ${order.discount_amount > 0 ? `<div style="display:flex; justify-content:space-between; color:#c00;"><span>Khuyến mãi:</span><span>-${formatVND(order.discount_amount)}</span></div>` : ''}
-                ${order.delivery_fee > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Phí giao:</span><span>${formatVND(order.delivery_fee)}</span></div>` : ''}
+                <div style="display:flex; justify-content:space-between;"><span>Tạm tính:</span><span>${formatVND(subtotalVal)}</span></div>
+                ${discountVal > 0 ? `<div style="display:flex; justify-content:space-between; color:#c00;"><span>Khuyến mãi:</span><span>-${formatVND(discountVal)}</span></div>` : ''}
+                ${shippingVal > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Phí giao:</span><span>${formatVND(shippingVal)}</span></div>` : ''}
                 <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold; margin-top:4px; border-top:1px solid #000; padding-top:4px;">
                     <span>TỔNG CỘNG:</span>
-                    <span>${formatVND(order.total_amount)}</span>
+                    <span>${formatVND(totalVal)}</span>
                 </div>
             </div>
 
@@ -897,56 +1705,467 @@
         document.getElementById('thermal-receipt-modal').classList.add('hidden');
     }
 
-    // Order Details & Audit Timeline Modal
+    // Order Details & Audit Timeline Modal - Supports Platform & Haravan
     function openDetailsModal(orderId) {
-        const order = currentOrdersCache.find(x => x.id === orderId);
+        const order = currentOrdersCache.find(x => String(x.id) === String(orderId));
         if (!order) return;
 
-        document.getElementById('detail-modal-channel-badge').textContent = order.channel_code;
-        document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_code}`;
+        const isHaravan = !!(order.source || order.line_items || order.order_number);
+        if (isHaravan) {
+            const internal = order.internal || {};
+            document.getElementById('detail-modal-channel-badge').textContent = `HARAVAN (${(order.source || 'Web').toUpperCase()})`;
+            document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_number || ('#' + order.id)}`;
 
-        let timelineHtml = '';
-        (order.status_history || []).forEach(h => {
-            const time = new Date(h.created_at).toLocaleString('vi-VN');
-            timelineHtml += `
-                <div class="flex items-start space-x-3 text-xs">
-                    <div class="w-2.5 h-2.5 rounded-full bg-primary mt-1 shrink-0"></div>
-                    <div>
-                        <span class="font-bold text-charcoal">${h.to_status}</span>
-                        <span class="text-gray-400 ml-1.5">${time}</span>
-                        ${h.changed_by ? `<span class="text-gray-400 ml-1">(${h.changed_by})</span>` : ''}
-                        ${h.note ? `<p class="text-gray-600 mt-0.5">${h.note}</p>` : ''}
+            let timelineHtml = '';
+            (internal.history || []).forEach(h => {
+                const time = new Date(h.timestamp || h.created_at).toLocaleString('vi-VN');
+                timelineHtml += `
+                    <div class="flex items-start space-x-3 text-xs">
+                        <div class="w-2.5 h-2.5 rounded-full bg-primary mt-1 shrink-0"></div>
+                        <div>
+                            <span class="font-bold text-charcoal">${h.action || 'Cập nhật'}</span>
+                            <span class="text-gray-400 ml-1.5">${time}</span>
+                            ${h.user ? `<span class="text-gray-400 ml-1">(${h.user})</span>` : ''}
+                            ${h.details ? `<p class="text-gray-600 mt-0.5">${h.details}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            const custName = (order.customer && (order.customer.first_name || order.customer.last_name)) 
+                ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
+                : (order.billing_address ? order.billing_address.name : '--');
+            const custPhone = (order.shipping_address && order.shipping_address.phone) || (order.customer && order.customer.phone) || '--';
+            const addr = order.shipping_address ? (order.shipping_address.address1 + (order.shipping_address.city ? ', ' + order.shipping_address.city : '')) : '--';
+
+            const content = `
+                <div class="grid grid-cols-2 gap-4 text-xs bg-surface-low p-4 rounded-2xl">
+                    <div><strong>Mã đơn Haravan:</strong> ${order.order_number || order.id}</div>
+                    <div><strong>Nguồn đơn:</strong> ${order.source || 'Website'}</div>
+                    <div><strong>Chi nhánh phụ trách:</strong> ${internal.assigned_store ? ('Chi nhánh ' + internal.assigned_store) : '<span class="text-amber-600 font-bold">Chưa phân tuyến</span>'}</div>
+                    <div><strong>Trạng thái nội bộ:</strong> ${internal.order_processing_status || 'Đơn hàng mới'}</div>
+                    <div><strong>Khách hàng:</strong> ${custName} (${custPhone})</div>
+                    <div><strong>Địa chỉ:</strong> ${addr}</div>
+                    <div><strong>Lý do phân tuyến:</strong> ${internal.assignment_reason || '--'}</div>
+                    <div><strong>Tổng tiền:</strong> <span class="font-bold text-primary">${formatVND(order.total_price)}</span></div>
+                    ${internal.reassignment_reason ? `<div class="col-span-2 text-rose-600"><strong>Lý do yêu cầu phân tuyến lại:</strong> ${internal.reassignment_reason} (${internal.reassignment_note || ''})</div>` : ''}
+                    ${internal.tracking_code ? `<div class="col-span-2 text-purple-700"><strong>Vận đơn:</strong> ${internal.tracking_code} - Đơn vị: ${internal.carrier || 'Nam An Market'}</div>` : ''}
+                </div>
+
+                <div>
+                    <h4 class="font-display font-bold text-sm text-charcoal mb-3">Lịch Sử Trạng Thái (Audit Trail - MongoDB)</h4>
+                    <div class="space-y-3 pl-2 border-l-2 border-emerald-100">
+                        ${timelineHtml || '<p class="text-xs text-gray-400">Chưa có bản ghi lịch sử nội bộ.</p>'}
                     </div>
                 </div>
             `;
-        });
 
-        const content = `
-            <div class="grid grid-cols-2 gap-4 text-xs bg-surface-low p-4 rounded-2xl">
-                <div><strong>Mã đơn nội bộ:</strong> ${order.order_code}</div>
-                <div><strong>Mã sàn (${order.channel_code}):</strong> ${order.channel_order_id}</div>
-                <div><strong>Chi nhánh:</strong> ${order.store_name || order.store_code}</div>
-                <div><strong>Trạng thái:</strong> ${order.status}</div>
-                <div><strong>Khách hàng:</strong> ${order.customer_name || '--'} (${order.customer_phone || ''})</div>
-                <div><strong>Địa chỉ:</strong> ${order.delivery_address || '--'}</div>
-                <div><strong>Tài xế:</strong> ${order.driver_name || '--'} (${order.driver_phone || ''})</div>
-                <div><strong>Tổng tiền:</strong> <span class="font-bold text-primary">${formatVND(order.total_amount)}</span></div>
-            </div>
+            document.getElementById('detail-modal-content').innerHTML = content;
+            document.getElementById('order-details-modal').classList.remove('hidden');
+        } else {
+            // Platform Orders logic (ShopeeFood, GrabMart, ShopeeMart)
+            document.getElementById('detail-modal-channel-badge').textContent = order.channel_code;
+            document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_code}`;
 
-            <div>
-                <h4 class="font-display font-bold text-sm text-charcoal mb-3">Lịch Sử Trạng Thái (Audit Trail)</h4>
-                <div class="space-y-3 pl-2 border-l-2 border-emerald-100">
-                    ${timelineHtml || '<p class="text-xs text-gray-400">Chưa có bản ghi lịch sử.</p>'}
+            let timelineHtml = '';
+            (order.status_history || []).forEach(h => {
+                const time = new Date(h.created_at).toLocaleString('vi-VN');
+                timelineHtml += `
+                    <div class="flex items-start space-x-3 text-xs">
+                        <div class="w-2.5 h-2.5 rounded-full bg-primary mt-1 shrink-0"></div>
+                        <div>
+                            <span class="font-bold text-charcoal">${h.to_status}</span>
+                            <span class="text-gray-400 ml-1.5">${time}</span>
+                            ${h.changed_by ? `<span class="text-gray-400 ml-1">(${h.changed_by})</span>` : ''}
+                            ${h.note ? `<p class="text-gray-600 mt-0.5">${h.note}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+
+            const content = `
+                <div class="grid grid-cols-2 gap-4 text-xs bg-surface-low p-4 rounded-2xl">
+                    <div><strong>Mã đơn nội bộ:</strong> ${order.order_code}</div>
+                    <div><strong>Mã sàn (${order.channel_code}):</strong> ${order.channel_order_id}</div>
+                    <div><strong>Chi nhánh:</strong> ${order.store_name || order.store_code}</div>
+                    <div><strong>Trạng thái:</strong> ${order.status}</div>
+                    <div><strong>Khách hàng:</strong> ${order.customer_name || '--'} (${order.customer_phone || ''})</div>
+                    <div><strong>Địa chỉ:</strong> ${order.delivery_address || '--'}</div>
+                    <div><strong>Tài xế:</strong> ${order.driver_name || '--'} (${order.driver_phone || ''})</div>
+                    <div><strong>Tổng tiền:</strong> <span class="font-bold text-primary">${formatVND(order.total_amount)}</span></div>
                 </div>
-            </div>
-        `;
 
-        document.getElementById('detail-modal-content').innerHTML = content;
-        document.getElementById('order-details-modal').classList.remove('hidden');
+                <div>
+                    <h4 class="font-display font-bold text-sm text-charcoal mb-3">Lịch Sử Trạng Thái (Audit Trail)</h4>
+                    <div class="space-y-3 pl-2 border-l-2 border-emerald-100">
+                        ${timelineHtml || '<p class="text-xs text-gray-400">Chưa có bản ghi lịch sử.</p>'}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('detail-modal-content').innerHTML = content;
+            document.getElementById('order-details-modal').classList.remove('hidden');
+        }
     }
 
     function closeDetailsModal() {
         document.getElementById('order-details-modal').classList.add('hidden');
+    }
+
+    // =========================================================================
+    // HARAVAN DISPATCH & LIFECYCLE MODAL HANDLERS (FOLLOW 100% PMDONHANG)
+    // =========================================================================
+
+    // 1. Open Assign Modal with Live Arito ERP Stock
+    async function openHaravanAssignModal(orderId) {
+        currentHaravanOrderId = orderId;
+        const modal = document.getElementById('haravan-assign-modal');
+        const subtitle = document.getElementById('assign-modal-order-subtitle');
+        const summary = document.getElementById('assign-modal-order-summary');
+        const tbody = document.getElementById('assign-modal-stock-tbody');
+        const recBox = document.getElementById('assign-modal-recommendation-box');
+
+        subtitle.textContent = `Đang tải chi tiết đơn hàng & kiểm tra tồn kho Arito ERP...`;
+        summary.innerHTML = `<div class="col-span-3 text-center text-gray-400">Đang tải thông tin...</div>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400">Đang đối chiếu dữ liệu tồn kho từ Arito ERP...</td></tr>`;
+        recBox.classList.add('hidden');
+        modal.classList.remove('hidden');
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
+            const json = await res.json();
+            if (!res.ok || !json.success || !json.data) {
+                showToast(`Không thể tải thông tin đơn: ${json.message || ''}`, 'error');
+                closeHaravanAssignModal();
+                return;
+            }
+
+            const o = json.data;
+            currentHaravanOrderDetail = o;
+            const internal = o.internal || {};
+
+            subtitle.textContent = `Mã đơn: ${o.order_number || ('#' + o.id)} - Nguồn: ${(o.source || 'Web').toUpperCase()} - Ngày đặt: ${new Date(o.created_at).toLocaleString('vi-VN')}`;
+            
+            const custName = (o.customer && (o.customer.first_name || o.customer.last_name))
+                ? `${o.customer.first_name || ''} ${o.customer.last_name || ''}`.trim()
+                : (o.billing_address ? o.billing_address.name : 'Khách Vãng Lai');
+            const custPhone = (o.shipping_address && o.shipping_address.phone) || (o.customer && o.customer.phone) || '--';
+            const addr = o.shipping_address ? (o.shipping_address.address1 + (o.shipping_address.city ? ', ' + o.shipping_address.city : '')) : 'Nhận tại quầy';
+
+            summary.innerHTML = `
+                <div><strong>Khách hàng:</strong> ${custName}</div>
+                <div><strong>SĐT:</strong> ${custPhone}</div>
+                <div><strong>Tổng tiền:</strong> <span class="font-bold text-primary font-mono">${formatVND(o.total_price)}</span></div>
+                <div class="col-span-1 sm:col-span-3"><strong>Địa chỉ nhận hàng:</strong> ${addr}</div>
+                ${o.note ? `<div class="col-span-1 sm:col-span-3 text-amber-800"><strong>Ghi chú khách:</strong> ${o.note}</div>` : ''}
+            `;
+
+            // Render Arito Stock Table
+            const liveStock = o.arito_live_stock || {};
+            const lineItems = o.line_items || [];
+            let tbodyHtml = '';
+
+            lineItems.forEach(it => {
+                const sku = it.sku || '';
+                const reqQty = Number(it.quantity || 1);
+                const skuStock = liveStock[sku] || { branches: {} };
+                const b10001 = (skuStock.branches && skuStock.branches['10001'] && skuStock.branches['10001'].stock) || 0;
+                const b10004 = (skuStock.branches && skuStock.branches['10004'] && skuStock.branches['10004'].stock) || 0;
+                const b10005 = (skuStock.branches && skuStock.branches['10005'] && skuStock.branches['10005'].stock) || 0;
+                const b10006 = (skuStock.branches && skuStock.branches['10006'] && skuStock.branches['10006'].stock) || 0;
+
+                const getCell = (stk) => {
+                    const ok = stk >= reqQty;
+                    return `<td class="px-2 py-2 text-center ${ok ? 'text-emerald-700 font-bold bg-emerald-50/60' : 'text-rose-600 font-medium bg-rose-50/40'}">${stk}</td>`;
+                };
+
+                tbodyHtml += `
+                    <tr>
+                        <td class="px-3 py-2">
+                            <div class="font-bold text-charcoal font-sans text-xs">${it.title || it.name}</div>
+                            <span class="text-[10px] text-gray-400 font-mono">SKU: ${sku || 'Chưa gán SKU'}</span>
+                        </td>
+                        <td class="px-2 py-2 text-center font-bold text-primary">${reqQty}</td>
+                        ${getCell(b10001)}
+                        ${getCell(b10004)}
+                        ${getCell(b10005)}
+                        ${getCell(b10006)}
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = tbodyHtml || `<tr><td colspan="6" class="p-4 text-center text-gray-400">Đơn hàng không có mặt hàng nào.</td></tr>`;
+
+            // Call recommendation API
+            try {
+                const recRes = await authFetch('/api/v1/haravan/recommend-store', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: lineItems.map(it => ({ sku: it.sku, quantity: it.quantity || 1 }))
+                    })
+                });
+                const recJson = await recRes.json();
+                if (recRes.ok && recJson.success && recJson.data) {
+                    const rec = recJson.data;
+                    if (rec.recommended_store) {
+                        recBox.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <span class="text-base">💡</span>
+                                <span>Gợi ý hệ thống: Chi nhánh <strong>${rec.store_name} (${rec.recommended_store})</strong> có đủ <strong>${rec.fulfilled_items_count}/${rec.total_items_count}</strong> sản phẩm theo tồn Arito.</span>
+                            </div>
+                            <button onclick="selectAssignStore('${rec.recommended_store}')" class="px-3 py-1.5 rounded-xl bg-primary hover:bg-primary-light text-white font-bold text-xs shrink-0 shadow-sm">
+                                ⚡ Chọn chi nhánh này
+                            </button>
+                        `;
+                        recBox.classList.remove('hidden');
+
+                        if (!internal.assigned_store) {
+                            selectAssignStore(rec.recommended_store);
+                        }
+                    }
+                }
+            } catch(e) {
+                console.warn('Lỗi khi lấy gợi ý cửa hàng:', e);
+            }
+
+            if (internal.assigned_store) {
+                document.getElementById('assign-select-store').value = internal.assigned_store;
+            }
+            if (internal.assignment_reason) {
+                document.getElementById('assign-select-reason').value = internal.assignment_reason;
+            }
+            document.getElementById('assign-input-note').value = internal.assignment_note || '';
+
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi khi tải dữ liệu phân tuyến đơn hàng.', 'error');
+            closeHaravanAssignModal();
+        }
+    }
+
+    function selectAssignStore(storeCode) {
+        const select = document.getElementById('assign-select-store');
+        if (select) select.value = storeCode;
+        showToast(`Đã chọn chi nhánh ${storeCode}`, 'info');
+    }
+
+    function closeHaravanAssignModal() {
+        currentHaravanOrderId = null;
+        currentHaravanOrderDetail = null;
+        document.getElementById('haravan-assign-modal').classList.add('hidden');
+    }
+
+    async function executeHaravanAssign() {
+        if (!currentHaravanOrderId) return;
+        const storeCode = document.getElementById('assign-select-store').value;
+        const reason = document.getElementById('assign-select-reason').value;
+        const note = document.getElementById('assign-input-note').value.trim();
+
+        const btn = document.getElementById('btn-confirm-assign');
+        btn.disabled = true;
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/assign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    store_code: storeCode,
+                    reason: reason,
+                    note: note
+                })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`Đã phân tuyến đơn hàng cho chi nhánh ${storeCode} thành công!`, 'success');
+                closeHaravanAssignModal();
+                loadOrdersFeed();
+            } else {
+                showToast(`Lỗi phân tuyến: ${json.message || 'Thất bại'}`, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi phân tuyến đơn hàng.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // 2. Reassignment Request Modal Handlers
+    function openHaravanReassignModal(orderId, orderNumber) {
+        currentHaravanOrderId = orderId;
+        document.getElementById('reassign-modal-order-number').textContent = orderNumber || orderId;
+        document.getElementById('reassign-input-note').value = '';
+        document.getElementById('haravan-reassign-modal').classList.remove('hidden');
+    }
+
+    function closeHaravanReassignModal() {
+        currentHaravanOrderId = null;
+        document.getElementById('haravan-reassign-modal').classList.add('hidden');
+    }
+
+    async function executeHaravanReassign() {
+        if (!currentHaravanOrderId) return;
+        const reason = document.getElementById('reassign-select-reason').value;
+        const note = document.getElementById('reassign-input-note').value.trim();
+
+        const btn = document.getElementById('btn-confirm-reassign');
+        btn.disabled = true;
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/reassign`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: reason, note: note })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast('Đã gửi yêu cầu phân tuyến lại. Đơn hàng đã được chuyển về tổng đài!', 'success');
+                closeHaravanReassignModal();
+                loadOrdersFeed();
+            } else {
+                showToast(`Lỗi: ${json.message || 'Không thể yêu cầu phân tuyến lại'}`, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi gửi yêu cầu phân tuyến lại.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // 3. Pack Action
+    async function executeHaravanPack(orderId) {
+        if (!confirm('Xác nhận: Nhân viên chi nhánh đã gom và đóng gói xong toàn bộ hàng?')) return;
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${orderId}/pack`, {
+                method: 'POST'
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast('Đã chuyển trạng thái đơn sang "Đã đóng gói"!', 'success');
+                loadOrdersFeed();
+            } else {
+                showToast(`Lỗi: ${json.message || 'Không thể cập nhật'}`, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi xác nhận đóng gói.', 'error');
+        }
+    }
+
+    // 4. Ship Order Modal Handlers
+    function openHaravanShipModal(orderId, orderNumber) {
+        currentHaravanOrderId = orderId;
+        document.getElementById('ship-modal-order-number').textContent = orderNumber || orderId;
+        document.getElementById('ship-input-tracking').value = '';
+        document.getElementById('ship-input-note').value = '';
+        document.getElementById('haravan-ship-modal').classList.remove('hidden');
+    }
+
+    function closeHaravanShipModal() {
+        currentHaravanOrderId = null;
+        document.getElementById('haravan-ship-modal').classList.add('hidden');
+    }
+
+    async function executeHaravanShip() {
+        if (!currentHaravanOrderId) return;
+        const carrier = document.getElementById('ship-select-carrier').value;
+        const tracking = document.getElementById('ship-input-tracking').value.trim();
+        const note = document.getElementById('ship-input-note').value.trim();
+
+        if (!tracking) {
+            showToast('Vui lòng nhập mã vận đơn giao hàng.', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirm-ship');
+        btn.disabled = true;
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/ship`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tracking_code: tracking,
+                    carrier: carrier,
+                    note: note
+                })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast('Đã lưu vận đơn và chuyển trạng thái sang "Đã gửi vận đơn"!', 'success');
+                closeHaravanShipModal();
+                loadOrdersFeed();
+            } else {
+                showToast(`Lỗi: ${json.message || 'Không thể lưu vận đơn'}`, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi lưu vận đơn.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    // 5. Complete Order Modal Handlers
+    function openHaravanCompleteModal(orderId, orderNumber, totalPrice) {
+        currentHaravanOrderId = orderId;
+        document.getElementById('complete-modal-order-number').textContent = orderNumber || orderId;
+        document.getElementById('complete-input-total').value = totalPrice || 0;
+        document.getElementById('complete-input-shipping').value = 0;
+        document.getElementById('complete-input-carrier').value = 'Nam An Market';
+        document.getElementById('complete-input-tracking').value = '';
+        document.getElementById('complete-input-note').value = '';
+        document.getElementById('haravan-complete-modal').classList.remove('hidden');
+    }
+
+    function closeHaravanCompleteModal() {
+        currentHaravanOrderId = null;
+        document.getElementById('haravan-complete-modal').classList.add('hidden');
+    }
+
+    async function executeHaravanComplete() {
+        if (!currentHaravanOrderId) return;
+        const actualTotal = parseFloat(document.getElementById('complete-input-total').value);
+        const actualShipping = parseFloat(document.getElementById('complete-input-shipping').value) || 0;
+        const actualCarrier = document.getElementById('complete-input-carrier').value.trim();
+        const trackingCode = document.getElementById('complete-input-tracking').value.trim();
+        const note = document.getElementById('complete-input-note').value.trim();
+
+        if (isNaN(actualTotal) || actualTotal < 0) {
+            showToast('Vui lòng nhập tổng tiền thực tế hợp lệ.', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btn-confirm-complete');
+        btn.disabled = true;
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    actual_total: actualTotal,
+                    actual_shipping: actualShipping,
+                    actual_carrier: actualCarrier,
+                    tracking_code: trackingCode,
+                    note: note
+                })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast('Đã chốt tiền thực tế và hoàn tất đơn hàng thành công!', 'success');
+                closeHaravanCompleteModal();
+                loadOrdersFeed();
+            } else {
+                showToast(`Lỗi: ${json.message || 'Không thể hoàn tất đơn'}`, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            showToast('Lỗi mạng khi hoàn tất đơn hàng.', 'error');
+        } finally {
+            btn.disabled = false;
+        }
     }
 
     // ShopeeMart Airway Bill Modal

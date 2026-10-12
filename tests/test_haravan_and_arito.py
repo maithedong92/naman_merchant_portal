@@ -186,3 +186,155 @@ async def test_haravan_api_endpoints(mock_admin_user):
         assert res_inv.json()["data"]["SKU_APPLE"]["branches"]["10001"]["stock"] == 12.0
 
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_haravan_order_dispatch_workflow(mock_admin_user):
+    """
+    Test End-to-End quy trình phân tuyến & vòng đời đơn hàng theo 100% logic pmdonhang:
+    1. SuperAdmin thấy đơn chưa phân tuyến.
+    2. Điều phối viên phân tuyến về chi nhánh 10001 (chụp snapshot Arito).
+    3. Cửa hàng 10001 yêu cầu phân tuyến lại (gỡ bỏ assigned_store = None).
+    4. Phân tuyến lại -> Đóng gói -> Gửi vận đơn -> Hoàn thành đơn hàng.
+    """
+    from app.models.store import Store
+    store_10001 = Store(id="store-10001", code="10001", name="21 Thảo Điền")
+    staff_10001 = User(
+        id="user-staff-10001",
+        username="staff_10001",
+        email="staff10001@naman.com",
+        role=UserRole.STAFF.value,
+        store_id="store-10001",
+        store=store_10001,
+        is_active=True,
+    )
+    mock_order_doc = {
+        "_id": "670102030405060708090a0b",
+        "id": "HV_TEST_999",
+        "order_number": "#NA999",
+        "source": "checkout_next",
+        "total_price": 500000.0,
+        "line_items": [{"sku": "SKU_001", "name": "Bò Úc", "quantity": 1}],
+        "internal": {
+            "order_processing_status": "Đơn hàng mới",
+            "assigned_store": None,
+            "history": [],
+        },
+    }
+
+    from app.services.haravan_order_service import haravan_order_service
+
+    # Mock MongoDB collection
+    mock_col = MagicMock()
+    mock_col.find_one.return_value = mock_order_doc
+    mock_col.count_documents.return_value = 1
+    mock_col.find.return_value.sort.return_value.skip.return_value.limit.return_value = [mock_order_doc]
+
+    with patch.object(haravan_order_service, "_get_orders_collection", return_value=mock_col), \
+         patch("app.services.arito_service.arito_service.get_inventory_by_skus", new_callable=AsyncMock) as mock_inv:
+        mock_inv.return_value = {"SKU_001": {"branches": {"10001": {"stock": 10.0}}}}
+
+        # 1. SuperAdmin list unassigned orders
+        orders, total = await haravan_order_service.list_orders(
+            current_user=mock_admin_user,
+            unassigned_only=True,
+        )
+        assert total == 1
+        assert orders[0]["order_number"] == "#NA999"
+
+        # 2. Phân tuyến đơn cho chi nhánh 10001
+        assigned = await haravan_order_service.assign_order(
+            order_id_or_sn="HV_TEST_999",
+            store_code="10001",
+            reason="Gần cửa hàng",
+            note="Khách cần gấp trước 12h",
+            current_user=mock_admin_user,
+        )
+        mock_col.update_one.assert_called()
+        # Verify snapshot and fields were updated
+        update_args = mock_col.update_one.call_args[0][1]
+        assert update_args["$set"]["internal.assigned_store"] == "10001"
+        assert update_args["$set"]["internal.order_processing_status"] == "Đã phân tuyến"
+        assert "internal.assignment_stock" in update_args["$set"]
+
+        # 3. Nhân viên 10001 yêu cầu phân tuyến lại (thiếu hàng)
+        mock_order_doc["internal"]["assigned_store"] = "10001"
+        reassigned = await haravan_order_service.request_reassignment(
+            order_id_or_sn="HV_TEST_999",
+            reason="Cửa hàng không có hàng",
+            note="Hết thăn bò Úc tại kệ",
+            current_user=staff_10001,
+        )
+        reassign_update = mock_col.update_one.call_args[0][1]
+        assert reassign_update["$set"]["internal.assigned_store"] is None
+        assert reassign_update["$set"]["internal.order_processing_status"] == "Yêu cầu phân tuyến lại"
+
+        # 4. Đóng gói đơn hàng
+        await haravan_order_service.pack_order(
+            order_id_or_sn="HV_TEST_999",
+            current_user=staff_10001,
+        )
+        pack_update = mock_col.update_one.call_args[0][1]
+        assert pack_update["$set"]["internal.order_processing_status"] == "Đã đóng gói"
+
+        # 5. Gửi vận đơn
+        await haravan_order_service.ship_order(
+            order_id_or_sn="HV_TEST_999",
+            tracking_code="AHA12345678",
+            carrier="Ahamove",
+            current_user=staff_10001,
+        )
+        ship_update = mock_col.update_one.call_args[0][1]
+        assert ship_update["$set"]["internal.order_processing_status"] == "Đã gửi vận đơn"
+        assert ship_update["$set"]["internal.tracking_code"] == "AHA12345678"
+
+        # 6. Hoàn thành đơn hàng
+        await haravan_order_service.complete_order(
+            order_id_or_sn="HV_TEST_999",
+            actual_total=505000.0,
+            actual_shipping=25000.0,
+            actual_carrier="Ahamove",
+            tracking_code="AHA12345678",
+            note="Giao thành công, khách đã trả tiền mặt",
+            current_user=staff_10001,
+        )
+        complete_update = mock_col.update_one.call_args[0][1]
+        assert complete_update["$set"]["internal.order_processing_status"] == "Hoàn thành"
+        assert complete_update["$set"]["internal.completion_info"]["actual_total"] == "505000.0"
+        assert complete_update["$set"]["internal.completion_info"]["actual_carrier"] == "Ahamove"
+
+
+def test_haravan_orders_html_ui_components():
+    """Verify that orders.html contains Haravan Omnichannel filter pills and dispatch modals matching pmdonhang."""
+    client = TestClient(app)
+    response = client.get("/admin/orders")
+    assert response.status_code == 200
+    html = response.text
+
+    # 1. Header controls
+    assert "btn-sync-haravan" in html
+    assert "Đồng bộ Haravan" in html
+
+    # 2. Channel Pills & Unassigned quick filter
+    assert "Haravan Omnichannel" in html
+    assert "btn-unassigned-filter" in html
+    assert "Cần Phân Tuyến (Haravan)" in html
+
+    # 3. Haravan Modals (Follow 100% pmdonhang)
+    assert "haravan-assign-modal" in html
+    assert "Tồn Kho Thực Tế Arito ERP (4 Siêu Thị)" in html
+    assert "10001 (21TD)" in html
+    assert "10004 (46NLB)" in html
+    assert "10005 (17MCT)" in html
+    assert "10006 (303NVT)" in html
+
+    assert "haravan-reassign-modal" in html
+    assert "Cửa hàng không có hàng" in html
+    assert "Cửa hàng quá tải" in html
+
+    assert "haravan-ship-modal" in html
+    assert "Mã vận đơn (Tracking Code)" in html
+
+    assert "haravan-complete-modal" in html
+    assert "Tổng tiền thực tế" in html
+

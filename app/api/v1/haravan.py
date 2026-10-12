@@ -112,3 +112,235 @@ async def get_arito_status(
         data=status_info,
         message=status_info.get("message", "Kiểm tra Arito hoàn tất."),
     )
+
+
+# ==============================================================================
+# QUY TRÌNH PHÂN TUYẾN & XỬ LÝ ĐƠN HÀNG HARAVAN (FOLLOW 100% PMDONHANG)
+# ==============================================================================
+
+class AssignOrderRequest(BaseModel):
+    store_code: str = Field(..., description="Mã chi nhánh: 10001, 10004, 10005, 10006, 10008")
+    reason: str = Field(..., description="Lý do: Gần cửa hàng, Cửa hàng có sẵn hàng, Shipper gần nhất, Khách yêu cầu, Khác")
+    note: str = Field("", description="Ghi chú phân tuyến bổ sung")
+
+
+class ReassignOrderRequest(BaseModel):
+    reason: str = Field(..., description="Lý do: Cửa hàng không có hàng, Cửa hàng quá tải, Địa chỉ quá xa, Khách yêu cầu, Khác")
+    note: str = Field("", description="Ghi chú bổ sung")
+
+
+class ShipOrderRequest(BaseModel):
+    tracking_code: str = Field(..., description="Mã vận đơn giao hàng")
+    carrier: str = Field("Nam An Market", description="Đơn vị vận chuyển: Nam An Market, Ahamove, GHN, Grab Express, Khác")
+    note: Optional[str] = Field(None, description="Ghi chú vận đơn")
+
+
+class CompleteOrderRequest(BaseModel):
+    actual_total: float = Field(..., description="Tổng tiền hàng thực tế sau cân/soạn")
+    actual_shipping: float = Field(0.0, description="Phí ship thực tế")
+    actual_carrier: str = Field("Nam An Market", description="Đơn vị vận chuyển thực tế")
+    tracking_code: str = Field("", description="Mã vận đơn thực tế")
+    note: str = Field("", description="Ghi chú hoàn thành đơn")
+
+
+class CancelOrderRequest(BaseModel):
+    reason: str = Field(..., description="Lý do hủy đơn")
+    note: str = Field("", description="Ghi chú hủy đơn")
+
+
+from app.services.haravan_order_service import haravan_order_service
+
+
+@router.get(
+    "/orders",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Danh sách đơn hàng Haravan Omnichannel",
+    description="Tra cứu danh sách đơn hàng Haravan từ MongoDB. Áp dụng Store Isolation RBAC: Staff chỉ thấy đơn đã phân tuyến về chi nhánh mình. SuperAdmin thấy tất cả và có thể lọc đơn chưa phân tuyến.",
+)
+async def list_haravan_orders(
+    status: Optional[str] = Query(None, description="Lọc trạng thái xử lý nội bộ"),
+    store_code: Optional[str] = Query(None, description="Lọc theo mã chi nhánh"),
+    source: Optional[str] = Query(None, description="Lọc theo nguồn: checkout_next, shopee, lazada, pos, manual"),
+    search: Optional[str] = Query(None, description="Tìm theo mã đơn (#NA...), SĐT, tên khách hàng"),
+    unassigned_only: bool = Query(False, description="Chỉ lấy các đơn CHƯA PHÂN TUYẾN (Cần tổng đài điều phối)"),
+    page: int = Query(1, ge=1, description="Trang hiện tại"),
+    page_size: int = Query(25, ge=1, le=100, description="Số đơn mỗi trang"),
+    current_user: User = Depends(get_current_user),
+):
+    items, total = await haravan_order_service.list_orders(
+        current_user=current_user,
+        status=status,
+        store_code=store_code,
+        source=source,
+        search=search,
+        unassigned_only=unassigned_only,
+        page=page,
+        page_size=page_size,
+    )
+    return APIResponse.ok(
+        data={
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size if total > 0 else 1,
+        },
+        message=f"Lấy {len(items)} đơn hàng Haravan thành công.",
+    )
+
+
+@router.get(
+    "/orders/{order_id}",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Chi tiết đơn hàng Haravan & Tồn kho Arito",
+    description="Lấy chi tiết 1 đơn hàng Haravan kèm theo số lượng tồn kho Arito ERP thời gian thực của các SKU tại 4 chi nhánh.",
+)
+async def get_haravan_order_detail(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    order = await haravan_order_service.get_order_detail(order_id, current_user)
+    return APIResponse.ok(
+        data=order,
+        message="Lấy chi tiết đơn hàng Haravan thành công.",
+    )
+
+
+@router.post(
+    "/orders/{order_id}/assign",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Phân tuyến đơn hàng cho chi nhánh",
+    description="Điều phối viên gán đơn hàng cho 1 trong 4 siêu thị Nam An (10001, 10004, 10005, 10006, 10008). Tự động chụp snapshot tồn kho Arito.",
+)
+async def assign_haravan_order(
+    order_id: str,
+    payload: AssignOrderRequest,
+    current_user: User = Depends(require_store_manager),
+):
+    updated = await haravan_order_service.assign_order(
+        order_id_or_sn=order_id,
+        store_code=payload.store_code,
+        reason=payload.reason,
+        note=payload.note,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message=f"Đã phân tuyến đơn hàng cho chi nhánh {payload.store_code} thành công.",
+    )
+
+
+@router.post(
+    "/orders/{order_id}/reassign",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Yêu cầu phân tuyến lại đơn hàng",
+    description="Nhân viên chi nhánh báo thiếu hàng/quá tải. Gỡ bỏ assigned_store = null, trả đơn về hàng đợi tổng đài để đổi chi nhánh khác.",
+)
+async def reassign_haravan_order(
+    order_id: str,
+    payload: ReassignOrderRequest,
+    current_user: User = Depends(get_current_user),
+):
+    updated = await haravan_order_service.request_reassignment(
+        order_id_or_sn=order_id,
+        reason=payload.reason,
+        note=payload.note,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message="Đã gửi yêu cầu phân tuyến lại. Đơn hàng đã được trả về tổng đài điều phối.",
+    )
+
+
+@router.post(
+    "/orders/{order_id}/pack",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Xác nhận đã đóng gói hàng",
+    description="Nhân viên siêu thị hoàn tất gom hàng và đóng gói, chuyển trạng thái 'Đã đóng gói'.",
+)
+async def pack_haravan_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    updated = await haravan_order_service.pack_order(
+        order_id_or_sn=order_id,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message="Đã cập nhật trạng thái đơn hàng sang 'Đã đóng gói'.",
+    )
+
+
+@router.post(
+    "/orders/{order_id}/ship",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Xác nhận đã gửi vận đơn",
+    description="Đã bàn giao đơn hàng cho đơn vị vận chuyển, lưu mã vận đơn và chuyển trạng thái 'Đã gửi vận đơn'.",
+)
+async def ship_haravan_order(
+    order_id: str,
+    payload: ShipOrderRequest,
+    current_user: User = Depends(get_current_user),
+):
+    updated = await haravan_order_service.ship_order(
+        order_id_or_sn=order_id,
+        tracking_code=payload.tracking_code,
+        carrier=payload.carrier,
+        current_user=current_user,
+        note=payload.note,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message="Đã cập nhật trạng thái đơn hàng sang 'Đã gửi vận đơn'.",
+    )
+
+
+@router.post(
+    "/orders/{order_id}/complete",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Xác nhận hoàn thành đơn hàng",
+    description="Chốt tổng tiền thực tế, cước ship thực tế, đơn vị vận chuyển và hoàn tất đơn hàng theo đúng chuẩn pmdonhang.",
+)
+async def complete_haravan_order(
+    order_id: str,
+    payload: CompleteOrderRequest,
+    current_user: User = Depends(get_current_user),
+):
+    updated = await haravan_order_service.complete_order(
+        order_id_or_sn=order_id,
+        actual_total=payload.actual_total,
+        actual_shipping=payload.actual_shipping,
+        actual_carrier=payload.actual_carrier,
+        tracking_code=payload.tracking_code,
+        note=payload.note,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message="Đã cập nhật trạng thái đơn hàng sang 'Hoàn thành'.",
+    )
+
+
+@router.post(
+    "/orders/{order_id}/cancel",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Hủy đơn hàng",
+    description="Ghi nhận lý do hủy đơn và chuyển trạng thái 'Đã hủy'.",
+)
+async def cancel_haravan_order(
+    order_id: str,
+    payload: CancelOrderRequest,
+    current_user: User = Depends(get_current_user),
+):
+    updated = await haravan_order_service.cancel_order(
+        order_id_or_sn=order_id,
+        reason=payload.reason,
+        note=payload.note,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated,
+        message="Đã hủy đơn hàng thành công.",
+    )
