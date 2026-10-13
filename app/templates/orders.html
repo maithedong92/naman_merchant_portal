@@ -1961,6 +1961,62 @@
         }
     }
 
+    // File Attachment Handlers (Follow 100% pmdonhang)
+    async function handleOrderFileUpload(event, orderId, fileType) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+
+        const fileLabel = fileType === 'order' ? 'File đơn hàng' : 'File vận đơn';
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('file_type', fileType);
+
+        showToast(`Đang tải lên ${fileLabel} (${file.name})...`, 'info');
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}/files/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`✅ Đã tải lên ${fileLabel} thành công!`, 'success');
+                // Nạp lại chi tiết đơn hàng ngay lập tức
+                await openDetailsModal(orderId, 'HARAVAN');
+            } else {
+                showToast(`❌ Tải lên thất bại: ${json.message || 'Lỗi hệ thống'}`, 'error');
+            }
+        } catch (err) {
+            console.error('File upload error:', err);
+            showToast(`❌ Lỗi mạng khi tải lên tệp: ${err.message}`, 'error');
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    async function triggerDeleteOrderFile(orderId, fileType) {
+        const fileLabel = fileType === 'order' ? 'File đơn hàng' : 'File vận đơn';
+        if (!confirm(`Bạn có chắc chắn muốn gỡ bỏ ${fileLabel} khỏi đơn hàng này không?`)) {
+            return;
+        }
+
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}/files/${encodeURIComponent(fileType)}`, {
+                method: 'DELETE',
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(`✅ Đã gỡ bỏ ${fileLabel}.`, 'success');
+                await openDetailsModal(orderId, 'HARAVAN');
+            } else {
+                showToast(`❌ Gỡ bỏ file thất bại: ${json.message || 'Lỗi hệ thống'}`, 'error');
+            }
+        } catch (err) {
+            console.error('File delete error:', err);
+            showToast(`❌ Lỗi kết nối khi gỡ bỏ file: ${err.message}`, 'error');
+        }
+    }
+
     function renderHistoryTabPane(order) {
         const isHaravan = !!(order.source || order.line_items || order.order_number);
         const pane = document.getElementById('detail-tab-pane-history');
@@ -2194,7 +2250,122 @@
                     </div>
                 </div>
             </div>
+        `;
 
+        const orderFile = internal.order_file || null;
+        const orderFileName = internal.order_file_name || 'Tệp đơn hàng';
+        const orderFileUploadedBy = internal.order_file_uploaded_by || '';
+        const orderFileUploadedAt = internal.order_file_uploaded_at || '';
+
+        const trackingFile = internal.tracking_file || null;
+        const trackingFileName = internal.tracking_file_name || 'Tệp vận đơn';
+        const trackingFileUploadedBy = internal.tracking_file_uploaded_by || '';
+        const trackingFileUploadedAt = internal.tracking_file_uploaded_at || '';
+
+        basicHtml += `
+            <!-- Attachment Files Section (Follow 100% pmdonhang) -->
+            <div class="p-3.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider flex items-center space-x-1.5">
+                        <span>📎</span>
+                        <span>Tệp Đính Kèm (Hóa Đơn & Vận Đơn)</span>
+                    </div>
+                    <span class="text-[11px] text-[#9B9A97] italic">PDF, PNG, JPG, WEBP (tối đa 15MB)</span>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <!-- 1. Order File (Hóa đơn / Đơn gốc) -->
+                    <div class="p-3 rounded-md bg-white border border-[rgba(55,53,47,0.12)] flex flex-col justify-between space-y-2.5">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xl">📄</span>
+                                <div>
+                                    <div class="text-[12px] font-semibold text-[#37352F]">File Đơn Hàng / Hóa Đơn</div>
+                                    <div class="text-[11px] text-[#787774] truncate max-w-[200px]" title="${escapeHtml(orderFileName)}">
+                                        ${orderFile ? `<span class="text-[#2F7EA6] font-mono font-medium">${escapeHtml(orderFileName)}</span>` : '<span class="italic text-[#9B9A97]">Chưa có file đính kèm</span>'}
+                                    </div>
+                                </div>
+                            </div>
+                            ${orderFile ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#EDF3EC] text-[#448361] shrink-0">Đã có file</span>` : `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F7F6F3] text-[#9B9A97] shrink-0">Chưa có</span>`}
+                        </div>
+
+                        ${orderFile ? `
+                            <div class="text-[10.5px] text-[#787774] bg-[#F7F6F3] p-1.5 rounded flex items-center justify-between">
+                                <span>Bởi: <strong>${escapeHtml(orderFileUploadedBy || 'admin')}</strong></span>
+                                ${orderFileUploadedAt ? `<span>${formatDateTime(orderFileUploadedAt)}</span>` : ''}
+                            </div>
+                            <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                                <a href="/api/v1/haravan/orders/${order.id}/files/order/download" target="_blank" class="flex-1 py-1 px-2.5 rounded bg-[#E7F3F8] hover:bg-[#D3EBF5] text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                                    <span>👁️</span>
+                                    <span>Xem / Tải về</span>
+                                </a>
+                                <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
+                                    <span>🔄 Đổi</span>
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'order')">
+                                </label>
+                                <button onclick="triggerDeleteOrderFile('${order.id}', 'order')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                    <span>🗑️</span>
+                                </button>
+                            </div>
+                        ` : `
+                            <div class="pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                                <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#2383E2]/40 hover:border-[#2383E2] bg-[#E7F3F8]/30 hover:bg-[#E7F3F8]/60 text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
+                                    <span>📁</span>
+                                    <span>Chọn File Đơn Hàng (PDF/Ảnh)</span>
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'order')">
+                                </label>
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- 2. Tracking File (Vận đơn / Phiếu gửi hàng) -->
+                    <div class="p-3 rounded-md bg-white border border-[rgba(55,53,47,0.12)] flex flex-col justify-between space-y-2.5">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xl">🏷️</span>
+                                <div>
+                                    <div class="text-[12px] font-semibold text-[#37352F]">File Vận Đơn / Phiếu Gửi Hàng</div>
+                                    <div class="text-[11px] text-[#787774] truncate max-w-[200px]" title="${escapeHtml(trackingFileName)}">
+                                        ${trackingFile ? `<span class="text-[#448361] font-mono font-medium">${escapeHtml(trackingFileName)}</span>` : '<span class="italic text-[#9B9A97]">Chưa có file đính kèm</span>'}
+                                    </div>
+                                </div>
+                            </div>
+                            ${trackingFile ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#EDF3EC] text-[#448361] shrink-0">Đã có file</span>` : `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F7F6F3] text-[#9B9A97] shrink-0">Chưa có</span>`}
+                        </div>
+
+                        ${trackingFile ? `
+                            <div class="text-[10.5px] text-[#787774] bg-[#F7F6F3] p-1.5 rounded flex items-center justify-between">
+                                <span>Bởi: <strong>${escapeHtml(trackingFileUploadedBy || 'admin')}</strong></span>
+                                ${trackingFileUploadedAt ? `<span>${formatDateTime(trackingFileUploadedAt)}</span>` : ''}
+                            </div>
+                            <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                                <a href="/api/v1/haravan/orders/${order.id}/files/tracking/download" target="_blank" class="flex-1 py-1 px-2.5 rounded bg-[#EDF3EC] hover:bg-[#DBEADB] text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                                    <span>👁️</span>
+                                    <span>Xem / Tải về</span>
+                                </a>
+                                <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
+                                    <span>🔄 Đổi</span>
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'tracking')">
+                                </label>
+                                <button onclick="triggerDeleteOrderFile('${order.id}', 'tracking')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                    <span>🗑️</span>
+                                </button>
+                            </div>
+                        ` : `
+                            <div class="pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                                <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#448361]/40 hover:border-[#448361] bg-[#EDF3EC]/30 hover:bg-[#EDF3EC]/60 text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
+                                    <span>📁</span>
+                                    <span>Chọn File Vận Đơn (PDF/Ảnh)</span>
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'tracking')">
+                                </label>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        basicHtml += `
             <!-- Store Assignment Info -->
             <div class="p-3.5 rounded-md ${assignedStore ? 'bg-[#E7F3F8]/40 border border-[#BDE0F0]' : 'bg-[#FBEDD6]/40 border border-[#E8CDA0]'} space-y-1.5 text-[12px]">
                 <div class="flex items-center justify-between">

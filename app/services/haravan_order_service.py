@@ -629,6 +629,97 @@ class HaravanOrderService:
         logger.info(f"📝 Đã cập nhật ghi chú admin cho đơn {order.get('order_number')} bởi {username}.")
         return await self.get_order_detail(order["id"], current_user)
 
+    async def attach_order_file(
+        self,
+        order_id_or_sn: str,
+        file_type: str,
+        file_url: str,
+        file_name: str,
+        current_user: User,
+    ) -> Dict[str, Any]:
+        """
+        Nghiệp vụ: Đính kèm tệp đơn hàng hoặc vận đơn (Follow 100% pmdonhang)
+        - file_type: 'order' (File đơn hàng / PDF hóa đơn) hoặc 'tracking' (File vận đơn / phiếu gửi)
+        - Lưu trường internal tương ứng:
+            internal.order_file, internal.order_file_name, internal.order_file_uploaded_by, internal.order_file_uploaded_at
+            internal.tracking_file, internal.tracking_file_name, internal.tracking_file_uploaded_by, internal.tracking_file_uploaded_at
+        - Thêm lịch sử 'Upload file đơn hàng' hoặc 'Upload file vận đơn'
+        """
+        if file_type not in ["order", "tracking"]:
+            raise BadRequestError(f"Loại tệp '{file_type}' không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.")
+
+        order = await self.get_order_detail(order_id_or_sn, current_user)
+        now_str = datetime.now(timezone.utc).isoformat()
+        username = current_user.username
+        prefix = f"{file_type}_file"
+        file_label = "đơn hàng" if file_type == "order" else "vận đơn"
+
+        update_fields = {
+            f"internal.{prefix}": file_url,
+            f"internal.{prefix}_name": file_name,
+            f"internal.{prefix}_uploaded_by": username,
+            f"internal.{prefix}_uploaded_at": now_str,
+        }
+
+        col = self._get_orders_collection()
+        col.update_one(
+            {"id": order["id"]},
+            {
+                "$set": update_fields,
+                "$push": {
+                    "internal.history": {
+                        "timestamp": now_str,
+                        "action": f"Upload file {file_label}",
+                        "user": username,
+                        "details": f"File: {file_name} - URL: {file_url}",
+                    }
+                },
+            },
+        )
+        logger.info(f"📎 Đã đính kèm file {file_label} '{file_name}' cho đơn {order.get('order_number')} bởi {username}.")
+        return await self.get_order_detail(order["id"], current_user)
+
+    async def remove_order_file(
+        self,
+        order_id_or_sn: str,
+        file_type: str,
+        current_user: User,
+    ) -> Dict[str, Any]:
+        """
+        Nghiệp vụ: Gỡ bỏ tệp đính kèm đơn hàng hoặc vận đơn
+        """
+        if file_type not in ["order", "tracking"]:
+            raise BadRequestError(f"Loại tệp '{file_type}' không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.")
+
+        order = await self.get_order_detail(order_id_or_sn, current_user)
+        now_str = datetime.now(timezone.utc).isoformat()
+        username = current_user.username
+        prefix = f"{file_type}_file"
+        file_label = "đơn hàng" if file_type == "order" else "vận đơn"
+
+        col = self._get_orders_collection()
+        col.update_one(
+            {"id": order["id"]},
+            {
+                "$unset": {
+                    f"internal.{prefix}": "",
+                    f"internal.{prefix}_name": "",
+                    f"internal.{prefix}_uploaded_by": "",
+                    f"internal.{prefix}_uploaded_at": "",
+                },
+                "$push": {
+                    "internal.history": {
+                        "timestamp": now_str,
+                        "action": f"Xóa file {file_label}",
+                        "user": username,
+                        "details": f"Đã gỡ bỏ file {file_label}",
+                    }
+                },
+            },
+        )
+        logger.info(f"🗑️ Đã gỡ bỏ file {file_label} cho đơn {order.get('order_number')} bởi {username}.")
+        return await self.get_order_detail(order["id"], current_user)
+
 
 # Singleton instance
 haravan_order_service = HaravanOrderService()

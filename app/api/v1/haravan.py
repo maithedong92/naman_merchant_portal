@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Query, Body
+import io
+from fastapi import APIRouter, Depends, Query, Body, UploadFile, File, Form, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user, require_super_admin, require_store_manager
@@ -8,6 +10,7 @@ from app.core.responses import APIResponse
 from app.models.user import User
 from app.modules.haravan.sync_worker import haravan_sync_worker
 from app.services.arito_service import arito_service
+from app.services.file_service import file_service
 
 router = APIRouter(prefix="/haravan", tags=["Haravan Omnichannel & Arito ERP"])
 logger = logging.getLogger("naman_portal.haravan.api")
@@ -392,3 +395,121 @@ async def update_haravan_admin_note(
         data=updated,
         message="Đã lưu ghi chú nội bộ thành công.",
     )
+
+
+# ==============================================================================
+# QUẢN LÝ TỆP ĐÍNH KÈM ĐƠN HÀNG & VẬN ĐƠN (FOLLOW 100% PMDONHANG)
+# ==============================================================================
+
+@router.post(
+    "/orders/{order_id}/files/upload",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Tải lên tệp đính kèm đơn hàng hoặc vận đơn",
+    description="Tải lên tệp (PDF/Ảnh) lên máy chủ lưu trữ (namanapi.namanmarket.com) và gắn vào đơn hàng (Follow 100% pmdonhang).",
+)
+async def upload_order_file(
+    order_id: str,
+    file: UploadFile = File(..., description="Tệp tin cần tải lên (PDF, PNG, JPG, WEBP)"),
+    file_type: str = Form("order", description="Loại tệp: 'order' (Hóa đơn/Đơn gốc) hoặc 'tracking' (Vận đơn/Phiếu gửi)"),
+    current_user: User = Depends(get_current_user),
+):
+    if file_type not in ["order", "tracking"]:
+        return APIResponse.error(
+            message="Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.",
+            error_code="INVALID_FILE_TYPE",
+        )
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        return APIResponse.error(
+            message="Tệp tin tải lên rỗng (0 bytes).",
+            error_code="EMPTY_FILE",
+        )
+
+    filename = file.filename or "attachment.pdf"
+    success, file_url, err = await file_service.upload_file(
+        file_bytes=file_bytes,
+        filename=filename,
+        file_type=file_type,
+    )
+    if not success:
+        return APIResponse.error(
+            message=f"Tải lên tệp thất bại: {err}",
+            error_code="FILE_UPLOAD_FAILED",
+        )
+
+    updated_order = await haravan_order_service.attach_order_file(
+        order_id_or_sn=order_id,
+        file_type=file_type,
+        file_url=file_url,
+        file_name=filename,
+        current_user=current_user,
+    )
+
+    file_info = {
+        "url": file_url,
+        "name": filename,
+        "uploaded_by": current_user.username,
+        "file_type": file_type,
+    }
+
+    return APIResponse.ok(
+        data={"order": updated_order, "file_info": file_info},
+        message=f"Đã tải lên và đính kèm tệp {file_type} thành công.",
+    )
+
+
+@router.delete(
+    "/orders/{order_id}/files/{file_type}",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Gỡ bỏ tệp đính kèm đơn hàng hoặc vận đơn",
+    description="Gỡ bỏ liên kết tệp đơn hàng hoặc vận đơn và lưu lịch sử thao tác.",
+)
+async def delete_order_file(
+    order_id: str,
+    file_type: str,
+    current_user: User = Depends(get_current_user),
+):
+    if file_type not in ["order", "tracking"]:
+        return APIResponse.error(
+            message="Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.",
+            error_code="INVALID_FILE_TYPE",
+        )
+
+    updated_order = await haravan_order_service.remove_order_file(
+        order_id_or_sn=order_id,
+        file_type=file_type,
+        current_user=current_user,
+    )
+    return APIResponse.ok(
+        data=updated_order,
+        message=f"Đã gỡ bỏ tệp {file_type} thành công.",
+    )
+
+
+@router.get(
+    "/orders/{order_id}/files/{file_type}/download",
+    summary="Tải về tệp đính kèm (Proxy Download)",
+    description="Tải xuống tệp đơn hàng hoặc vận đơn từ máy chủ lưu trữ an toàn, tránh lỗi CORS và SSL.",
+)
+async def download_order_file_proxy(
+    order_id: str,
+    file_type: str,
+    current_user: User = Depends(get_current_user),
+):
+    order = await haravan_order_service.get_order_detail(order_id, current_user)
+    prefix = f"{file_type}_file"
+    file_url = order.get("internal", {}).get(prefix)
+    if not file_url:
+        return Response(content="Đơn hàng chưa có tệp đính kèm này.", status_code=404)
+
+    success, content, content_type, filename = await file_service.download_file_bytes(file_url)
+    if not success:
+        return Response(content=f"Không thể tải file: {filename}", status_code=502)
+
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
