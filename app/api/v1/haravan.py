@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, List, Optional
 import io
+import re
+import urllib.parse
 from fastapi import APIRouter, Depends, Query, Body, UploadFile, File, Form, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -507,9 +509,16 @@ async def download_order_file_proxy(
     if not success:
         return Response(content=f"Không thể tải file: {filename}", status_code=502)
 
+    encoded_filename = urllib.parse.quote(filename)
+    ascii_filename = re.sub(r'[^\x20-\x7E]', '_', filename)
+    headers = {
+        "Content-Disposition": f'inline; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+    }
+
     return StreamingResponse(
         io.BytesIO(content),
         media_type=content_type,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers=headers,
     )
+
 
