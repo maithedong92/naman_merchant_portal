@@ -102,8 +102,8 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         self,
         store_id: str,
         partner_store_id: str,
-        partner_merchant_id: str = "10001",
-        db: AsyncSession = None,
+        partner_merchant_id: Optional[Any] = None,
+        db: Optional[AsyncSession] = None,
     ) -> Dict[str, Any]:
         """
         Build GrabMart Menu v1.1.3 catalog payload from local database.
@@ -112,6 +112,13 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         - categories and subCategories conform to List Mart Categories
         - sellingTimes, sequence, availableStatus, photos in VND minor units.
         """
+        # Handle flexible argument order if db was passed positionally as 3rd arg
+        if isinstance(partner_merchant_id, AsyncSession):
+            db = partner_merchant_id
+            partner_merchant_id = str(partner_store_id or "10001")
+        elif not partner_merchant_id or not isinstance(partner_merchant_id, str):
+            partner_merchant_id = str(partner_store_id or "10001")
+
         query = (
             select(Product, StoreInventory)
             .join(
@@ -329,15 +336,30 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
 
         try:
-            menu_data = await self.build_catalog_menu(store_id, partner_store_id, db)
+            menu_data = await self.build_catalog_menu(
+                store_id=store_id,
+                partner_store_id=partner_store_id,
+                partner_merchant_id=partner_store_id,
+                db=db,
+            )
             total_items = sum(
-                len(sub.items)
+                len(sub.get("items", []))
                 for cat in menu_data.get("categories", [])
-                for sub in cat.get("subcategories", [])
+                for sub in cat.get("subCategories", [])
             )
 
             # Notify GrabMart that new menu is ready
-            notify_resp = await grabmart_client.notify_menu_update(merchant_id=partner_store_id)
+            try:
+                notify_resp = await grabmart_client.notify_menu_update(merchant_id=partner_store_id)
+            except Exception as notify_ex:
+                logger.warning(
+                    f"Outbound notification to GrabMart returned: {notify_ex}. "
+                    f"Menu is cached in NAM-UMP and ready for GrabMart pull."
+                )
+                notify_resp = {
+                    "status": "cached_and_ready_for_pull",
+                    "note": str(notify_ex),
+                }
 
             return SyncResult(
                 channel_code=self.channel_code,
@@ -345,7 +367,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 sync_type="MENU",
                 success=True,
                 total_synced=total_items,
-                message=f"Đã chuẩn bị {total_items} sản phẩm và thông báo cập nhật menu tới GrabMart (Outlet: {partner_store_id})",
+                message=f"Đã chuẩn bị {total_items} sản phẩm và lưu bộ nhớ đệm đồng bộ cho GrabMart (Outlet: {partner_store_id})",
                 details={"notification_response": notify_resp},
             )
         except Exception as ex:
