@@ -20,6 +20,7 @@ from app.schemas.inventory import (
     StoreInventoryResponse,
 )
 from app.services.inventory_service import InventoryService
+from app.services.poppies_service import poppies_service
 
 router = APIRouter(prefix="/inventory", tags=["Multi-Store Inventory"])
 
@@ -197,3 +198,67 @@ async def batch_update_inventory(
         data=updated,
         message=f"Đã cập nhật tồn kho cho {len(updated)} SKU và kích hoạt đồng bộ đa kênh."
     )
+
+
+@router.get(
+    "/poppies/health",
+    summary="Kiểm tra kết nối Poppies ERP POS Master Data Gateway",
+    description="Kiểm tra trạng thái sẵn sàng của Poppies ERP Master Data Gateway và tổng số SKU/CTTK tồn kho khả dụng.",
+)
+async def get_poppies_health(
+    current_user: User = Depends(get_current_user),
+):
+    health_data = await poppies_service.check_health()
+    return APIResponse.ok(
+        data=health_data,
+        message="Kiểm tra trạng thái Poppies ERP Gateway thành công."
+    )
+
+
+@router.post(
+    "/poppies/sync",
+    summary="Đồng bộ Master Data (Hàng hóa, Danh mục, Tồn kho) từ Poppies ERP",
+    description="Kéo danh mục, sản phẩm, giá bán VAT và tồn kho đa chi nhánh (10001, 10004, 10005, 10006) từ Poppies ERP POS Gateway vào cơ sở dữ liệu NAM-UMP.",
+)
+async def sync_poppies_master_data(
+    branch_code: str = Query("10001", description="Mã chi nhánh đối chiếu giá bán"),
+    status_filter: str = Query("01", description="Trạng thái mặt hàng: 01 (Đang kinh doanh), 02 (Ngừng kinh doanh)"),
+    limit: int = Query(500, ge=1, le=1000, description="Số lượng SKU mỗi trang"),
+    offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
+    fetch_all: bool = Query(True, description="Đồng bộ toàn bộ danh mục kinh doanh (tất cả các trang)"),
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await poppies_service.sync_master_data_from_poppies(
+        db=db,
+        branch_code=branch_code,
+        status_filter=status_filter,
+        limit=limit,
+        offset=offset,
+        fetch_all=fetch_all,
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã hoàn thành đồng bộ {result.get('total_fetched', 0)} SKU từ Poppies ERP."
+    )
+
+
+@router.post(
+    "/poppies/sync-stock",
+    summary="Đồng bộ nhanh tồn kho tức thời CTTK từ Poppies ERP",
+    description="Truy vấn dữ liệu tồn kho tức thời từ Poppies CTTK (/cttk-records) và cập nhật số lượng tồn cho tất cả các chi nhánh.",
+)
+async def sync_poppies_stock_realtime(
+    store_code: Optional[str] = Query(None, description="Mã chi nhánh cần đồng bộ tồn kho (để trống nếu đồng bộ toàn bộ)"),
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await poppies_service.sync_stock_cttk_realtime(
+        db=db,
+        store_code=store_code
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã cập nhật tồn kho tức thời cho {result.get('inventories_updated', 0)} bản ghi tồn kho."
+    )
+

@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     HARAVAN_SYNC_INTERVAL_SECONDS: int = 60
     HARAVAN_SYNC_LIMIT: int = 100
 
+    # Poppies ERP POS Master Data Gateway (DOCS_API_POS_MASTER_DATA_SKU.md)
+    POPPIES_API_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pos/master-data"
+    POPPIES_API_KEY: str = "naman_pos_api_secret_key_2026"
+    POPPIES_TIMEOUT_SECONDS: float = 30.0
+
 
 @lru_cache()
 def get_settings() -> Settings:
