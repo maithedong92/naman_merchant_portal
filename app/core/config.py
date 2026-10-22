@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     # Poppies ERP POS Master Data Gateway (DOCS_API_POS_MASTER_DATA_SKU.md)
     POPPIES_API_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pos/master-data"
     POPPIES_API_KEY: str = "naman_pos_api_secret_key_2026"
-    POPPIES_TIMEOUT_SECONDS: float = 30.0
+    POPPIES_TIMEOUT_SECONDS: float = 120.0
 
 
 @lru_cache()

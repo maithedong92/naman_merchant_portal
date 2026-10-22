@@ -589,7 +589,7 @@
         try {
             const res = await authFetch('/api/v1/inventory/poppies/health');
             const result = await res.json();
-            if (res.ok && result.success && result.data && result.data.status === 'ok') {
+            if (res.ok && result.success && result.data && (result.data.status === 'ok' || result.data.status === 'healthy')) {
                 dot.className = "inline-block w-2.5 h-2.5 rounded-full bg-[#448361]";
                 text.textContent = `Đã kết nối (${result.data.database || 'Poppies ERP'})`;
                 skuSpan.textContent = (result.data.total_sku_count || 0).toLocaleString();

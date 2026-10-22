@@ -223,7 +223,7 @@ async def get_poppies_health(
 async def sync_poppies_master_data(
     branch_code: str = Query("10001", description="Mã chi nhánh đối chiếu giá bán"),
     status_filter: str = Query("01", description="Trạng thái mặt hàng: 01 (Đang kinh doanh), 02 (Ngừng kinh doanh)"),
-    limit: int = Query(500, ge=1, le=1000, description="Số lượng SKU mỗi trang"),
+    limit: int = Query(250, ge=1, le=1000, description="Số lượng SKU mỗi trang"),
     offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
     fetch_all: bool = Query(True, description="Đồng bộ toàn bộ danh mục kinh doanh (tất cả các trang)"),
     current_user: User = Depends(require_store_manager),

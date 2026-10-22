@@ -152,10 +152,10 @@ class PoppiesMasterDataSyncService:
         db: AsyncSession,
         branch_code: str = "10001",
         status_filter: str = "01",
-        limit: int = 500,
+        limit: int = 250,
         offset: int = 0,
         fetch_all: bool = False,
-        max_pages: int = 20
+        max_pages: int = 25
     ) -> Dict[str, Any]:
         """
         Pull SKU snapshot from Poppies ERP and synchronize into local PostgreSQL database.
@@ -173,12 +173,20 @@ class PoppiesMasterDataSyncService:
         all_stores = stores_res.scalars().all()
         store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
 
-        # 2. Cache existing categories to avoid redundant queries
+        # 2. Cache existing categories, products, and inventories to avoid N+1 queries
         cat_stmt = select(Category)
         cat_res = await db.execute(cat_stmt)
         existing_categories = cat_res.scalars().all()
         cat_cache: Dict[str, Category] = {c.code: c for c in existing_categories}
         cat_name_cache: Dict[str, Category] = {c.name.strip().lower(): c for c in existing_categories}
+
+        prod_res_all = await db.execute(select(Product))
+        prod_cache: Dict[str, Product] = {p.sku: p for p in prod_res_all.scalars().all()}
+
+        inv_res_all = await db.execute(select(StoreInventory))
+        inv_cache: Dict[Tuple[str, str], StoreInventory] = {
+            (str(i.store_id), str(i.product_id)): i for i in inv_res_all.scalars().all()
+        }
 
         total_fetched = 0
         products_created = 0
@@ -250,10 +258,8 @@ class PoppiesMasterDataSyncService:
                     cat_name_cache[cat_name.lower()] = category
                     categories_created += 1
 
-                # Product Upsert
-                prod_stmt = select(Product).where(Product.sku == sku_code)
-                prod_res = await db.execute(prod_stmt)
-                product = prod_res.scalar_one_or_none()
+                # Product Upsert via cache
+                product = prod_cache.get(sku_code)
 
                 metadata = {
                     "posCode": item.get("posCode"),
@@ -284,6 +290,7 @@ class PoppiesMasterDataSyncService:
                     )
                     db.add(product)
                     await db.flush()
+                    prod_cache[sku_code] = product
                     products_created += 1
                 else:
                     product.barcode = raw_barcode or product.barcode
@@ -322,13 +329,8 @@ class PoppiesMasterDataSyncService:
                     avail_qty = max(0.0, qty) if (not is_branch_locked and is_active) else 0.0
                     is_oos = (avail_qty <= 0.0 or is_branch_locked or not is_active)
 
-                    # Look up existing inventory
-                    inv_stmt = select(StoreInventory).where(
-                        StoreInventory.store_id == store_obj.id,
-                        StoreInventory.product_id == product.id
-                    )
-                    inv_res = await db.execute(inv_stmt)
-                    store_inv = inv_res.scalar_one_or_none()
+                    inv_key = (str(store_obj.id), str(product.id))
+                    store_inv = inv_cache.get(inv_key)
 
                     if not store_inv:
                         store_inv = StoreInventory(
@@ -343,6 +345,7 @@ class PoppiesMasterDataSyncService:
                             last_synced_at=datetime.now(timezone.utc)
                         )
                         db.add(store_inv)
+                        inv_cache[inv_key] = store_inv
                     else:
                         store_inv.total_stock = max(0.0, qty)
                         store_inv.available_stock = avail_qty
@@ -388,11 +391,16 @@ class PoppiesMasterDataSyncService:
         start_time = datetime.now(timezone.utc)
         logger.info(f"Starting real-time CTTK stock sync for store={store_code}")
 
-        # 1. Load physical stores
+        # 1. Load physical stores and existing inventories
         stores_stmt = select(Store).order_by(Store.code)
         stores_res = await db.execute(stores_stmt)
         all_stores = stores_res.scalars().all()
         store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
+
+        inv_res_all = await db.execute(select(StoreInventory))
+        inv_by_store_sku: Dict[Tuple[str, str], StoreInventory] = {
+            (str(i.store_id), i.sku): i for i in inv_res_all.scalars().all()
+        }
 
         # 2. Fetch CTTK records in chunks of 5000
         limit = 5000
@@ -429,13 +437,7 @@ class PoppiesMasterDataSyncService:
                 if not store_obj:
                     continue
 
-                inv_stmt = select(StoreInventory).where(
-                    StoreInventory.store_id == store_obj.id,
-                    StoreInventory.sku == sku
-                )
-                inv_res = await db.execute(inv_stmt)
-                inv = inv_res.scalar_one_or_none()
-
+                inv = inv_by_store_sku.get((str(store_obj.id), sku))
                 if inv:
                     inv.total_stock = max(0.0, total_sl)
                     inv.available_stock = max(0.0, total_sl)
