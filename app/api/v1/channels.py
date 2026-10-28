@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.responses import APIResponse
 from app.models.channel import Channel
+from app.models.store import Store, StoreChannelMapping
 from app.models.user import User
 from app.schemas.channel import (
     ChannelCreate,
@@ -120,4 +121,48 @@ async def get_registered_adapters(
     return APIResponse.ok(
         data=channel_registry.list_channels(),
         message="Danh sách các adapter đã được nạp vào Registry"
+    )
+
+
+@router.post("/{channel_code}/sync-menu")
+async def sync_channel_menu(
+    channel_code: str,
+    store_id: Optional[str] = Query(None, description="ID hoặc mã chi nhánh (mặc định 10001)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger menu/catalog synchronization for a specific channel and store."""
+    code_upper = channel_code.upper()
+    adapter = channel_registry.get(code_upper)
+    if not adapter:
+        raise NotFoundError(f"Không tìm thấy Adapter cho kênh '{code_upper}'.")
+
+    target_store_key = store_id or "10001"
+    store_stmt = select(Store).where((Store.id == target_store_key) | (Store.code == target_store_key))
+    store_obj = (await db.execute(store_stmt)).scalar_one_or_none()
+    effective_store_id = store_obj.id if store_obj else target_store_key
+
+    mapping_stmt = (
+        select(StoreChannelMapping)
+        .join(Channel)
+        .where(
+            Channel.code == code_upper,
+            StoreChannelMapping.store_id == effective_store_id,
+        )
+    )
+    mapping_obj = (await db.execute(mapping_stmt)).scalar_one_or_none()
+    partner_store_id = (
+        mapping_obj.partner_store_id
+        if (mapping_obj and mapping_obj.partner_store_id)
+        else (store_obj.code if store_obj else target_store_key)
+    )
+
+    result = await adapter.sync_menu(
+        store_id=effective_store_id,
+        partner_store_id=partner_store_id,
+        db=db,
+    )
+    return APIResponse.ok(
+        data=result.model_dump(),
+        message=result.message,
     )

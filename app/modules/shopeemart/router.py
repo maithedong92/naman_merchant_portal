@@ -168,8 +168,49 @@ async def get_shopee_connection_status(
 
 
 # ==============================================================================
-# 3. Inventory & Order Management Operations
+# 3. Inventory, Menu & Order Management Operations
 # ==============================================================================
+
+@router.post(
+    "/sync/menu/{store_id}",
+    summary="Đồng bộ danh mục sản phẩm (Menu/Catalog) lên gian hàng ShopeeMart",
+    description="Đồng bộ danh sách sản phẩm từ Poppies ERP và ánh xạ item_id của gian hàng ShopeeMart tương ứng với chi nhánh.",
+)
+async def sync_store_menu_to_shopee(
+    store_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    store_stmt = select(Store).where((Store.id == store_id) | (Store.code == store_id))
+    store_obj = (await db.execute(store_stmt)).scalar_one_or_none()
+    effective_store_id = store_obj.id if store_obj else store_id
+
+    stmt = (
+        select(StoreChannelMapping)
+        .join(Channel)
+        .where(
+            Channel.code == "SHOPEEMART",
+            StoreChannelMapping.store_id == effective_store_id,
+        )
+    )
+    res = await db.execute(stmt)
+    mapping = res.scalar_one_or_none()
+    partner_store_id = (
+        mapping.partner_store_id
+        if (mapping and mapping.partner_store_id)
+        else (store_obj.code if store_obj else store_id)
+    )
+
+    sync_result = await adapter.sync_menu(
+        store_id=effective_store_id,
+        partner_store_id=partner_store_id,
+        db=db,
+    )
+    return APIResponse.ok(
+        data=sync_result.model_dump(),
+        message=sync_result.message,
+    )
+
 
 @router.post(
     "/sync/inventory/{store_id}",
