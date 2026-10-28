@@ -51,6 +51,10 @@
 
         <!-- Controls: Sync, Audio, Auto-refresh, Refresh -->
         <div class="flex items-center space-x-2 text-[12px]">
+            <button id="btn-poll-shopeemart" onclick="triggerShopeeMartPoll()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium shadow-none" title="Quét & đối soát đơn hàng ShopeeMart mới nhất">
+                <svg id="shopeemart-poll-spinner" class="w-3.5 h-3.5 text-[#C14C8A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>🛒 Quét Đơn ShopeeMart</span>
+            </button>
             <button id="btn-sync-haravan" onclick="triggerManualHaravanSync()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium shadow-none" title="Đồng bộ ngay đơn hàng từ Haravan API">
                 <svg id="haravan-sync-spinner" class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -2703,14 +2707,15 @@
         // TAB 2: Items list
         let itemsRows = '';
         (order.items || []).forEach((it, idx) => {
-            const price = Number(it.price || 0);
+            const price = Number(it.unit_price ?? it.price ?? 0);
             const qty = Number(it.quantity || 1);
             const total = price * qty;
             itemsRows += `
                 <tr class="hover:bg-[#F7F6F3]/50 transition-colors">
                     <td class="py-2.5 px-2 text-center text-[11px] text-[#787774] font-mono">${idx + 1}</td>
                     <td class="py-2.5 px-3 font-medium text-[#37352F]">
-                        <div>${escapeHtml(it.name || it.title)}</div>
+                        <div>${escapeHtml(it.item_name || it.name || it.title || 'Sản phẩm')}</div>
+                        ${it.sku ? `<div class="text-[10.5px] font-mono text-[#787774] mt-0.5">SKU: ${escapeHtml(it.sku)}</div>` : ''}
                         ${it.modifiers && it.modifiers.length ? `<div class="text-[11px] text-[#787774] mt-0.5">${it.modifiers.map(m => `+ ${m.name}`).join(', ')}</div>` : ''}
                     </td>
                     <td class="py-2.5 px-2 text-center font-bold font-mono text-[#37352F]">${qty}</td>
@@ -2752,7 +2757,10 @@
                 ${order.channel_code === 'SHOPEEMART' ? `
                     <button onclick="openShopeeAwbModal('${order.channel_order_id || order.display_order_id}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
                         <span>📄</span>
-                        <span>Vận Đơn AWB</span>
+                        <span>Vận Đơn AWB</span></button>
+                    <button onclick="downloadShopeeAwbPdf('${order.channel_order_id || order.display_order_id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
+                    <button onclick="handleShopeeBuyerCancellation('${order.channel_order_id || order.display_order_id}', 'ACCEPT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#EDF3EC] text-[11px] font-medium text-[#448361] transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
+                    <button onclick="handleShopeeBuyerCancellation('${order.channel_order_id || order.display_order_id}', 'REJECT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#FDEBEC] text-[11px] font-medium text-[#D44C47] transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
                     </button>
                 ` : ''}
             </div>
@@ -2768,7 +2776,7 @@
                     </button>
                 ` : ''}
 
-                ${order.status === 'ACCEPTED' ? `
+                ${(order.status === 'ACCEPTED' || order.status === 'PREPARING') ? `
                     <button onclick="openCancelModal('${order.id}', '${order.order_code}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn
                     </button>
@@ -3264,6 +3272,66 @@
 
     function closeShopeeAwbModal() {
         document.getElementById('shopee-awb-modal').classList.add('hidden');
+    }
+
+    async function triggerShopeeMartPoll() {
+        const btn = document.getElementById('btn-poll-shopeemart');
+        const spinner = document.getElementById('shopeemart-poll-spinner');
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.classList.add('animate-spin');
+        try {
+            const res = await authFetch('/api/v1/shopeemart/orders/poll?hours_back=24', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(data.message || 'Đã quét & đối soát đơn ShopeeMart thành công!', 'success');
+                loadOrdersFeed(true);
+            } else {
+                showToast(data.message || 'Lỗi khi quét đơn ShopeeMart', 'error');
+            }
+        } catch (e) {
+            showToast('Lỗi mạng khi quét đơn ShopeeMart', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+            if (spinner) spinner.classList.remove('animate-spin');
+        }
+    }
+
+    async function downloadShopeeAwbPdf(orderSn) {
+        try {
+            showToast(`Đang tải dữ liệu phiếu vận đơn AWB cho đơn #${orderSn}...`, 'info');
+            const res = await authFetch(`/api/v1/shopeemart/orders/${encodeURIComponent(orderSn)}/download-awb`);
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(`Đã tải phiếu vận đơn AWB cho đơn #${orderSn}! Mở bản xem trước để in.`, 'success');
+                openShopeeAwbModal(orderSn);
+            } else {
+                showToast(data.message || 'Không thể tải phiếu vận đơn AWB', 'error');
+            }
+        } catch (e) {
+            showToast('Lỗi kết nối khi tải phiếu vận đơn AWB', 'error');
+        }
+    }
+
+    async function handleShopeeBuyerCancellation(orderSn, operation) {
+        const label = operation === 'ACCEPT' ? 'CHẤP NHẬN' : 'TỪ CHỐI';
+        if (!confirm(`Xác nhận ${label} yêu cầu hủy đơn hàng ShopeeMart #${orderSn} từ người mua?`)) return;
+        try {
+            const res = await authFetch(`/api/v1/shopeemart/orders/${encodeURIComponent(orderSn)}/buyer-cancellation`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ operation: operation })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(`Đã gửi phản hồi ${label} yêu cầu hủy cho đơn #${orderSn}!`, 'success');
+                loadOrdersFeed(true);
+            } else {
+                showToast(data.message || 'Lỗi khi phản hồi yêu cầu hủy đơn', 'error');
+            }
+        } catch (e) {
+            showToast('Lỗi mạng khi xử lý yêu cầu hủy đơn', 'error');
+        }
+    
     }
 
     // Auto-refresh control

@@ -115,6 +115,19 @@ async def handle_shopee_auth_callback(
     db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
     token_resp = await shopeemart_client.exchange_code_for_token(code=code, shop_id=shop_id)
+    if db is not None:
+        try:
+            ch_res = await db.execute(select(Channel).where(Channel.code == "SHOPEEMART"))
+            ch_obj = ch_res.scalar_one_or_none()
+            if ch_obj:
+                cfg = dict(ch_obj.config or {})
+                tokens_map = dict(cfg.get("shop_tokens") or {})
+                tokens_map[str(shop_id)] = shopeemart_client._token_cache.get(str(shop_id), {})
+                cfg["shop_tokens"] = tokens_map
+                ch_obj.config = cfg
+                await db.commit()
+        except Exception as db_ex:
+            logger.warning(f"Could not save Shopee token into Channel.config: {db_ex}")
     return APIResponse.ok(
         data=token_resp,
         message=f"Đã liên kết và cấp quyền thành công cho gian hàng Shopee #{shop_id}."
@@ -285,6 +298,25 @@ async def cancel_shopee_order(
     return APIResponse.ok(
         data={"order_id": order.id, "status": updated_order.status},
         message=f"Đơn hàng ShopeeMart đã được hủy ({payload.cancel_reason}).",
+    )
+
+
+@router.post(
+    "/orders/poll",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Quét & Đối soát đơn hàng ShopeeMart mới (Fallback Polling v2.order.get_order_list)",
+    description="Chủ động truy vấn danh sách đơn hàng ShopeeMart trong 24 giờ gần nhất và tự động đồng bộ các đơn bị sót hoặc thay đổi trạng thái.",
+)
+async def poll_shopeemart_orders(
+    shop_id: Optional[str] = Query(None, description="Shop ID cần quét (để trống để quét tất cả các gian hàng đang liên kết)"),
+    hours_back: int = Query(24, ge=1, le=336, description="Khoảng thời gian quét ngược (giờ)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await adapter.poll_recent_orders(db=db, shop_id=shop_id, hours_back=hours_back)
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã quét {result.get('total_checked', 0)} đơn ShopeeMart (Tạo mới: {result.get('newly_created', 0)}, Cập nhật: {result.get('status_synced', 0)})."
     )
 
 

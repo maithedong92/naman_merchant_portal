@@ -7,7 +7,9 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppException, ConflictError, NotFoundError, ValidationError
 from app.models.channel import Channel
+from app.models.inventory import StoreInventory
 from app.models.order import OrderItem, OrderStatusHistory, UnifiedOrder, UnifiedOrderStatus
+from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
 from app.schemas.order import OrderFilterParams, OrderStatusUpdateSchema
 from app.services.channel_registry import channel_registry
@@ -156,20 +158,51 @@ class OrderService:
         db.add(order)
         await db.flush()
 
-        # 6. Add Items
+        # 6. Add Items & Automatically Reserve Store Inventory Stock
+        depleted_stock_items: List[Dict[str, Any]] = []
         for item in items_data:
+            sku_val = str(item.get("sku") or "UNKNOWN").strip()
+            qty_val = int(item.get("quantity", 1))
+            prod_id_val = item.get("product_id")
+
+            if not prod_id_val and sku_val and sku_val != "UNKNOWN":
+                p_res = await db.execute(select(Product).where(Product.sku == sku_val))
+                p_obj = p_res.scalar_one_or_none()
+                if p_obj:
+                    prod_id_val = p_obj.id
+
             order_item = OrderItem(
                 order_id=order.id,
-                product_id=item.get("product_id"),
-                sku=item.get("sku", "UNKNOWN"),
+                product_id=prod_id_val,
+                sku=sku_val,
                 item_name=item.get("item_name", "Unknown Item"),
-                quantity=int(item.get("quantity", 1)),
+                quantity=qty_val,
                 unit_price=float(item.get("unit_price", 0.0)),
                 total_price=float(item.get("total_price", 0.0)),
                 notes=item.get("notes"),
                 modifiers=item.get("modifiers")
             )
             db.add(order_item)
+
+            # Reserve physical inventory for active non-cancelled orders
+            if order.status != UnifiedOrderStatus.CANCELLED and sku_val and sku_val != "UNKNOWN":
+                inv_res = await db.execute(
+                    select(StoreInventory).where(
+                        StoreInventory.store_id == store_id,
+                        StoreInventory.sku == sku_val
+                    )
+                )
+                inv_obj = inv_res.scalar_one_or_none()
+                if inv_obj:
+                    inv_obj.reserved_stock = float(inv_obj.reserved_stock or 0.0) + qty_val
+                    inv_obj.available_stock = max(0.0, float(inv_obj.total_stock or 0.0) - inv_obj.reserved_stock)
+                    if inv_obj.available_stock <= 0.0:
+                        inv_obj.is_out_of_stock = True
+                        depleted_stock_items.append({
+                            "sku": sku_val,
+                            "available_stock": 0,
+                            "is_out_of_stock": True
+                        })
 
         # 7. Add Initial History Log
         history = OrderStatusHistory(
@@ -181,6 +214,27 @@ class OrderService:
         )
         db.add(history)
         await db.commit()
+
+        # Propagate out-of-stock signal across channels to prevent overselling
+        if depleted_stock_items:
+            try:
+                mappings_res = await db.execute(
+                    select(StoreChannelMapping)
+                    .options(selectinload(StoreChannelMapping.channel))
+                    .where(StoreChannelMapping.store_id == store_id, StoreChannelMapping.is_active == True)
+                )
+                for m in mappings_res.scalars().all():
+                    if m.channel and m.partner_store_id:
+                        ch_adapter = channel_registry.get(m.channel.code)
+                        if ch_adapter:
+                            await ch_adapter.sync_inventory(
+                                store_id=store_id,
+                                partner_store_id=m.partner_store_id,
+                                stock_items=depleted_stock_items,
+                                db=db
+                            )
+            except Exception as sync_ex:
+                logger.warning(f"Could not propagate out-of-stock signal after order {order.order_code}: {sync_ex}")
 
         # Refresh order with relations
         return await OrderService.get_order_by_id(order.id, db), True
@@ -380,6 +434,21 @@ class OrderService:
         elif target_status == UnifiedOrderStatus.CANCELLED:
             order.cancellation_reason = data.cancellation_reason or data.note
             order.cancelled_by = data.changed_by
+            # Release reserved stock back to available_stock
+            for itm in (order.items or []):
+                if itm.sku and itm.sku != "UNKNOWN":
+                    inv_res = await db.execute(
+                        select(StoreInventory).where(
+                            StoreInventory.store_id == order.store_id,
+                            StoreInventory.sku == itm.sku
+                        )
+                    )
+                    inv_obj = inv_res.scalar_one_or_none()
+                    if inv_obj:
+                        inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - int(itm.quantity or 1))
+                        inv_obj.available_stock = max(0.0, float(inv_obj.total_stock or 0.0) - inv_obj.reserved_stock)
+                        if inv_obj.available_stock > 0:
+                            inv_obj.is_out_of_stock = False
 
         # Add history log
         history = OrderStatusHistory(

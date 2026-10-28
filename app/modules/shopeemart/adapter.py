@@ -64,13 +64,41 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             query = select(Product).where(Product.is_active == True)
             res = await db.execute(query)
             products = res.scalars().all()
+            prod_by_sku = {p.sku: p for p in products}
 
             resp = await shopeemart_client.call_api(
                 method="GET",
                 path="/api/v2/product/get_item_list",
                 shop_id=partner_store_id,
-                params={"page_size": 50, "item_status": "NORMAL"}
+                params={"page_size": 50, "item_status": "NORMAL", "offset": 0}
             )
+
+            # Map Shopee item_id -> Product.metadata_json["shopee_item_id"] if returned by Shopee
+            mapped_count = 0
+            resp_body = resp.get("response") if isinstance(resp, dict) else None
+            shopee_items = resp_body.get("item", []) if isinstance(resp_body, dict) else []
+            item_ids = [int(it["item_id"]) for it in shopee_items if isinstance(it, dict) and it.get("item_id")]
+
+            if item_ids:
+                try:
+                    base_info_resp = await shopeemart_client.get_item_base_info(
+                        item_id_list=item_ids[:50],
+                        shop_id=partner_store_id
+                    )
+                    base_list = (base_info_resp.get("response") or {}).get("item_list") or []
+                    for b_item in base_list:
+                        s_sku = str(b_item.get("item_sku") or "").strip()
+                        s_item_id = b_item.get("item_id")
+                        if s_sku and s_item_id and s_sku in prod_by_sku:
+                            p_obj = prod_by_sku[s_sku]
+                            meta = dict(p_obj.metadata_json or {})
+                            meta["shopee_item_id"] = int(s_item_id)
+                            p_obj.metadata_json = meta
+                            mapped_count += 1
+                    if mapped_count > 0:
+                        await db.commit()
+                except Exception as map_ex:
+                    logger.warning(f"Could not map Shopee item base info: {map_ex}")
 
             return SyncResult(
                 channel_code=self.channel_code,
@@ -79,7 +107,7 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                 success=True,
                 total_synced=len(products),
                 message=f"Đã kích hoạt đồng bộ danh mục {len(products)} sản phẩm lên ShopeeMart shop {partner_store_id}",
-                details={"response": resp}
+                details={"response": resp, "mapped_shopee_items": mapped_count}
             )
         except Exception as ex:
             logger.error(f"Lỗi khi đồng bộ sản phẩm lên ShopeeMart: {str(ex)}")
@@ -123,16 +151,32 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             )
 
         try:
+            # Load product metadata to resolve shopee_item_id when not passed directly
+            skus = [str(it.get("sku", "")) for it in stock_items if it.get("sku")]
+            sku_to_item_id: Dict[str, int] = {}
+            if skus:
+                prod_stmt = select(Product).where(Product.sku.in_(skus[:500]))
+                prod_res = await db.execute(prod_stmt)
+                for p in prod_res.scalars().all():
+                    if isinstance(p.metadata_json, dict) and p.metadata_json.get("shopee_item_id"):
+                        sku_to_item_id[p.sku] = int(p.metadata_json["shopee_item_id"])
+
             stock_list = []
             for item in stock_items:
+                sku_str = str(item.get("sku", ""))
                 is_oos = bool(item.get("is_out_of_stock", False))
-                qty = 0 if is_oos else int(item.get("available_stock", 0))
+                qty = 0 if is_oos else max(0, int(float(item.get("available_stock", 0))))
+                resolved_item_id = item.get("item_id") or sku_to_item_id.get(sku_str)
+                model_id = int(item.get("model_id", 0))
+
                 stock_entry: Dict[str, Any] = {
-                    "seller_sku": str(item.get("sku", "")),
-                    "normal_stock": qty
+                    "seller_sku": sku_str,
+                    "normal_stock": qty,
+                    "model_id": model_id,
+                    "seller_stock": [{"stock": qty}]
                 }
-                if item.get("item_id"):
-                    stock_entry["item_id"] = int(item["item_id"])
+                if resolved_item_id:
+                    stock_entry["item_id"] = int(resolved_item_id)
                 stock_list.append(stock_entry)
 
             resp = await shopeemart_client.update_stock(
@@ -179,7 +223,8 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
     ) -> Dict[str, Any]:
         """
         Ingest incoming order push notification from ShopeeMart / Shopee Open Platform.
-        Handles signature verification, format normalization, and unified state transition.
+        Handles signature verification, automatic get_order_detail enrichment for lean push events,
+        format normalization, and unified state transition.
         """
         enabled = await channel_service.is_feature_enabled(self.channel_code, "order_webhook_enabled", db)
         if not enabled:
@@ -191,19 +236,48 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
 
         payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
 
-        # Handle Shopee Open Platform standard wrapper vs direct payload
+        # Handle Shopee Open Platform standard wrapper (ordersn vs order_sn)
         data = payload.get("data", payload)
-        order_sn = str(data.get("order_sn", payload.get("order_sn", "")))
+        if not isinstance(data, dict):
+            data = {}
+        order_sn = str(
+            data.get("order_sn")
+            or data.get("ordersn")
+            or payload.get("order_sn")
+            or payload.get("ordersn")
+            or ""
+        ).strip()
         shop_id = str(data.get("shop_id") or payload.get("shop_id") or "")
 
         if not order_sn:
             logger.error(f"ShopeeMart webhook payload missing order_sn: {payload}")
             return {"code": 400, "message": "Missing order_sn in webhook payload"}
 
+        # If Shopee sent a lean push notification without item_list, enrich via v2.order.get_order_detail
+        if not data.get("item_list") and shopeemart_client.is_configured:
+            try:
+                detail_resp = await shopeemart_client.get_order_detail(order_sn=order_sn, shop_id=shop_id or None)
+                order_list = (detail_resp.get("response") or {}).get("order_list") or []
+                if order_list and isinstance(order_list[0], dict):
+                    fetched_detail = order_list[0]
+                    # Merge fetched detail into data while preserving push status if present
+                    merged = {**fetched_detail, **data}
+                    if fetched_detail.get("order_status") and not data.get("status"):
+                        merged["status"] = fetched_detail["order_status"]
+                    if fetched_detail.get("item_list"):
+                        merged["item_list"] = fetched_detail["item_list"]
+                    if fetched_detail.get("recipient_address"):
+                        merged["recipient_address"] = fetched_detail["recipient_address"]
+                    if fetched_detail.get("total_amount") is not None:
+                        merged["total_amount"] = fetched_detail["total_amount"]
+                    data = merged
+            except Exception as detail_ex:
+                logger.warning(f"Could not enrich ShopeeMart order {order_sn} via get_order_detail: {detail_ex}")
+
         auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
 
         # Standard Shopee status mapping
-        raw_status = data.get("status", "READY_TO_SHIP")
+        raw_status = data.get("status") or data.get("order_status") or "READY_TO_SHIP"
         status_map = {
             "UNPAID": UnifiedOrderStatus.PENDING,
             "READY_TO_SHIP": UnifiedOrderStatus.ACCEPTED,
@@ -350,6 +424,82 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                 request_payload={"order_id": channel_order_id, "partner_store_id": partner_store_id, "new_status": str(new_status), "error": str(ex)},
             )
             return False
+
+    # ==========================================================================
+    # 5. Fallback Order Reconciliation Polling (get_order_list + get_order_detail)
+    # ==========================================================================
+
+    async def poll_recent_orders(
+        self,
+        db: AsyncSession,
+        shop_id: Optional[str] = None,
+        hours_back: int = 24
+    ) -> Dict[str, Any]:
+        """
+        Query Shopee v2.order.get_order_list for recent orders and ingest any missed orders
+        or status updates (fallback reconciliation when webhooks are delayed/missed).
+        """
+        import time as _time
+        now_ts = int(_time.time())
+        time_from = now_ts - (max(1, min(hours_back, 336)) * 3600)
+
+        target_shops: List[str] = []
+        if shop_id:
+            target_shops.append(str(shop_id))
+        else:
+            stmt = (
+                select(StoreChannelMapping)
+                .join(Channel)
+                .where(Channel.code == "SHOPEEMART", StoreChannelMapping.is_active == True)
+            )
+            res = await db.execute(stmt)
+            for m in res.scalars().all():
+                if m.partner_store_id and m.partner_store_id not in target_shops:
+                    target_shops.append(str(m.partner_store_id))
+            if not target_shops and shopeemart_client.default_shop_id:
+                target_shops.append(str(shopeemart_client.default_shop_id))
+
+        total_checked = 0
+        newly_created = 0
+        status_synced = 0
+
+        for s_id in target_shops:
+            try:
+                list_resp = await shopeemart_client.get_order_list(
+                    time_from=time_from,
+                    time_to=now_ts,
+                    page_size=50,
+                    shop_id=s_id
+                )
+                order_entries = (list_resp.get("response") or {}).get("order_list") or []
+                for entry in order_entries:
+                    o_sn = str(entry.get("order_sn") or "").strip()
+                    if not o_sn:
+                        continue
+                    total_checked += 1
+                    synth_payload = json.dumps({
+                        "shop_id": s_id,
+                        "data": {
+                            "order_sn": o_sn,
+                            "status": entry.get("order_status") or "READY_TO_SHIP",
+                            "shop_id": s_id
+                        }
+                    }).encode("utf-8")
+                    wh_res = await self.handle_order_webhook({}, synth_payload, db)
+                    if wh_res.get("code") == 0:
+                        if wh_res.get("created"):
+                            newly_created += 1
+                        else:
+                            status_synced += 1
+            except Exception as ex:
+                logger.warning(f"Polling ShopeeMart orders for shop {s_id} encountered error: {ex}")
+
+        return {
+            "shops_polled": target_shops,
+            "total_checked": total_checked,
+            "newly_created": newly_created,
+            "status_synced": status_synced,
+        }
 
     # ==========================================================================
     # Helper: Record Operational Errors into Live System Status

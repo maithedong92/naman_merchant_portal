@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import json
 import logging
+import os
+from pathlib import Path
 import time
 from typing import Any, Dict, List, Optional
 import httpx
@@ -17,13 +19,15 @@ from app.modules.shopeemart.schemas import (
 logger = logging.getLogger("naman_portal.modules.shopeemart.service")
 settings = get_settings()
 
+TOKEN_STORE_PATH = Path("data/shopeemart_tokens.json")
+
 
 class ShopeeMartClient:
     """
     Production-grade HTTP Client for ShopeeMart / Shopee Open Platform API v2.
     Implements:
     - HMAC-SHA256 signing for Public APIs, Shop APIs, and Push Webhook Verification.
-    - Automatic OAuth 2.0 lifecycle: Code exchange, In-memory token caching, Proactive refresh.
+    - Automatic OAuth 2.0 lifecycle: Code exchange, Persistent token storage across workers, Proactive refresh.
     - Full Mart & Outlet shop operations: Stock batch update, Ship order, Cancel order.
     - Graceful fallback to sandbox/simulation mode when credentials are not configured.
     """
@@ -35,6 +39,7 @@ class ShopeeMartClient:
         self.default_shop_id = settings.SHOPEEMART_SHOP_ID
         # Token cache format: {shop_id: {"access_token": str, "refresh_token": str, "expires_at": float}}
         self._token_cache: Dict[str, Dict[str, Any]] = {}
+        self._load_token_cache()
 
     @property
     def is_configured(self) -> bool:
@@ -264,8 +269,14 @@ class ShopeeMartClient:
 
     async def get_valid_access_token(self, shop_id: Optional[str] = None) -> str:
         """Return a valid cached access token, automatically refreshing if close to expiry."""
+        self._load_token_cache()
         target_shop = str(shop_id or self.default_shop_id or "")
         cached = self._token_cache.get(target_shop) if target_shop else None
+        if not cached and self._token_cache:
+            # Fallback to first available authorized shop if shop_id was not explicitly passed
+            first_shop_id = next(iter(self._token_cache.keys()))
+            target_shop = first_shop_id
+            cached = self._token_cache.get(first_shop_id)
 
         now = time.time()
         # If token exists in cache and has > 5 minutes remaining
@@ -289,14 +300,35 @@ class ShopeeMartClient:
 
         return "mock_shopeemart_access_token"
 
+    def _load_token_cache(self):
+        """Load persistent Shopee OAuth tokens from disk so all workers share state."""
+        try:
+            if TOKEN_STORE_PATH.exists():
+                raw = TOKEN_STORE_PATH.read_text(encoding="utf-8")
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    self._token_cache.update(data)
+        except Exception as ex:
+            logger.debug(f"Could not load ShopeeMart token store: {ex}")
+
     def _save_token_cache(self, shop_id: str, access_token: str, refresh_token: str, expire_in: int):
-        """Helper to cache token with TTL."""
+        """Helper to cache token with TTL in memory and persist to disk across workers."""
+        self._load_token_cache()
         self._token_cache[str(shop_id)] = {
             "access_token": access_token,
             "refresh_token": refresh_token,
             "expires_at": time.time() + expire_in,
             "expires_at_iso": (datetime.now(timezone.utc) + timedelta(seconds=expire_in)).isoformat(),
+            "updated_at_iso": datetime.now(timezone.utc).isoformat(),
         }
+        try:
+            TOKEN_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            TOKEN_STORE_PATH.write_text(
+                json.dumps(self._token_cache, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+        except Exception as ex:
+            logger.warning(f"Failed to persist ShopeeMart token store to disk: {ex}")
 
     # ==========================================================================
     # 3. Core API Execution Engine
@@ -386,26 +418,73 @@ class ShopeeMartClient:
             }
         )
 
+    async def get_shipping_parameter(self, order_sn: str, shop_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Query required logistics parameters (pickup address/time_slot vs dropoff) before shipping an order.
+        Endpoint: GET /api/v2/logistics/get_shipping_parameter
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/logistics/get_shipping_parameter",
+            shop_id=shop_id,
+            params={"order_sn": order_sn}
+        )
+
     async def ship_order(self, order_sn: str, shop_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Notify Shopee that goods are packed and ready for carrier pickup (Ready to ship).
+        Automatically queries v2.logistics.get_shipping_parameter to determine pickup vs dropoff parameters
+        for Shopee-integrated 3PL carriers (SPX Express, Instant, GrabExpress).
         Endpoint: POST /api/v2/logistics/ship_order
         """
+        ship_body: Dict[str, Any] = {"order_sn": order_sn}
+
+        try:
+            param_resp = await self.get_shipping_parameter(order_sn=order_sn, shop_id=shop_id)
+            resp_data = param_resp.get("response") or param_resp
+            info_needed = resp_data.get("info_needed") or {}
+            pickup_info = resp_data.get("pickup") or {}
+            address_list = pickup_info.get("address_list") or []
+
+            if "pickup" in info_needed or address_list:
+                pickup_payload: Dict[str, Any] = {}
+                if address_list:
+                    # Pick default pickup address or first available
+                    chosen_addr = address_list[0]
+                    for addr in address_list:
+                        flags = addr.get("address_flag") or []
+                        if "pickup_address" in flags or "default_address" in flags:
+                            chosen_addr = addr
+                            break
+                    if chosen_addr.get("address_id") is not None:
+                        pickup_payload["address_id"] = chosen_addr["address_id"]
+                    time_slots = chosen_addr.get("time_slot_list") or []
+                    if time_slots and time_slots[0].get("pickup_time_id") is not None:
+                        pickup_payload["pickup_time_id"] = time_slots[0]["pickup_time_id"]
+                ship_body["pickup"] = pickup_payload
+            elif "dropoff" in info_needed:
+                ship_body["dropoff"] = {}
+            elif "non_integrated" in info_needed:
+                ship_body["non_integrated"] = {}
+            else:
+                ship_body["dropoff"] = {}
+        except Exception as ex:
+            logger.warning(f"Could not fetch get_shipping_parameter for {order_sn}, falling back to default ship payload: {ex}")
+            ship_body["dropoff"] = {}
+
         return await self.call_api(
             method="POST",
             path="/api/v2/logistics/ship_order",
             shop_id=shop_id,
-            body={
-                "order_sn": order_sn,
-                "dropoff": {}
-            }
+            body=ship_body
         )
 
     async def cancel_order(
         self,
         order_sn: str,
         shop_id: Optional[str] = None,
-        cancel_reason: str = "OUT_OF_STOCK"
+        cancel_reason: str = "OUT_OF_STOCK",
+        item_list: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """
         Cancel order on Shopee due to stock shortage or store operational constraints.
@@ -418,24 +497,47 @@ class ShopeeMartClient:
             body={
                 "order_sn": order_sn,
                 "cancel_reason": cancel_reason,
-                "item_list": []
+                "item_list": item_list or []
             }
+        )
+
+    async def get_item_base_info(
+        self,
+        item_id_list: List[int],
+        shop_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Fetch base product details (including item_sku, item_name, price, stock) for up to 50 item_ids.
+        Endpoint: GET /api/v2/product/get_item_base_info
+        """
+        joined_ids = ",".join(str(i) for i in item_id_list)
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/product/get_item_base_info",
+            shop_id=shop_id,
+            params={"item_id_list": joined_ids}
         )
 
     async def update_stock(
         self,
         shop_id: str,
-        stock_list: List[Dict[str, Any]]
+        stock_list: List[Dict[str, Any]],
+        item_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Batch update item available stock for a specific Outlet Shop.
+        Update item available stock on Shopee Open Platform v2.
+        Supports both single-item Shopee v2 standard (item_id + stock_list with seller_stock)
+        and batch stock_list payloads.
         Endpoint: POST /api/v2/product/update_stock
         """
+        body: Dict[str, Any] = {"stock_list": stock_list}
+        if item_id is not None:
+            body["item_id"] = int(item_id)
         return await self.call_api(
             method="POST",
             path="/api/v2/product/update_stock",
             shop_id=shop_id,
-            body={"stock_list": stock_list}
+            body=body
         )
 
     async def batch_update_outlet_price(
@@ -737,8 +839,12 @@ class ShopeeMartClient:
 
     def get_connection_status(self, shop_id: Optional[str] = None) -> ShopeeMartConnectionStatus:
         """Inspect and report the health of credentials and active access tokens."""
+        self._load_token_cache()
         target_shop = str(shop_id or self.default_shop_id or "")
         cached = self._token_cache.get(target_shop) if target_shop else None
+        if not cached and self._token_cache:
+            target_shop = next(iter(self._token_cache.keys()))
+            cached = self._token_cache.get(target_shop)
 
         has_valid_token = False
         expires_at_iso = None
