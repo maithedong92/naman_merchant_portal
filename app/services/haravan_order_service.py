@@ -119,18 +119,20 @@ class HaravanOrderService:
         query: Dict[str, Any] = {}
 
         # 1. Store Isolation RBAC
-        is_admin = current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value
         user_store = current_user.store_code or (
             current_user.store.code if current_user.store else None
         )
+        has_global_access = (
+            current_user.is_superuser
+            or current_user.role == UserRole.SUPER_ADMIN.value
+            or user_store is None
+        )
 
-        if not is_admin:
-            if not user_store:
-                return [], 0
-            # Staff chỉ thấy đơn đã phân tuyến về cửa hàng mình
+        if not has_global_access:
+            # Tài khoản chi nhánh (CH10001..CH10006) chỉ thấy đơn đã phân tuyến về cửa hàng mình
             query["internal.assigned_store"] = user_store
         else:
-            # SuperAdmin có thể lọc theo store_code hoặc lọc đơn chưa phân tuyến
+            # SuperAdmin / Tổng đài MKT / Khối văn phòng có thể lọc theo store_code hoặc đơn chưa phân tuyến
             if unassigned_only:
                 query["$or"] = [
                     {"internal.assigned_store": None},
@@ -216,13 +218,15 @@ class HaravanOrderService:
         query: Dict[str, Any] = {
             "internal.order_processing_status": {"$nin": ["Hoàn thành", "Đã hủy"]}
         }
-        is_admin = current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value
         user_store = current_user.store_code or (
             current_user.store.code if current_user.store else None
         )
-        if not is_admin:
-            if not user_store:
-                return 0
+        has_global_access = (
+            current_user.is_superuser
+            or current_user.role == UserRole.SUPER_ADMIN.value
+            or user_store is None
+        )
+        if not has_global_access:
             query["internal.assigned_store"] = user_store
         elif store_code:
             query["internal.assigned_store"] = store_code
@@ -262,13 +266,17 @@ class HaravanOrderService:
             raise NotFoundError(f"Không tìm thấy đơn hàng '{order_id_or_sn}' trong hệ thống Haravan.")
 
         # RBAC Check
-        is_admin = current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value
         user_store = current_user.store_code or (
             current_user.store.code if current_user.store else None
         )
+        has_global_access = (
+            current_user.is_superuser
+            or current_user.role == UserRole.SUPER_ADMIN.value
+            or user_store is None
+        )
         assigned_store = order.get("internal", {}).get("assigned_store")
 
-        if not is_admin and assigned_store != user_store:
+        if not has_global_access and assigned_store != user_store:
             raise ForbiddenError(f"Bạn không có quyền truy cập đơn hàng của chi nhánh '{assigned_store}'.")
 
         # Tra cứu tồn kho Arito ERP theo thời gian thực cho các SKU trong đơn

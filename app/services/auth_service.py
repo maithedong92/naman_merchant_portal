@@ -141,6 +141,11 @@ class AuthService:
             role = UserRole.SUPER_ADMIN.value
             is_superuser = True
             store_id = None
+        elif dept_upper == "MKT" or "TIẾP THỊ" in dept_upper:
+            # Phòng MKT / E-Commerce / Tổng đài điều phối đơn Online (toàn chuỗi + phân tuyến)
+            role = UserRole.STORE_MANAGER.value
+            is_superuser = False
+            store_id = None
         elif raw_role in ("leader", "manager") or lvl >= 20:
             role = UserRole.STORE_MANAGER.value
             is_superuser = False

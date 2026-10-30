@@ -146,9 +146,11 @@
                 localStorage.setItem("naman_refresh_token", data.data.refresh_token);
                 localStorage.setItem("naman_user_profile", JSON.stringify(data.data.user));
 
-                // Redirect
+                // Redirect: Super Admin -> /admin, Store/MKT/Staff -> /admin/orders
                 const urlParams = new URLSearchParams(window.location.search);
-                const redirect = urlParams.get('redirect') || '/admin';
+                const userObj = (data.data && data.data.user) || {};
+                const defaultTarget = (userObj.role === 'SUPER_ADMIN' || userObj.is_superuser) ? '/admin' : '/admin/orders';
+                const redirect = urlParams.get('redirect') || defaultTarget;
                 window.location.href = redirect;
             } catch (err) {
                 errEl.textContent = err.message;

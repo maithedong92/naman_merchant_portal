@@ -288,16 +288,36 @@
                     storeEl.textContent = `📍 ${user.store_code}`;
                     storeEl.title = user.store_name ? `${user.store_name} (${user.store_code})` : user.store_code;
                     storeEl.classList.remove('hidden');
-                } else if (user.role === 'SUPER_ADMIN' || user.is_superuser) {
+                } else {
                     storeEl.textContent = '🌐 Toàn chuỗi';
                     storeEl.classList.remove('hidden');
-                } else {
-                    storeEl.classList.add('hidden');
                 }
             }
             if (navUsersLink) {
-                navUsersLink.classList.remove('hidden');
+                if (user.role === 'SUPER_ADMIN' || user.is_superuser) {
+                    navUsersLink.classList.remove('hidden');
+                } else {
+                    navUsersLink.classList.add('hidden');
+                }
             }
+        }
+
+        async function refreshNavOrdersBadge() {
+            const navBadge = document.getElementById('nav-pending-orders-badge');
+            if (!navBadge || !TokenManager.getToken()) return;
+            try {
+                const res = await authFetch('/api/v1/haravan/incomplete-count');
+                if (res.ok) {
+                    const json = await res.json();
+                    const count = (json.data && json.data.count) || 0;
+                    if (count > 0) {
+                        navBadge.textContent = count;
+                        navBadge.classList.remove('hidden');
+                    } else {
+                        navBadge.classList.add('hidden');
+                    }
+                }
+            } catch (e) {}
         }
 
         // Auto load user profile
@@ -317,6 +337,7 @@
                             window.dispatchEvent(new CustomEvent('currentUserLoaded', { detail: data.data }));
                         }
                     }
+                    refreshNavOrdersBadge();
                 } catch(e) {}
             }
         });

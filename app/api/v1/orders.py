@@ -32,20 +32,12 @@ async def get_order_summary(
     Pending, Preparing, Ready, Delivering, Delivered Today, Cancelled Today, Revenue.
     """
     effective_store_id = store_id
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
-        if not current_user.store_id:
-            # Tài khoản nhân viên chưa được gán chi nhánh -> không xem KPI toàn chuỗi
-            return APIResponse.ok(
-                data=OrderSummaryResponse(
-                    pending_count=0,
-                    preparing_count=0,
-                    ready_count=0,
-                    delivering_count=0,
-                    delivered_today_count=0,
-                    cancelled_today_count=0,
-                    revenue_today=0.0,
-                )
-            )
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or current_user.store_id is None
+    )
+    if not has_global_access:
         effective_store_id = current_user.store_id
     elif store_code and not effective_store_id:
         from app.models.store import Store
@@ -77,23 +69,15 @@ async def list_orders(
     Returns real-time orders from all platforms (ShopeeFood, GrabMart, Shopee) in one single place.
     Staff and Store Managers are automatically scoped strictly to their designated store.
     """
-    # Enforce strict store scoping if user is not SUPER_ADMIN
+    # Enforce strict store scoping if user belongs to a specific branch (CH10001..CH10006)
     effective_store_id = store_id
     effective_store_code = store_code
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
-        if not current_user.store_id:
-            # Tài khoản nhân viên chưa được gán chi nhánh -> trả về danh sách rỗng bảo vệ dữ liệu
-            return APIResponse.ok(
-                data=PaginatedResponse(
-                    items=[],
-                    meta=PaginationMeta(
-                        page=page,
-                        page_size=page_size,
-                        total_items=0,
-                        total_pages=0,
-                    ),
-                )
-            )
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or current_user.store_id is None
+    )
+    if not has_global_access:
         effective_store_id = current_user.store_id
         effective_store_code = None  # Không cho phép ghi đè chi nhánh khác
 
