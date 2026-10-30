@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import traceback
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select
@@ -78,6 +79,25 @@ GRAB_CATEGORY_MAPPING = {
         "sub_name": "Mì, nui, bún khô",
     },
 }
+
+
+def _resolve_grab_category(raw_code: Optional[str]) -> Dict[str, str]:
+    """Map internal / Poppies ERP category code to official GrabMart VN category & subcategory."""
+    if not raw_code:
+        return GRAB_CATEGORY_MAPPING["DEFAULT"]
+    if raw_code in GRAB_CATEGORY_MAPPING:
+        return GRAB_CATEGORY_MAPPING[raw_code]
+
+    u = raw_code.upper()
+    if any(k in u for k in ("VEGETABLE", "FRUIT", "FRESH_PRODUCE", "SALAD", "MUSHROOM")):
+        return GRAB_CATEGORY_MAPPING["FRUITS_VEGGIES"]
+    if any(k in u for k in ("MEAT", "SEAFOOD", "FISH", "BEEF", "PORK", "POULTRY", "CHICKEN", "EGG", "HAM", "SAUSAGE")):
+        return GRAB_CATEGORY_MAPPING["SEAFOOD_MEAT"]
+    if any(k in u for k in ("MILK", "YOGURT", "CHEESE", "BUTTER", "CREAM", "DAIRY")):
+        return GRAB_CATEGORY_MAPPING["DAIRY_DELI"]
+    if any(k in u for k in ("TEA", "COFFEE", "WATER", "JUICE", "DRINK", "BEVERAGE", "SODA", "KOMBUCHA")):
+        return GRAB_CATEGORY_MAPPING["WINE_BEVERAGES"]
+    return GRAB_CATEGORY_MAPPING["DEFAULT"]
 
 
 class GrabMartChannelAdapter(BaseChannelAdapter):
@@ -193,9 +213,21 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 seq += 1
                 category_map[cat_id]["subCategories"][sub_id]["items"].append(item)
         else:
-            for product, inv in rows:
+            # Sort in-stock items first so active products always appear within GrabMart's 1,400/subCategory cap
+            sorted_rows = sorted(
+                rows,
+                key=lambda r: (
+                    0 if (r[1] and not r[1].is_out_of_stock and float(r[1].available_stock or 0) >= 1) else 1,
+                    str(r[0].sku),
+                ),
+            )
+            for product, inv in sorted_rows:
+                price_int = int(round(float(product.base_price or 0)))
+                if price_int <= 0:
+                    continue
+
                 raw_code = product.category.code if product.category else "DEFAULT"
-                mapping = GRAB_CATEGORY_MAPPING.get(raw_code, GRAB_CATEGORY_MAPPING["DEFAULT"])
+                mapping = _resolve_grab_category(raw_code)
                 cat_id = mapping["cat_id"]
                 cat_name = mapping["cat_name"]
                 sub_id = mapping["sub_id"]
@@ -220,27 +252,41 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                         },
                     }
 
+                if len(category_map[cat_id]["subCategories"][sub_id]["items"]) >= 1400:
+                    continue
+
+                raw_stock = (
+                    int(math.floor(float(inv.available_stock)))
+                    if (inv and inv.available_stock is not None)
+                    else 0
+                )
                 is_available = (
                     "AVAILABLE"
-                    if (inv and not inv.is_out_of_stock and inv.available_stock > 0)
+                    if (inv and not inv.is_out_of_stock and raw_stock > 0)
                     else "UNAVAILABLE"
                 )
-                stock_qty = inv.available_stock if (inv and is_available == "AVAILABLE") else 0
+                stock_qty = raw_stock if is_available == "AVAILABLE" else 0
 
-                photos = [product.image_url] if product.image_url else []
-                if not photos:
-                    photos = ["https://ump.namanmarket.com/static/images/product-placeholder.jpg"]
+                img_url = (product.image_url or "").strip()
+                if img_url.startswith("http://product.hstatic.net/"):
+                    img_url = "https://" + img_url[len("http://"):]
+                photos = [img_url] if img_url.startswith("https://") else [
+                    "https://ump.namanmarket.com/static/images/product-placeholder.jpg"
+                ]
+
+                clean_name = (product.name or str(product.sku)).strip()[:80]
+                clean_desc = (product.description or product.name or clean_name).strip()[:2000]
 
                 item = GrabMenuItem(
                     id=str(product.sku),
-                    name=product.name,
+                    name=clean_name,
                     sequence=seq,
-                    price=int(product.base_price),
+                    price=price_int,
                     availableStatus=is_available,
                     maxStock=max(0, stock_qty),
                     photos=photos,
                     barcodes=[product.barcode] if product.barcode else [],
-                    description=product.description or product.name,
+                    description=clean_desc,
                     sellingTimeID="standard_schedule",
                 )
                 seq += 1
@@ -293,21 +339,12 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
         ]
 
-        # Section-based compatibility structure for GrabMart validator
-        section = GrabSection(
-            id="section_daily",
-            name="Nam An Daily Menu",
-            serviceHours=service_hours,
-            categories=categories_output,
-        )
-
         payload = GrabMartMenuPayload(
             merchantID=partner_store_id,
             partnerMerchantID=partner_merchant_id or "10001",
             currency=GrabCurrency(code="VND", symbol="₫", exponent=0),
             sellingTimes=selling_times,
             categories=categories_output,
-            sections=[section],
         )
 
         menu_dict = payload.model_dump(exclude_none=True)

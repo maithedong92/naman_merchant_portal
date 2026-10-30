@@ -130,7 +130,7 @@ class GrabMartMenuPayload(BaseModel):
     currency: GrabCurrency = Field(default_factory=GrabCurrency)
     sellingTimes: List[GrabSellingTime] = Field(default_factory=list)
     categories: List[GrabCategory] = Field(default_factory=list)
-    sections: List[GrabSection] = Field(default_factory=list)
+    sections: Optional[List[GrabSection]] = None
 
 
 # ==============================================================================
