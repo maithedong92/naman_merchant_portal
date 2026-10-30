@@ -99,10 +99,13 @@ require_staff = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, User
 def check_store_access(current_user: User, store_id: str) -> None:
     """
     Validates if user is authorized to perform operations on a specific store.
-    SUPER_ADMIN has access to all stores.
-    Store managers/staff can only operate on their assigned store.
+    SUPER_ADMIN and Head-Office STORE_MANAGER (store_id=None) have access to all stores.
+    Branch managers/staff can only operate on their assigned store.
     """
     if current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value:
+        return
+
+    if current_user.role == UserRole.STORE_MANAGER.value and current_user.store_id is None:
         return
 
     if current_user.store_id and current_user.store_id == store_id:

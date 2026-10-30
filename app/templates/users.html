@@ -21,9 +21,9 @@
 
         <!-- Action Buttons -->
         <div class="flex flex-wrap items-center gap-2 text-[12px]">
-            <button onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium" title="Tự động tạo bộ tài khoản Cửa hàng trưởng và Nhân viên cho 4 siêu thị">
-                <span>⚡</span>
-                <span>Khởi Tạo Mẫu 4 Chi Nhánh</span>
+            <button onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium" title="Đồng bộ danh sách tài khoản nhân sự từ MongoDB naman_internal_app.user">
+                <span>🔄</span>
+                <span>Đồng Bộ Nhân Sự Nội Bộ</span>
             </button>
             <button onclick="openSecurityLogsModal()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium">
                 <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -887,25 +887,21 @@
         tbody.innerHTML = html;
     }
 
-    // Seed Sample Staff for 4 Branches
+    // Sync Staff from MongoDB naman_internal_app.user
     async function triggerSeedStaff() {
-        if (!confirm("Hệ thống sẽ tự động tạo bộ tài khoản mẫu (Cửa hàng trưởng & Nhân viên) cho 4 chi nhánh Nam An Market:\n• 10001 (21 Thảo Điền)\n• 10004 (46 Hưng Phúc, Q.7)\n• 10005 (17 Mai Chí Thọ)\n• 10006 (303 Nguyễn Văn Trỗi)\n\nMật khẩu mặc định: 'NamAn@2026'.\n\nBạn có muốn tiếp tục?")) {
-            return;
-        }
-
         try {
-            const res = await authFetch('/api/v1/users/seed-sample-staff', {
+            const res = await authFetch('/api/v1/users/sync-mongo', {
                 method: 'POST'
             });
             const json = await res.json();
             if (res.ok && json.success) {
-                showToast(json.message || "Đã khởi tạo tài khoản nhân sự chi nhánh thành công!", "success");
+                showToast(json.message || "Đã đồng bộ nhân sự từ naman_internal_app thành công!", "success");
                 await loadUsers();
             } else {
-                showToast(json.message || "Không thể khởi tạo tài khoản", "error");
+                showToast(json.message || "Không thể đồng bộ tài khoản nhân sự", "error");
             }
         } catch(e) {
-            showToast("Lỗi kết nối máy chủ khi tạo nhân sự mẫu", "error");
+            showToast("Lỗi kết nối máy chủ khi đồng bộ nhân sự", "error");
         }
     }
 

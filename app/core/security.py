@@ -26,12 +26,26 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plaintext password against a stored bcrypt hash."""
+    """
+    Verify a plaintext password against a stored hash from naman_internal_app.user or PostgreSQL.
+    Supports bcrypt ($2a$/$2b$/$2y$), legacy 32-char hex MD5, and 64-char hex SHA-256.
+    """
+    if not plain_password or not hashed_password:
+        return False
+    stored = str(hashed_password).strip()
     try:
-        return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
-            hashed_password.encode("utf-8")
-        )
+        if stored.startswith("$2"):
+            return bcrypt.checkpw(
+                plain_password.encode("utf-8"),
+                stored.encode("utf-8"),
+            )
+        if len(stored) == 32 and all(c in "0123456789abcdefABCDEF" for c in stored):
+            md5_hex = hashlib.md5(plain_password.encode("utf-8")).hexdigest()
+            return hmac.compare_digest(md5_hex.lower(), stored.lower())
+        if len(stored) == 64 and all(c in "0123456789abcdefABCDEF" for c in stored):
+            sha_hex = hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
+            return hmac.compare_digest(sha_hex.lower(), stored.lower())
+        return False
     except Exception:
         return False
 

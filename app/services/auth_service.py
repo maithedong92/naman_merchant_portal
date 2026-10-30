@@ -1,9 +1,12 @@
+import asyncio
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import desc, or_, select
+from pymongo import MongoClient
+from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +30,201 @@ settings = get_settings()
 
 
 class AuthService:
-    """Service handling User Authentication, Token Lifecycle, RBAC, and Security Auditing."""
+    """Service handling User Authentication (MongoDB naman_internal_app.user + PG shadow), Token Lifecycle, RBAC, and Security Auditing."""
+
+    def __init__(self):
+        self._mongo_client: Optional[MongoClient] = None
+
+    def _get_mongo_user_collection(self):
+        """Return MongoDB collection handle for naman_internal_app.user."""
+        if self._mongo_client is None:
+            self._mongo_client = MongoClient(
+                settings.AUTH_MONGO_URI,
+                serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=5000,
+                socketTimeoutMS=8000,
+            )
+        return self._mongo_client[settings.AUTH_MONGO_DB][settings.AUTH_MONGO_COLLECTION]
+
+    def _find_mongo_user_sync(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """
+        Look up user in MongoDB naman_internal_app.user by username, user_id, email, or ECI.Email.
+        Prefers active documents if multiple records match.
+        """
+        ident = identifier.strip()
+        if not ident:
+            return None
+        col = self._get_mongo_user_collection()
+        escaped = re.escape(ident)
+        ci_exact = {"$regex": f"^{escaped}$", "$options": "i"}
+        docs = list(
+            col.find(
+                {
+                    "$or": [
+                        {"username": ci_exact},
+                        {"user_id": ident},
+                        {"email": ci_exact},
+                        {"ECI.Email": ci_exact},
+                    ]
+                }
+            ).limit(10)
+        )
+        if not docs:
+            return None
+        # Prefer active records over inactive/resigned duplicates
+        docs.sort(
+            key=lambda d: (
+                0 if str(d.get("status") or "").strip().lower() == "active" else 1,
+                0 if not d.get("MarkForDelete") else 1,
+            )
+        )
+        return docs[0]
+
+    def _list_active_mongo_users_sync(self) -> List[Dict[str, Any]]:
+        """Fetch all active user documents from MongoDB naman_internal_app.user."""
+        col = self._get_mongo_user_collection()
+        return list(col.find({"status": {"$regex": "^active$", "$options": "i"}}))
+
+    def _update_mongo_password_sync(self, mongo_id: Any, new_hashed_password: str) -> None:
+        """Update password hash in MongoDB naman_internal_app.user."""
+        col = self._get_mongo_user_collection()
+        col.update_one({"_id": mongo_id}, {"$set": {"password": new_hashed_password}})
+
+    @staticmethod
+    def _extract_mongo_fields(doc: Dict[str, Any], store_code_to_id: Dict[str, str]) -> Dict[str, Any]:
+        """Map a MongoDB naman_internal_app.user document to NAM-UMP User attributes."""
+        raw_username = str(doc.get("username") or doc.get("user_id") or "").strip()[:50]
+        user_id_code = str(doc.get("user_id") or str(doc.get("_id") or "")[-6:]).strip()
+        eci = doc.get("ECI") if isinstance(doc.get("ECI"), dict) else {}
+
+        full_name = str(
+            doc.get("FullName")
+            or doc.get("fullname")
+            or doc.get("name")
+            or raw_username
+        ).strip()[:100]
+
+        phone_raw = str(
+            doc.get("phone")
+            or doc.get("phone_number")
+            or eci.get("MobilePhone")
+            or ""
+        ).strip()
+        phone_number = phone_raw[:20] if phone_raw else None
+
+        raw_email = str(doc.get("email") or eci.get("Email") or "").strip().lower()
+        safe_slug = re.sub(r"[^a-z0-9._-]", "", raw_username.lower()) or f"user{user_id_code}"
+        if not raw_email or "@" not in raw_email:
+            raw_email = f"{safe_slug}@namanmarket.com.vn"
+
+        status_str = str(doc.get("status") or "active").strip().lower()
+        is_active = (status_str == "active") and not bool(doc.get("MarkForDelete"))
+
+        dept_str = str(doc.get("dept") or doc.get("DeptName") or "").strip()
+        branch_match = re.search(r"(1000\d)", dept_str)
+        branch_code = branch_match.group(1) if branch_match else None
+        store_id = store_code_to_id.get(branch_code) if branch_code else None
+
+        raw_role = str(doc.get("user_role") or "").strip().lower()
+        try:
+            lvl = int(float(doc.get("user_lvl") or 0))
+        except (ValueError, TypeError):
+            lvl = 0
+
+        dept_upper = dept_str.upper()
+        if (
+            raw_role == "admin"
+            or lvl >= 35
+            or dept_upper == "BGD"
+            or "QUẢN TRỊ HỆ THỐNG" in dept_upper
+        ):
+            role = UserRole.SUPER_ADMIN.value
+            is_superuser = True
+            store_id = None
+        elif raw_role in ("leader", "manager") or lvl >= 20:
+            role = UserRole.STORE_MANAGER.value
+            is_superuser = False
+        else:
+            role = UserRole.STAFF.value
+            is_superuser = False
+
+        stored_pw = str(doc.get("password") or "").strip()
+        if not stored_pw:
+            stored_pw = hash_password(f"disabled_{user_id_code}")
+
+        return {
+            "username": raw_username,
+            "user_id_code": user_id_code,
+            "safe_slug": safe_slug,
+            "email": raw_email[:100],
+            "full_name": full_name or raw_username,
+            "phone_number": phone_number,
+            "role": role,
+            "store_id": store_id,
+            "is_active": is_active,
+            "is_superuser": is_superuser,
+            "hashed_password": stored_pw[:255],
+        }
+
+    async def _upsert_pg_shadow_user(
+        self,
+        db: AsyncSession,
+        mongo_doc: Dict[str, Any],
+        store_code_to_id: Optional[Dict[str, str]] = None,
+    ) -> User:
+        """Synchronize a MongoDB user document into PostgreSQL users shadow table."""
+        if store_code_to_id is None:
+            stores_res = await db.execute(select(Store))
+            store_code_to_id = {s.code: s.id for s in stores_res.scalars().all()}
+
+        mapped = self._extract_mongo_fields(mongo_doc, store_code_to_id)
+        stmt = (
+            select(User)
+            .where(func.lower(User.username) == mapped["username"].lower())
+            .options(selectinload(User.store))
+        )
+        user = (await db.execute(stmt)).scalar_one_or_none()
+
+        # Resolve unique email safely
+        candidate_email = mapped["email"]
+        email_conflict_stmt = select(User.id).where(func.lower(User.email) == candidate_email.lower())
+        if user:
+            email_conflict_stmt = email_conflict_stmt.where(User.id != user.id)
+        if (await db.execute(email_conflict_stmt)).scalar_one_or_none():
+            candidate_email = f"{mapped['safe_slug']}.{mapped['user_id_code']}@namanmarket.com.vn"[:100]
+
+        if user:
+            user.username = mapped["username"]
+            user.email = candidate_email
+            user.hashed_password = mapped["hashed_password"]
+            user.full_name = mapped["full_name"]
+            user.phone_number = mapped["phone_number"]
+            user.role = mapped["role"]
+            user.store_id = mapped["store_id"]
+            user.is_active = mapped["is_active"]
+            user.is_superuser = mapped["is_superuser"]
+        else:
+            user = User(
+                username=mapped["username"],
+                email=candidate_email,
+                hashed_password=mapped["hashed_password"],
+                full_name=mapped["full_name"],
+                phone_number=mapped["phone_number"],
+                role=mapped["role"],
+                store_id=mapped["store_id"],
+                is_active=mapped["is_active"],
+                is_superuser=mapped["is_superuser"],
+            )
+            db.add(user)
+
+        await db.flush()
+        # Reload store relationship cleanly
+        reloaded = (
+            await db.execute(
+                select(User).where(User.id == user.id).options(selectinload(User.store))
+            )
+        ).scalar_one()
+        return reloaded
 
     async def log_security_event(
         self,
@@ -63,34 +260,57 @@ class AuthService:
         user_agent: Optional[str] = None,
     ) -> Tuple[User, TokenResponse]:
         """
-        Authenticate user credentials with brute-force lockout protection.
+        Authenticate user credentials directly against MongoDB (103.175.248.250:27011 / naman_internal_app.user)
+        with brute-force lockout protection and automatic shadow sync into PostgreSQL.
         Issues JWT access token and rotating refresh token upon success.
         """
         now = datetime.now(timezone.utc)
+        ident = username_or_email.strip()
 
-        # Lookup user by username or email
-        stmt = select(User).where(
-            or_(
-                User.username == username_or_email.strip(),
-                User.email == username_or_email.strip().lower(),
-            )
-        )
-        result = await db.execute(stmt)
-        user = result.scalar_one_or_none()
+        mongo_doc: Optional[Dict[str, Any]] = None
+        if settings.AUTH_MONGO_ENABLED:
+            try:
+                mongo_doc = await asyncio.to_thread(self._find_mongo_user_sync, ident)
+            except Exception as mongo_ex:
+                logger.error(f"Lỗi kết nối MongoDB naman_internal_app.user khi đăng nhập '{ident}': {mongo_ex}")
+                raise UnauthorizedError("Không thể kết nối máy chủ xác thực nội bộ Nam An (MongoDB). Vui lòng thử lại sau.")
 
-        if not user:
-            # Fake verify password to mitigate timing attacks
-            verify_password("fake_password_dummy", "$2b$12$e8YQ3d1hB5u7.wF36wGjveU78cT0fK5G3uB7G1YvD.Zq2hI4uX3Xy")
-            await self.log_security_event(
-                db=db,
-                event_type="LOGIN_FAILED",
-                username=username_or_email,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                details={"reason": "USER_NOT_FOUND"},
-            )
-            await db.commit()
-            raise UnauthorizedError("Tên đăng nhập hoặc mật khẩu không chính xác.")
+            if not mongo_doc:
+                verify_password("fake_password_dummy", "$2b$12$e8YQ3d1hB5u7.wF36wGjveU78cT0fK5G3uB7G1YvD.Zq2hI4uX3Xy")
+                await self.log_security_event(
+                    db=db,
+                    event_type="LOGIN_FAILED",
+                    username=ident,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={"reason": "MONGO_USER_NOT_FOUND"},
+                )
+                await db.commit()
+                raise UnauthorizedError("Tên đăng nhập hoặc mật khẩu không chính xác.")
+
+            user = await self._upsert_pg_shadow_user(db, mongo_doc)
+        else:
+            stmt = select(User).where(
+                or_(
+                    User.username == ident,
+                    User.email == ident.lower(),
+                )
+            ).options(selectinload(User.store))
+            result = await db.execute(stmt)
+            user = result.scalar_one_or_none()
+
+            if not user:
+                verify_password("fake_password_dummy", "$2b$12$e8YQ3d1hB5u7.wF36wGjveU78cT0fK5G3uB7G1YvD.Zq2hI4uX3Xy")
+                await self.log_security_event(
+                    db=db,
+                    event_type="LOGIN_FAILED",
+                    username=ident,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={"reason": "USER_NOT_FOUND"},
+                )
+                await db.commit()
+                raise UnauthorizedError("Tên đăng nhập hoặc mật khẩu không chính xác.")
 
         # Check account lockout
         if user.locked_until and user.locked_until > now:
@@ -109,7 +329,7 @@ class AuthService:
                 f"Tài khoản đang bị tạm khóa do nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau {remaining_mins} phút."
             )
 
-        # Check if user is active
+        # Check if user is active (synced from MongoDB status == 'active')
         if not user.is_active:
             await self.log_security_event(
                 db=db,
@@ -120,10 +340,11 @@ class AuthService:
                 user_agent=user_agent,
             )
             await db.commit()
-            raise UnauthorizedError("Tài khoản người dùng đã bị vô hiệu hóa. Vui lòng liên hệ ban quản trị.")
+            raise UnauthorizedError("Tài khoản nhân sự đã ngừng kích hoạt trên hệ thống nội bộ Nam An.")
 
-        # Verify password
-        if not verify_password(password, user.hashed_password):
+        # Verify password directly against MongoDB hash (or PG hash if Mongo auth disabled)
+        target_hash = str(mongo_doc.get("password") or "") if mongo_doc is not None else user.hashed_password
+        if not verify_password(password, target_hash):
             user.failed_login_attempts += 1
             is_locked = False
             if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
@@ -274,10 +495,20 @@ class AuthService:
             await db.commit()
             raise UnauthorizedError("Refresh token đã hết hạn sử dụng. Vui lòng đăng nhập lại.")
 
-        # 3. Fetch user
-        user_stmt = select(User).where(User.id == user_id)
+        # 3. Fetch user (and re-sync active status & role from MongoDB if enabled)
+        user_stmt = select(User).where(User.id == user_id).options(selectinload(User.store))
         user_result = await db.execute(user_stmt)
         user = user_result.scalar_one_or_none()
+
+        if user and settings.AUTH_MONGO_ENABLED:
+            try:
+                mongo_doc = await asyncio.to_thread(self._find_mongo_user_sync, user.username)
+                if mongo_doc:
+                    user = await self._upsert_pg_shadow_user(db, mongo_doc)
+                else:
+                    user.is_active = False
+            except Exception as refresh_mongo_ex:
+                logger.warning(f"Không thể đối chiếu lại MongoDB khi refresh token cho '{user.username}': {refresh_mongo_ex}")
 
         if not user or not user.is_active:
             token_record.revoked_at = now
@@ -380,8 +611,15 @@ class AuthService:
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
     ) -> None:
-        """Change user password, invalidating all other active refresh sessions."""
-        if not verify_password(current_password, user.hashed_password):
+        """Change user password in MongoDB naman_internal_app.user and PG shadow, invalidating active refresh sessions."""
+        mongo_doc: Optional[Dict[str, Any]] = None
+        target_hash = user.hashed_password
+        if settings.AUTH_MONGO_ENABLED:
+            mongo_doc = await asyncio.to_thread(self._find_mongo_user_sync, user.username)
+            if mongo_doc:
+                target_hash = str(mongo_doc.get("password") or "")
+
+        if not verify_password(current_password, target_hash):
             await self.log_security_event(
                 db=db,
                 event_type="PASSWORD_CHANGE_FAILED",
@@ -398,7 +636,10 @@ class AuthService:
             raise ValidationError("Mật khẩu mới không được trùng với mật khẩu hiện tại.")
 
         now = datetime.now(timezone.utc)
-        user.hashed_password = hash_password(new_password)
+        new_hashed = hash_password(new_password)
+        if settings.AUTH_MONGO_ENABLED and mongo_doc and mongo_doc.get("_id") is not None:
+            await asyncio.to_thread(self._update_mongo_password_sync, mongo_doc["_id"], new_hashed)
+        user.hashed_password = new_hashed
 
         # Invalidate all existing refresh tokens for security
         stmt = select(RefreshToken).where(
@@ -581,11 +822,89 @@ class AuthService:
     # Seed SuperAdmin
     # ==========================================================================
 
+    async def sync_users_from_mongodb(
+        self,
+        db: AsyncSession,
+        purge_demo_accounts: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Synchronize all active accounts from MongoDB (103.175.248.250:27011 / naman_internal_app.user)
+        into PostgreSQL shadow table, and remove/disable old demo accounts not present in MongoDB.
+        """
+        from app.services.channel_service import DEFAULT_STORES
+
+        # Ensure all 4 Nam An default stores exist before mapping CH10001..CH10006
+        for store_data in DEFAULT_STORES:
+            code = store_data["code"]
+            existing_store = (await db.execute(select(Store).where(Store.code == code))).scalar_one_or_none()
+            if not existing_store:
+                db.add(
+                    Store(
+                        code=code,
+                        name=store_data["name"],
+                        address=store_data.get("address"),
+                        phone=store_data.get("phone"),
+                        is_active=True,
+                    )
+                )
+        await db.flush()
+
+        stores_res = await db.execute(select(Store))
+        store_code_to_id = {s.code: s.id for s in stores_res.scalars().all()}
+
+        mongo_docs = await asyncio.to_thread(self._list_active_mongo_users_sync)
+        synced_usernames_lower = set()
+        role_counts = {r.value: 0 for r in UserRole}
+
+        for doc in mongo_docs:
+            raw_u = str(doc.get("username") or doc.get("user_id") or "").strip()
+            if not raw_u:
+                continue
+            user_obj = await self._upsert_pg_shadow_user(db, doc, store_code_to_id=store_code_to_id)
+            synced_usernames_lower.add(user_obj.username.lower())
+            role_counts[user_obj.role] = role_counts.get(user_obj.role, 0) + 1
+
+        purged_count = 0
+        deactivated_count = 0
+        if purge_demo_accounts:
+            demo_prefixes = ("manager_1000", "staff_1000")
+            demo_exact = {"admin", "shopee_tester"}
+            pg_users = (await db.execute(select(User))).scalars().all()
+            for u in pg_users:
+                ulow = u.username.lower()
+                if ulow not in synced_usernames_lower:
+                    if ulow in demo_exact or ulow.startswith(demo_prefixes):
+                        await db.delete(u)
+                        purged_count += 1
+                    elif u.is_active:
+                        u.is_active = False
+                        deactivated_count += 1
+
+        await db.commit()
+        return {
+            "mongo_active_users": len(synced_usernames_lower),
+            "role_breakdown": role_counts,
+            "demo_accounts_deleted": purged_count,
+            "stale_accounts_deactivated": deactivated_count,
+        }
+
     async def seed_initial_superadmin(self, db: AsyncSession) -> Optional[User]:
         """
-        Idempotent function that seeds default initial superadmin if no superadmin exists.
-        Invoked automatically in application lifespan startup.
+        Startup hook: When AUTH_MONGO_ENABLED is True, syncs active users from MongoDB naman_internal_app.user.
+        Otherwise falls back to seeding local superadmin.
         """
+        if settings.AUTH_MONGO_ENABLED:
+            try:
+                summary = await self.sync_users_from_mongodb(db=db, purge_demo_accounts=True)
+                logger.info(
+                    f"✅ Đã đồng bộ tài khoản đăng nhập từ MongoDB naman_internal_app.user: {summary}"
+                )
+                return None
+            except Exception as mongo_ex:
+                logger.warning(f"Không thể đồng bộ khởi động từ MongoDB naman_internal_app.user: {mongo_ex}")
+                await db.rollback()
+                return None
+
         try:
             stmt = select(User).where(User.role == UserRole.SUPER_ADMIN.value)
             result = await db.execute(stmt)

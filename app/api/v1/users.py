@@ -78,6 +78,23 @@ async def create_user(
 
 
 @router.post(
+    "/sync-mongo",
+    response_model=APIResponse[dict],
+    summary="Đồng bộ tài khoản nhân sự từ MongoDB naman_internal_app.user",
+    description="Đồng bộ toàn bộ nhân sự đang hoạt động từ MongoDB (103.175.248.250:27011 / naman_internal_app.user) và dọn dẹp tài khoản mẫu (Chỉ SuperAdmin).",
+)
+async def sync_mongo_users(
+    current_admin: User = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    summary = await auth_service.sync_users_from_mongodb(db=db, purge_demo_accounts=True)
+    return APIResponse.ok(
+        data=summary,
+        message=f"Đã đồng bộ {summary['mongo_active_users']} tài khoản nhân sự hoạt động từ naman_internal_app.user."
+    )
+
+
+@router.post(
     "/seed-sample-staff",
     response_model=APIResponse[dict],
     summary="Khởi tạo tài khoản nhân sự mẫu cho 4 chi nhánh",

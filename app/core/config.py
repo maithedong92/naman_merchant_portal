@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     ARITO_DB: str = "arito_database"
     ARITO_INVENTORY_COLLECTION: str = "cttk"
 
+    # Internal MongoDB User Authentication (naman_internal_app.user)
+    AUTH_MONGO_ENABLED: bool = True
+    AUTH_MONGO_URI: str = "mongodb://adminuser:phhthtnkhk@103.175.248.250:27011/"
+    AUTH_MONGO_DB: str = "naman_internal_app"
+    AUTH_MONGO_COLLECTION: str = "user"
+
     HARAVAN_ENABLED: bool = True
     HARAVAN_TOKEN: str = "C1524959DBF63FD832CB79A18C50A9DAC2D1A4FAB178B7AC6528A98E045F33C8"
     HARAVAN_BASE_URL: str = "https://apis.haravan.com/com"
