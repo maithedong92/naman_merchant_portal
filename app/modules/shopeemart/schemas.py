@@ -35,6 +35,22 @@ class ShopeeMartConnectionStatus(BaseModel):
     shop_id: Optional[str] = None
 
 
+class ShopeeMartCredentialsUpdateRequest(BaseModel):
+    """Update Live Shopee Open Platform Partner credentials dynamically."""
+    partner_id: str = Field(..., description="Live Partner ID issued by Shopee Open Platform")
+    partner_key: str = Field(..., description="Live Partner Key issued by Shopee Open Platform")
+    shop_id: Optional[str] = Field(None, description="Default ShopeeMart Shop ID (optional before OAuth callback)")
+    base_url: Optional[str] = Field("https://partner.shopeemobile.com", description="Shopee Open Platform host")
+
+
+class ShopeeMartPushSkuRequest(BaseModel):
+    """Push an existing Poppies ERP SKU from NAM-UMP database onto ShopeeMart."""
+    store_code: str = Field("10001", description="Store code to read available_stock from (e.g. 10001)")
+    shop_id: Optional[str] = Field(None, description="Target Shopee Shop ID")
+    category_id: Optional[int] = Field(None, description="Explicit Shopee leaf category_id (auto-recommended if omitted)")
+    outlet_shop_id_list: Optional[List[int]] = Field(None, description="Optional outlet shop IDs to publish to after creation")
+
+
 # ==============================================================================
 # 2. Product Listing, Mass Upload & Outlet Publish Schemas
 # ==============================================================================

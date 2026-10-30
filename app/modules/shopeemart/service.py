@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
 import time
 from typing import Any, Dict, List, Optional
 import httpx
@@ -20,6 +21,7 @@ logger = logging.getLogger("naman_portal.modules.shopeemart.service")
 settings = get_settings()
 
 TOKEN_STORE_PATH = Path("data/shopeemart_tokens.json")
+CREDENTIALS_STORE_PATH = Path("data/shopeemart_credentials.json")
 
 
 class ShopeeMartClient:
@@ -39,15 +41,67 @@ class ShopeeMartClient:
         self.default_shop_id = settings.SHOPEEMART_SHOP_ID
         # Token cache format: {shop_id: {"access_token": str, "refresh_token": str, "expires_at": float}}
         self._token_cache: Dict[str, Dict[str, Any]] = {}
+        self._load_credentials()
         self._load_token_cache()
+
+    def _load_credentials(self):
+        """Load dynamically updated Live credentials across workers if saved on disk."""
+        try:
+            if CREDENTIALS_STORE_PATH.exists():
+                raw = CREDENTIALS_STORE_PATH.read_text(encoding="utf-8")
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    if data.get("partner_id"):
+                        self.partner_id = str(data["partner_id"]).strip()
+                    if data.get("partner_key"):
+                        self.partner_key = str(data["partner_key"]).strip()
+                    if data.get("shop_id"):
+                        self.default_shop_id = str(data["shop_id"]).strip()
+                    if data.get("base_url"):
+                        self.base_url = str(data["base_url"]).rstrip("/")
+        except Exception as ex:
+            logger.debug(f"Could not load ShopeeMart credentials store: {ex}")
+
+    def save_credentials(
+        self,
+        partner_id: str,
+        partner_key: str,
+        shop_id: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ):
+        """Persist Live Partner ID, Partner Key, and Shop ID across all worker processes."""
+        self.partner_id = str(partner_id).strip()
+        self.partner_key = str(partner_key).strip()
+        if shop_id is not None and str(shop_id).strip():
+            self.default_shop_id = str(shop_id).strip()
+        if base_url:
+            self.base_url = str(base_url).rstrip("/")
+
+        payload = {
+            "partner_id": self.partner_id,
+            "partner_key": self.partner_key,
+            "shop_id": self.default_shop_id,
+            "base_url": self.base_url,
+            "updated_at_iso": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            CREDENTIALS_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            CREDENTIALS_STORE_PATH.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as ex:
+            logger.warning(f"Failed to persist ShopeeMart credentials to disk: {ex}")
 
     @property
     def is_configured(self) -> bool:
         """True if real Shopee Open Platform credentials are configured."""
+        self._load_credentials()
         if not self.partner_id or not self.partner_key:
             return False
         pid_str = str(self.partner_id).strip()
-        if pid_str.startswith("your_") or not pid_str.isdigit():
+        pkey_str = str(self.partner_key).strip()
+        if pid_str.startswith("your_") or not pid_str.isdigit() or pkey_str.startswith("your_"):
             return False
         return True
 
@@ -133,6 +187,7 @@ class ShopeeMartClient:
         Generate the Shopee Shop Authorization URL for the merchant admin to grant access.
         Endpoint: /api/v2/shop/auth_partner
         """
+        self._load_credentials()
         timestamp = int(time.time())
         path = "/api/v2/shop/auth_partner"
         sign = self.generate_public_sign(path, timestamp)
@@ -559,6 +614,193 @@ class ShopeeMartClient:
     # ==========================================================================
     # 5. Product Listing, Publishing & Mass Outlet Management
     # ==========================================================================
+
+    async def upload_image_from_url(self, image_url: str) -> Optional[str]:
+        """
+        Download an image from Poppies/Haravan CDN and upload to Shopee Media Space
+        to obtain a valid Shopee image_id required by v2.product.add_item.
+        Endpoint: POST /api/v2/media_space/upload_image
+        """
+        if not image_url:
+            return None
+        if not self.is_configured:
+            digest = hashlib.md5(image_url.encode("utf-8")).hexdigest()[:12]
+            return f"vn-sandbox-img-{digest}"
+
+        timestamp = int(time.time())
+        path = "/api/v2/media_space/upload_image"
+        sign = self.generate_public_sign(path, timestamp)
+        query_params = {
+            "partner_id": self.partner_id,
+            "timestamp": timestamp,
+            "sign": sign,
+        }
+
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+            img_resp = await client.get(image_url)
+            img_resp.raise_for_status()
+            content_type = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+            ext = "png" if "png" in content_type else "jpg"
+            files = {"image": (f"product.{ext}", img_resp.content, content_type)}
+
+            up_resp = await client.post(
+                f"{self.base_url}{path}",
+                params=query_params,
+                files=files,
+            )
+            data = up_resp.json()
+            if up_resp.status_code != 200 or data.get("error"):
+                raise RuntimeError(
+                    f"Shopee upload_image error [{data.get('error')}]: {data.get('message')}"
+                )
+            image_info = (data.get("response") or {}).get("image_info") or {}
+            return image_info.get("image_id")
+
+    async def get_logistics_channel_list(self, shop_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Fetch enabled 3PL logistics channels configured on the Shopee shop.
+        Endpoint: GET /api/v2/logistics/get_channel_list
+        """
+        if not self.is_configured:
+            return [{"logistic_id": 5001, "enabled": True}]
+
+        resp = await self.call_api(
+            method="GET",
+            path="/api/v2/logistics/get_channel_list",
+            shop_id=shop_id,
+        )
+        channels = (resp.get("response") or {}).get("logistics_channel_list") or []
+        enabled_list: List[Dict[str, Any]] = []
+        for ch in channels:
+            if ch.get("enabled") and not ch.get("mask_channel_id"):
+                cid = ch.get("logistics_channel_id")
+                if cid is not None:
+                    enabled_list.append({"logistic_id": int(cid), "enabled": True})
+        return enabled_list
+
+    async def recommend_category(self, item_name: str, shop_id: Optional[str] = None) -> int:
+        """
+        Ask Shopee v2 to recommend the valid leaf category_id for an item name.
+        Endpoint: GET /api/v2/product/category_recommend
+        """
+        if not self.is_configured:
+            return 100629  # Thực phẩm & Đồ uống (default sandbox category)
+
+        try:
+            resp = await self.call_api(
+                method="GET",
+                path="/api/v2/product/category_recommend",
+                shop_id=shop_id,
+                params={"item_name": item_name},
+            )
+            cat_ids = (resp.get("response") or {}).get("category_id") or []
+            if isinstance(cat_ids, list) and cat_ids:
+                return int(cat_ids[0])
+        except Exception as ex:
+            logger.warning(f"Could not auto-recommend Shopee category for '{item_name}': {ex}")
+        return 100629
+
+    @staticmethod
+    def _estimate_weight_kg(item_name: str, default_kg: float = 0.5) -> float:
+        """Extract package weight in kg from Vietnamese product title (e.g. '200g' -> 0.2, '1.5kg' -> 1.5)."""
+        m_kg = re.search(r"(\d+(?:[.,]\d+)?)\s*kg\b", item_name, flags=re.IGNORECASE)
+        if m_kg:
+            val = float(m_kg.group(1).replace(",", "."))
+            return max(0.05, round(val, 3))
+        m_g = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:g|gr|gram)\b", item_name, flags=re.IGNORECASE)
+        if m_g:
+            val = float(m_g.group(1).replace(",", ".")) / 1000.0
+            return max(0.05, round(val, 3))
+        m_ml = re.search(r"(\d+(?:[.,]\d+)?)\s*ml\b", item_name, flags=re.IGNORECASE)
+        if m_ml:
+            val = float(m_ml.group(1).replace(",", ".")) / 1000.0
+            return max(0.05, round(val, 3))
+        return default_kg
+
+    async def push_erp_product_to_shopee(
+        self,
+        *,
+        sku: str,
+        name: str,
+        price: float,
+        stock: int,
+        unit: Optional[str] = None,
+        barcode: Optional[str] = None,
+        description: Optional[str] = None,
+        image_url: Optional[str] = None,
+        shop_id: Optional[str] = None,
+        category_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        End-to-end helper to push a Poppies ERP product to Shopee Open Platform v2:
+        1. Uploads product image to Shopee Media Space (v2.media_space.upload_image)
+        2. Resolves leaf category_id (v2.product.category_recommend)
+        3. Queries enabled 3PL channels (v2.logistics.get_channel_list)
+        4. Calls v2.product.add_item with complete Shopee Live schema
+        """
+        target_shop = str(shop_id or self.default_shop_id or "")
+        if not target_shop and self._token_cache:
+            target_shop = next(iter(self._token_cache.keys()))
+
+        # Ensure Shopee title length rules (10..120 chars)
+        clean_name = (name or "").strip()
+        if len(clean_name) < 10:
+            clean_name = f"{clean_name} - Nam An Market"
+        clean_name = clean_name[:120]
+
+        # Ensure Shopee description length rules (>= 30 chars)
+        clean_desc = (description or "").strip()
+        if len(clean_desc) < 40:
+            details = [
+                f"{clean_name} — Phân phối chính hãng bởi hệ thống siêu thị thực phẩm Nam An Market.",
+                f"- Mã sản phẩm (SKU): {sku}",
+            ]
+            if barcode and str(barcode).strip():
+                details.append(f"- Mã vạch (Barcode): {str(barcode).strip()}")
+            if unit and str(unit).strip():
+                details.append(f"- Quy cách / Đơn vị tính: {str(unit).strip()}")
+            details.append("- Cam kết chất lượng an toàn thực phẩm, nguồn gốc xuất xứ rõ ràng, bảo quản tiêu chuẩn tại chuỗi cửa hàng Nam An Market.")
+            clean_desc = "\n".join(details)
+
+        image_id = await self.upload_image_from_url(image_url) if image_url else None
+        resolved_category_id = category_id or await self.recommend_category(clean_name, shop_id=target_shop)
+        logistic_info = await self.get_logistics_channel_list(shop_id=target_shop)
+        weight_kg = self._estimate_weight_kg(clean_name, default_kg=0.5)
+
+        item_payload: Dict[str, Any] = {
+            "original_price": float(round(price)),
+            "description": clean_desc,
+            "weight": weight_kg,
+            "item_name": clean_name,
+            "item_status": "NORMAL",
+            "dimension": {
+                "package_length": 20,
+                "package_width": 15,
+                "package_height": 8,
+            },
+            "category_id": int(resolved_category_id),
+            "item_sku": str(sku),
+            "brand": {
+                "brand_id": 0,
+                "original_brand_name": "NoBrand",
+            },
+            "seller_stock": [
+                {"stock": max(0, int(stock))}
+            ],
+        }
+        if image_id:
+            item_payload["image"] = {"image_id_list": [image_id]}
+        if logistic_info:
+            item_payload["logistic_info"] = logistic_info
+
+        api_result = await self.add_item(shop_id=target_shop, item_data=item_payload)
+        return {
+            "mode": "LIVE" if self.is_configured else "SANDBOX_SIMULATION",
+            "is_configured": self.is_configured,
+            "shop_id": target_shop or None,
+            "payload_sent": item_payload,
+            "shopee_response": api_result,
+        }
 
     async def add_item(self, shop_id: str, item_data: Dict[str, Any]) -> Dict[str, Any]:
         """

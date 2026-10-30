@@ -11,6 +11,7 @@ from app.core.responses import APIResponse
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
+from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
 from app.models.user import User
 from app.modules.shopeemart.adapter import ShopeeMartChannelAdapter
@@ -22,9 +23,11 @@ from app.modules.shopeemart.schemas import (
     ShopeeMartCancelOrderRequest,
     ShopeeMartConfirmReturnRequest,
     ShopeeMartConnectionStatus,
+    ShopeeMartCredentialsUpdateRequest,
     ShopeeMartCreateShippingDocRequest,
     ShopeeMartDisputeReturnRequest,
     ShopeeMartPublishOutletRequest,
+    ShopeeMartPushSkuRequest,
     ShopeeMartShipOrderRequest,
     ShopeeMartTokenResponse,
     ShopeeMartUpdateItemRequest,
@@ -95,7 +98,11 @@ async def get_shopee_auth_url(
     ),
     current_user: User = Depends(get_current_active_user),
 ):
-    final_redirect = redirect_url or f"{str(request.base_url).rstrip('/')}/shopeemart/auth/callback"
+    base_host = str(request.base_url).rstrip("/")
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto == "https" or "ump.namanmarket.com" in base_host:
+        base_host = base_host.replace("http://", "https://")
+    final_redirect = redirect_url or f"{base_host}/api/v1/shopeemart/auth/callback"
     auth_info = shopeemart_client.get_authorization_url(redirect_url=final_redirect)
     return APIResponse.ok(
         data=auth_info,
@@ -115,6 +122,13 @@ async def handle_shopee_auth_callback(
     db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
     token_resp = await shopeemart_client.exchange_code_for_token(code=code, shop_id=shop_id)
+    if shopeemart_client.is_configured and shop_id:
+        shopeemart_client.save_credentials(
+            partner_id=shopeemart_client.partner_id,
+            partner_key=shopeemart_client.partner_key,
+            shop_id=str(shop_id),
+            base_url=shopeemart_client.base_url,
+        )
     if db is not None:
         try:
             ch_res = await db.execute(select(Channel).where(Channel.code == "SHOPEEMART"))
@@ -124,6 +138,7 @@ async def handle_shopee_auth_callback(
                 tokens_map = dict(cfg.get("shop_tokens") or {})
                 tokens_map[str(shop_id)] = shopeemart_client._token_cache.get(str(shop_id), {})
                 cfg["shop_tokens"] = tokens_map
+                cfg["default_shop_id"] = str(shop_id)
                 ch_obj.config = cfg
                 await db.commit()
         except Exception as db_ex:
@@ -131,6 +146,39 @@ async def handle_shopee_auth_callback(
     return APIResponse.ok(
         data=token_resp,
         message=f"Đã liên kết và cấp quyền thành công cho gian hàng Shopee #{shop_id}."
+    )
+
+
+@router.post(
+    "/credentials",
+    response_model=APIResponse[ShopeeMartConnectionStatus],
+    summary="Cập nhật Live Partner ID & Partner Key từ Shopee Open Platform",
+    description="Lưu thông tin xác thực Live (Partner ID, Partner Key, Shop ID) ngay lập tức không cần khởi động lại container.",
+)
+async def update_shopee_live_credentials(
+    payload: ShopeeMartCredentialsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    shopeemart_client.save_credentials(
+        partner_id=payload.partner_id,
+        partner_key=payload.partner_key,
+        shop_id=payload.shop_id,
+        base_url=payload.base_url,
+    )
+    ch_res = await db.execute(select(Channel).where(Channel.code == "SHOPEEMART"))
+    ch_obj = ch_res.scalar_one_or_none()
+    if ch_obj:
+        cfg = dict(ch_obj.config or {})
+        cfg["partner_id"] = str(payload.partner_id).strip()
+        if payload.shop_id:
+            cfg["default_shop_id"] = str(payload.shop_id).strip()
+        ch_obj.config = cfg
+        await db.commit()
+    status_info = shopeemart_client.get_connection_status(shop_id=payload.shop_id)
+    return APIResponse.ok(
+        data=status_info,
+        message="Đã cập nhật thông tin xác thực Live Shopee Open Platform thành công."
     )
 
 
@@ -364,6 +412,88 @@ async def poll_shopeemart_orders(
 # ==============================================================================
 # 4. Product Listing & Outlet Management Endpoints
 # ==============================================================================
+
+@router.post(
+    "/product/push-sku/{sku}",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Đẩy trực tiếp 1 sản phẩm Poppies ERP từ kho NAM-UMP lên ShopeeMart",
+    description=(
+        "Tự động lấy thông tin món hàng từ PostgreSQL (đồng bộ từ Poppies ERP), upload ảnh lên Shopee Media Space, "
+        "tự gợi ý danh mục lá Shopee, lấy kênh vận chuyển tích hợp và gọi v2.product.add_item."
+    ),
+)
+async def push_erp_sku_to_shopee(
+    sku: str,
+    payload: Optional[ShopeeMartPushSkuRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    req = payload or ShopeeMartPushSkuRequest()
+    prod_res = await db.execute(select(Product).where(Product.sku == sku))
+    product = prod_res.scalar_one_or_none()
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy sản phẩm có SKU '{sku}' trong cơ sở dữ liệu NAM-UMP."
+        )
+
+    store_res = await db.execute(
+        select(Store).where((Store.code == req.store_code) | (Store.id == req.store_code))
+    )
+    store_obj = store_res.scalar_one_or_none()
+
+    stock_qty = 0
+    if store_obj:
+        inv_res = await db.execute(
+            select(StoreInventory).where(
+                StoreInventory.store_id == store_obj.id,
+                StoreInventory.product_id == product.id,
+            )
+        )
+        inv_obj = inv_res.scalar_one_or_none()
+        if inv_obj and not inv_obj.is_out_of_stock:
+            stock_qty = max(0, int(inv_obj.available_stock or 0))
+
+    meta = dict(product.metadata_json or {})
+    unit_name = meta.get("unit") or product.unit if hasattr(product, "unit") else meta.get("unit")
+    barcode_val = meta.get("barcode") or getattr(product, "barcode", None)
+
+    push_result = await shopeemart_client.push_erp_product_to_shopee(
+        sku=product.sku,
+        name=product.name,
+        price=float(product.base_price or 0),
+        stock=stock_qty,
+        unit=unit_name,
+        barcode=barcode_val,
+        description=product.description,
+        image_url=product.image_url,
+        shop_id=req.shop_id,
+        category_id=req.category_id,
+    )
+
+    shopee_resp = push_result.get("shopee_response") or {}
+    created_item_id = (shopee_resp.get("response") or {}).get("item_id")
+    if created_item_id:
+        meta["shopee_item_id"] = int(created_item_id)
+        product.metadata_json = meta
+        await db.commit()
+
+        if req.outlet_shop_id_list:
+            outlet_resp = await shopeemart_client.publish_item_to_outlet_shop(
+                shop_id=str(push_result.get("shop_id") or ""),
+                item_id=int(created_item_id),
+                outlet_shop_id_list=req.outlet_shop_id_list,
+            )
+            push_result["outlet_publish_response"] = outlet_resp
+
+    mode_str = push_result.get("mode")
+    msg = (
+        f"Đã đăng thành công '{product.name}' (SKU {product.sku}) lên ShopeeMart Live (item_id={created_item_id})."
+        if mode_str == "LIVE"
+        else f"Đã kiểm thử đẩy '{product.name}' (SKU {product.sku}) ở chế độ Sandbox (chưa nhập Live Partner ID/Key trên máy chủ)."
+    )
+    return APIResponse.ok(data=push_result, message=msg)
+
 
 @router.post(
     "/product/add-item",
