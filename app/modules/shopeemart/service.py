@@ -703,21 +703,38 @@ class ShopeeMartClient:
         return 100144
 
     @staticmethod
-    def _estimate_weight_kg(item_name: str, default_kg: float = 0.5) -> float:
-        """Extract package weight in kg from Vietnamese product title (e.g. '200g' -> 0.2, '1.5kg' -> 1.5)."""
+    def _estimate_weight_kg(
+        item_name: str,
+        net_weight_kg: Optional[float] = None,
+        default_net_kg: float = 0.4
+    ) -> float:
+        """
+        Tính trọng lượng đóng gói sản phẩm (package gross weight in kg):
+        Quy tắc nghiệp vụ: Cứ +100 gram (0.1 kg) khối lượng bao bì / đóng gói
+        so với khối lượng tịnh (net weight) của sản phẩm.
+        """
+        # 1. Nếu có khối lượng tịnh truyền vào trực tiếp
+        if net_weight_kg is not None and net_weight_kg > 0:
+            return max(0.1, round(float(net_weight_kg) + 0.1, 3))
+
+        # 2. Bóc tách khối lượng tịnh từ tên sản phẩm tiếng Việt (ví dụ: '250G', '1.5kg', '500ml')
         m_kg = re.search(r"(\d+(?:[.,]\d+)?)\s*kg\b", item_name, flags=re.IGNORECASE)
         if m_kg:
             val = float(m_kg.group(1).replace(",", "."))
-            return max(0.05, round(val, 3))
+            return max(0.1, round(val + 0.1, 3))
+
         m_g = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:g|gr|gram)\b", item_name, flags=re.IGNORECASE)
         if m_g:
             val = float(m_g.group(1).replace(",", ".")) / 1000.0
-            return max(0.05, round(val, 3))
+            return max(0.1, round(val + 0.1, 3))
+
         m_ml = re.search(r"(\d+(?:[.,]\d+)?)\s*ml\b", item_name, flags=re.IGNORECASE)
         if m_ml:
             val = float(m_ml.group(1).replace(",", ".")) / 1000.0
-            return max(0.05, round(val, 3))
-        return default_kg
+            return max(0.1, round(val + 0.1, 3))
+
+        # 3. Mặc định: net weight 0.4 kg + 0.1 kg đóng gói = 0.5 kg
+        return max(0.1, round(default_net_kg + 0.1, 3))
 
     async def push_erp_product_to_shopee(
         self,
@@ -732,6 +749,7 @@ class ShopeeMartClient:
         image_url: Optional[str] = None,
         shop_id: Optional[str] = None,
         category_id: Optional[int] = None,
+        net_weight_kg: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         End-to-end helper to push a Poppies ERP product to Shopee Open Platform v2:
@@ -767,7 +785,7 @@ class ShopeeMartClient:
         image_id = await self.upload_image_from_url(image_url) if image_url else None
         resolved_category_id = category_id or await self.recommend_category(clean_name, shop_id=target_shop)
         logistic_info = await self.get_logistics_channel_list(shop_id=target_shop)
-        weight_kg = self._estimate_weight_kg(clean_name, default_kg=0.5)
+        weight_kg = self._estimate_weight_kg(clean_name, net_weight_kg=net_weight_kg)
 
         item_payload: Dict[str, Any] = {
             "original_price": float(round(price)),
@@ -842,7 +860,7 @@ class ShopeeMartClient:
         Endpoint: POST /api/v2/product/publish_item_to_outlet_shop
         """
         payload: Dict[str, Any] = {
-            "item_id": item_id,
+            "mart_item_id": int(item_id),
             "outlet_shop_id_list": outlet_shop_id_list
         }
         if price_list:

@@ -457,6 +457,13 @@ async def push_erp_sku_to_shopee(
     meta = dict(product.metadata_json or {})
     unit_name = meta.get("unit") or product.unit if hasattr(product, "unit") else meta.get("unit")
     barcode_val = meta.get("barcode") or getattr(product, "barcode", None)
+    net_weight_raw = meta.get("net_weight") or meta.get("weight") or getattr(product, "weight", None)
+    net_weight_val: Optional[float] = None
+    if net_weight_raw is not None:
+        try:
+            net_weight_val = float(net_weight_raw)
+        except (ValueError, TypeError):
+            net_weight_val = None
 
     push_result = await shopeemart_client.push_erp_product_to_shopee(
         sku=product.sku,
@@ -469,6 +476,7 @@ async def push_erp_sku_to_shopee(
         image_url=product.image_url,
         shop_id=req.shop_id,
         category_id=req.category_id,
+        net_weight_kg=net_weight_val,
     )
 
     shopee_resp = push_result.get("shopee_response") or {}
