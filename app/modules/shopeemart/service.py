@@ -1207,6 +1207,59 @@ class ShopeeMartClient:
             params={"page_no": page_no, "page_size": page_size}
         )
 
+    # ==========================================================================
+    # 8. Customer Reviews & Ratings Management (v2.product.get_comment)
+    # ==========================================================================
+
+    async def get_comments(
+        self,
+        shop_id: Optional[str] = None,
+        item_id: Optional[int] = None,
+        comment_id: Optional[int] = None,
+        cursor: str = "",
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        Query customer reviews, ratings and comments from Shopee Open Platform v2.
+        Endpoint: GET /api/v2/product/get_comment
+        """
+        params: Dict[str, Any] = {
+            "page_size": max(1, min(100, page_size)),
+            "cursor": cursor or "",
+        }
+        if item_id is not None:
+            params["item_id"] = int(item_id)
+        if comment_id is not None:
+            params["comment_id"] = int(comment_id)
+
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/product/get_comment",
+            shop_id=shop_id,
+            params=params,
+        )
+
+    async def reply_comment(
+        self,
+        comment_id: int,
+        comment: str,
+        shop_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Send seller reply to a buyer's review / comment.
+        Endpoint: POST /api/v2/product/reply_comment
+        """
+        payload = {
+            "comment_id": int(comment_id),
+            "comment": comment.strip(),
+        }
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/product/reply_comment",
+            shop_id=shop_id,
+            body=payload,
+        )
+
     def get_connection_status(self, shop_id: Optional[str] = None) -> ShopeeMartConnectionStatus:
         """Inspect and report the health of credentials and active access tokens."""
         self._load_token_cache()

@@ -265,3 +265,45 @@ class ShopeeMartEscrowDetail(BaseModel):
     service_fee: float = 0.0
     escrow_amount: float = 0.0
     order_chargeable_weight: Optional[float] = 0.0
+
+
+# ==============================================================================
+# 7. Customer Reviews & Ratings Schemas (v2.product.get_comment & reply_comment)
+# ==============================================================================
+
+class ShopeeMartCommentMedia(BaseModel):
+    """Media files attached to customer review (images and videos)."""
+    image_url_list: List[str] = Field(default_factory=list)
+    video_url_list: List[str] = Field(default_factory=list)
+
+
+class ShopeeMartCommentReply(BaseModel):
+    """Seller reply details for a customer review."""
+    reply: Optional[str] = None
+    create_time: Optional[int] = None
+    hidden: Optional[bool] = None
+
+
+class ShopeeMartCommentItem(BaseModel):
+    """Single customer review item returned from Shopee."""
+    comment_id: int = Field(..., description="ID của đánh giá")
+    comment: Optional[str] = Field(None, description="Nội dung nhận xét của khách hàng")
+    buyer_username: Optional[str] = Field(None, description="Tên tài khoản người mua")
+    rating_star: int = Field(5, description="Số sao đánh giá (1 - 5 sao)")
+    create_time: int = Field(..., description="Thời gian khách đánh giá (unix timestamp)")
+    item_id: int = Field(..., description="Shopee Item ID của sản phẩm được đánh giá")
+    model_id_list: List[int] = Field(default_factory=list, description="Danh sách model ID sản phẩm đã mua")
+    comment_reply: Optional[ShopeeMartCommentReply] = None
+    media: Optional[ShopeeMartCommentMedia] = None
+
+
+class ShopeeMartCommentListResponse(BaseModel):
+    """Paginated list of customer reviews from Shopee."""
+    item_comment_list: List[ShopeeMartCommentItem] = Field(default_factory=list)
+    more: bool = Field(False, description="Còn trang đánh giá tiếp theo hay không")
+    next_cursor: str = Field("", description="Con trỏ để lấy trang tiếp theo")
+
+
+class ShopeeMartReplyCommentRequest(BaseModel):
+    """Request to send seller reply to a customer review."""
+    comment: str = Field(..., min_length=1, max_length=500, description="Nội dung phản hồi của shop gửi cho khách hàng")

@@ -31,6 +31,8 @@ from app.modules.shopeemart.schemas import (
     ShopeeMartShipOrderRequest,
     ShopeeMartTokenResponse,
     ShopeeMartUpdateItemRequest,
+    ShopeeMartCommentListResponse,
+    ShopeeMartReplyCommentRequest,
 )
 from app.modules.shopeemart.service import shopeemart_client
 from app.schemas.order import OrderStatusUpdateSchema
@@ -772,4 +774,69 @@ async def get_shopee_escrow(
         data=result,
         message=f"Lấy bảng quyết toán tài chính Shopee cho đơn #{order_sn} thành công."
     )
+
+
+# ==============================================================================
+# 8. Customer Reviews & Ratings (v2.product.get_comment & reply_comment)
+# ==============================================================================
+
+@router.get(
+    "/reviews",
+    response_model=APIResponse[ShopeeMartCommentListResponse],
+    summary="Kéo danh sách đánh giá nhận xét của khách hàng (v2.product.get_comment)",
+    description=(
+        "Truy vấn trực tiếp danh sách review/rating của khách hàng từ Shopee Live API. "
+        "Bao gồm số sao (1-5 sao), nội dung nhận xét, hình ảnh/video review của khách, phân loại sản phẩm và phản hồi của shop."
+    ),
+)
+async def get_shopee_customer_reviews(
+    shop_id: Optional[str] = Query(None, description="Shopee Shop ID (mặc định lấy shop chính đang liên kết)"),
+    item_id: Optional[int] = Query(None, description="Lọc theo ID sản phẩm Shopee cụ thể"),
+    comment_id: Optional[int] = Query(None, description="Lọc theo ID đánh giá cụ thể"),
+    cursor: str = Query("", description="Con trỏ phân trang (cursor để lấy trang tiếp theo)"),
+    page_size: int = Query(20, ge=1, le=100, description="Số lượng đánh giá mỗi trang (tối đa 100)"),
+    current_user: User = Depends(get_current_active_user),
+):
+    raw_res = await shopeemart_client.get_comments(
+        shop_id=shop_id,
+        item_id=item_id,
+        comment_id=comment_id,
+        cursor=cursor,
+        page_size=page_size,
+    )
+    resp_data = raw_res.get("response") or {}
+    parsed_result = ShopeeMartCommentListResponse(
+        item_comment_list=resp_data.get("item_comment_list") or [],
+        more=bool(resp_data.get("more", False)),
+        next_cursor=str(resp_data.get("next_cursor") or ""),
+    )
+    total_found = len(parsed_result.item_comment_list)
+    return APIResponse.ok(
+        data=parsed_result,
+        message=f"Đã tải thành công {total_found} đánh giá từ Shopee."
+    )
+
+
+@router.post(
+    "/reviews/{comment_id}/reply",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Phản hồi đánh giá của khách hàng (v2.product.reply_comment)",
+    description="Gửi phản hồi của shop cho một đánh giá/nhận xét cụ thể của khách hàng trên Shopee.",
+)
+async def reply_shopee_customer_review(
+    comment_id: int,
+    payload: ShopeeMartReplyCommentRequest,
+    shop_id: Optional[str] = Query(None, description="Shopee Shop ID"),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await shopeemart_client.reply_comment(
+        comment_id=comment_id,
+        comment=payload.comment,
+        shop_id=shop_id,
+    )
+    return APIResponse.ok(
+        data=result,
+        message=f"Đã gửi phản hồi cho đánh giá #{comment_id} thành công lên Shopee."
+    )
+
 
