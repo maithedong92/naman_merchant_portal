@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -624,18 +624,22 @@ async def create_shopee_awb(
 
 @router.get(
     "/orders/{order_sn}/download-awb",
-    response_model=APIResponse[Dict[str, Any]],
-    summary="Tải file in phiếu vận đơn AWB (v2.logistics.download_shipping_document)",
+    summary="Tải file in phiếu vận đơn AWB dạng PDF binary (v2.logistics.download_shipping_document)",
 )
 async def download_shopee_awb(
     order_sn: str,
     shop_id: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_active_user),
+    document_type: str = Query("THERMAL_AIR_WAYBILL", description="THERMAL_AIR_WAYBILL hoặc NORMAL_AIR_WAYBILL"),
 ):
-    result = await shopeemart_client.download_shipping_document(order_sn=order_sn, shop_id=shop_id)
-    return APIResponse.ok(
-        data=result,
-        message=f"Tải phiếu AWB cho đơn #{order_sn} thành công."
+    pdf_bytes = await shopeemart_client.download_shipping_document_bytes(
+        order_sn=order_sn,
+        document_type=document_type,
+        shop_id=shop_id,
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=Shopee_AWB_{order_sn}.pdf"},
     )
 
 

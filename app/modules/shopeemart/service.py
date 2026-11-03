@@ -682,9 +682,10 @@ class ShopeeMartClient:
         """
         Ask Shopee v2 to recommend the valid leaf category_id for an item name.
         Endpoint: GET /api/v2/product/category_recommend
+        Returns the last element (leaf category) from the category chain.
         """
         if not self.is_configured:
-            return 100629  # Thực phẩm & Đồ uống (default sandbox category)
+            return 100144
 
         try:
             resp = await self.call_api(
@@ -695,10 +696,11 @@ class ShopeeMartClient:
             )
             cat_ids = (resp.get("response") or {}).get("category_id") or []
             if isinstance(cat_ids, list) and cat_ids:
-                return int(cat_ids[0])
+                # Shopee returns path from root to leaf, so the leaf is the last item: [-1]
+                return int(cat_ids[-1])
         except Exception as ex:
             logger.warning(f"Could not auto-recommend Shopee category for '{item_name}': {ex}")
-        return 100629
+        return 100144
 
     @staticmethod
     def _estimate_weight_kg(item_name: str, default_kg: float = 0.5) -> float:
@@ -909,21 +911,129 @@ class ShopeeMartClient:
             }
         )
 
-    async def download_shipping_document(
+    async def update_price(
         self,
-        order_sn: str,
-        shop_id: Optional[str] = None
+        shop_id: str,
+        item_id: int,
+        original_price: float,
     ) -> Dict[str, Any]:
         """
-        Download printable AWB PDF for attaching to packages.
-        Endpoint: POST /api/v2/logistics/download_shipping_document
+        Update item original retail price for primary Mart shop.
+        Endpoint: POST /api/v2/product/update_price
+        """
+        payload = {
+            "item_id": int(item_id),
+            "price_list": [{"original_price": float(round(original_price, 2))}]
+        }
+        return await self.call_api(
+            method="POST",
+            path="/api/v2/product/update_price",
+            shop_id=shop_id,
+            body=payload,
+        )
+
+    async def batch_publish_item_to_outlet_shop(
+        self,
+        shop_id: str,
+        publish_list: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Batch publish multiple Mart items to Outlet shops.
+        Endpoint: POST /api/v2/product/batch_publish_item_to_outlet_shop
         """
         return await self.call_api(
             method="POST",
-            path="/api/v2/logistics/download_shipping_document",
+            path="/api/v2/product/batch_publish_item_to_outlet_shop",
             shop_id=shop_id,
-            body={"order_list": [{"order_sn": order_sn}]}
+            body={"publish_list": publish_list},
         )
+
+    async def get_return_dispute_reason(
+        self,
+        return_sn: str,
+        shop_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Query available dispute reasons for a return request.
+        Endpoint: GET /api/v2/returns/get_return_dispute_reason
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/returns/get_return_dispute_reason",
+            shop_id=shop_id,
+            params={"return_sn": return_sn},
+        )
+
+    async def get_shipping_document_parameter(
+        self,
+        order_sn: str,
+        shop_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Query available shipping document type and parameters for an order.
+        Endpoint: GET /api/v2/logistics/get_shipping_document_parameter
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/logistics/get_shipping_document_parameter",
+            shop_id=shop_id,
+            params={"order_sn": order_sn},
+        )
+
+    async def get_shipping_document_result(
+        self,
+        order_sn: str,
+        shop_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Check the generation status of the shipping document (AWB).
+        Endpoint: GET /api/v2/logistics/get_shipping_document_result
+        """
+        return await self.call_api(
+            method="GET",
+            path="/api/v2/logistics/get_shipping_document_result",
+            shop_id=shop_id,
+            params={"order_sn": order_sn},
+        )
+
+    async def download_shipping_document_bytes(
+        self,
+        order_sn: str,
+        document_type: str = "THERMAL_AIR_WAYBILL",
+        shop_id: Optional[str] = None,
+    ) -> bytes:
+        """
+        Download real printable Airway Bill PDF bytes directly from Shopee.
+        Endpoint: POST /api/v2/logistics/download_shipping_document
+        """
+        target_shop = str(shop_id if shop_id is not None else (self.default_shop_id or ""))
+        timestamp = int(time.time())
+        path = "/api/v2/logistics/download_shipping_document"
+        access_token = await self.get_valid_access_token(target_shop)
+        sign = self.generate_shop_sign(path, timestamp, access_token, target_shop)
+
+        query_params = {
+            "partner_id": self.partner_id or "SANDBOX",
+            "timestamp": timestamp,
+            "sign": sign,
+            "access_token": access_token,
+        }
+        if target_shop:
+            query_params["shop_id"] = target_shop
+
+        if not self.is_configured:
+            # Fallback mock minimal PDF byte array for sandbox testing
+            return b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 300 144]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000053 00000 n\n0000000102 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n185\n%%EOF"
+
+        full_url = f"{self.base_url}{path}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                full_url,
+                params=query_params,
+                json={"order_list": [{"order_sn": order_sn, "shipping_document_type": document_type}]},
+            )
+            resp.raise_for_status()
+            return resp.content
 
     # ==========================================================================
     # 7. Order Enhancements & Buyer Cancellation Handling
