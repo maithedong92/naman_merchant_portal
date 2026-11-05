@@ -18,11 +18,11 @@ echo       [OK] Da dong bo ma nguon len GitHub.
 echo.
 
 :: 2. Goi SSH vao VPS va thuc thi redeploy
-echo [2/3] Ket noi toi Windows VPS (103.175.248.250) va tu dong redeploy...
-ssh -i "%USERPROFILE%\.ssh\id_ed25519_naman_ump" -p 22 -o StrictHostKeyChecking=no Administrator@103.175.248.250 "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
+echo [2/3] Ket noi toi Windows VPS (103.175.248.250:22022) va tu dong redeploy...
+ssh -i "%USERPROFILE%\.ssh\id_ed25519_naman_ump" -p 22022 -o StrictHostKeyChecking=no Administrator@103.175.248.250 "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
 if errorlevel 1 (
     echo.
-    echo [CANH BAO] Thu lai qua ssh config host (naman-vps)...
+    echo [CANH BAO] Thu lai qua ssh config host naman-vps...
     ssh naman-vps "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
 )
 echo.
