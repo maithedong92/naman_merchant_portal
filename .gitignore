@@ -63,6 +63,17 @@ scratch/
 .pytest_cache/
 .coverage
 htmlcov/
+data/
+
+# AI Agent directories
+.agent/
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.kiro/
+.opencode/
 
 # Node / Frontend
 node_modules/

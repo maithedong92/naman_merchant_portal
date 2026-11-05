@@ -8,12 +8,174 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.exceptions import NotFoundError
+from app.models.channel import Channel
 from app.models.inventory import InventoryStockLog, StoreInventory
-from app.models.product import Category, Product
+from app.models.product import Category, ChannelProductMapping, Product
 from app.models.store import Store
 
 logger = logging.getLogger("naman_portal.poppies_service")
 settings = get_settings()
+
+POPPIES_STANDARD_CHANNELS = [
+    {
+        "channel_code": "POS_OFFLINE",
+        "pos_channel_code": "STORE",
+        "arito_channel_code": "K21",
+        "ma_kenh": "K21",
+        "channel_group": "store",
+        "earn_enabled": True,
+        "channel_name": "Tại cửa hàng",
+        "default_markup_percent": 0.0,
+        "packaging_fee_vnd": 0.0,
+        "is_dynamic": False,
+        "is_active": True,
+    },
+    {
+        "channel_code": "SHOPEE",
+        "pos_channel_code": "SHOPEE",
+        "arito_channel_code": "K12",
+        "ma_kenh": "K12",
+        "channel_group": "marketplace",
+        "earn_enabled": False,
+        "channel_name": "Shopee Mall Nam An",
+        "default_markup_percent": 20.0,
+        "packaging_fee_vnd": 3000.0,
+        "is_dynamic": True,
+        "is_active": True,
+    },
+    {
+        "channel_code": "TIKTOK_SHOP",
+        "pos_channel_code": "TIKTOK",
+        "arito_channel_code": "K17",
+        "ma_kenh": "K17",
+        "channel_group": "marketplace",
+        "earn_enabled": False,
+        "channel_name": "TikTok Shop",
+        "default_markup_percent": 18.0,
+        "packaging_fee_vnd": 2000.0,
+        "is_dynamic": True,
+        "is_active": True,
+    },
+    {
+        "channel_code": "LAZADA",
+        "pos_channel_code": "LAZADA",
+        "arito_channel_code": "K10",
+        "ma_kenh": "K10",
+        "channel_group": "marketplace",
+        "earn_enabled": False,
+        "channel_name": "Lazada",
+        "default_markup_percent": 15.0,
+        "packaging_fee_vnd": 2000.0,
+        "is_dynamic": True,
+        "is_active": True,
+    },
+    {
+        "channel_code": "GRAB_MART",
+        "pos_channel_code": "GRAB",
+        "arito_channel_code": "K15",
+        "ma_kenh": "K15",
+        "channel_group": "delivery_app",
+        "earn_enabled": False,
+        "channel_name": "Grab Mart",
+        "default_markup_percent": 25.0,
+        "packaging_fee_vnd": 5000.0,
+        "is_dynamic": True,
+        "is_active": True,
+    },
+    {
+        "channel_code": "SHOPEE_FOOD",
+        "pos_channel_code": "SHOPEEFOOD",
+        "arito_channel_code": "K22",
+        "ma_kenh": "K22",
+        "channel_group": "delivery_app",
+        "earn_enabled": False,
+        "channel_name": "ShopeeFood",
+        "default_markup_percent": 25.0,
+        "packaging_fee_vnd": 5000.0,
+        "is_dynamic": True,
+        "is_active": True,
+    },
+    {
+        "channel_code": "HARAVAN_WEB",
+        "pos_channel_code": "WEB",
+        "arito_channel_code": "K20",
+        "ma_kenh": "K20",
+        "channel_group": "social_web",
+        "earn_enabled": True,
+        "channel_name": "Website Nam An",
+        "default_markup_percent": 0.0,
+        "packaging_fee_vnd": 0.0,
+        "is_dynamic": False,
+        "is_active": True,
+    },
+    {
+        "channel_code": "ZALO",
+        "pos_channel_code": "ZALO",
+        "arito_channel_code": "K20",
+        "ma_kenh": "K20",
+        "channel_group": "social_web",
+        "earn_enabled": True,
+        "channel_name": "Zalo OA",
+        "default_markup_percent": 0.0,
+        "packaging_fee_vnd": 0.0,
+        "is_dynamic": False,
+        "is_active": True,
+    },
+    {
+        "channel_code": "FACEBOOK",
+        "pos_channel_code": "FACEBOOK",
+        "arito_channel_code": "K20",
+        "ma_kenh": "K20",
+        "channel_group": "social_web",
+        "earn_enabled": True,
+        "channel_name": "Facebook",
+        "default_markup_percent": 0.0,
+        "packaging_fee_vnd": 0.0,
+        "is_dynamic": False,
+        "is_active": True,
+    },
+    {
+        "channel_code": "PHONE",
+        "pos_channel_code": "PHONE",
+        "arito_channel_code": "K20",
+        "ma_kenh": "K20",
+        "channel_group": "social_web",
+        "earn_enabled": True,
+        "channel_name": "Hotline / SĐT",
+        "default_markup_percent": 0.0,
+        "packaging_fee_vnd": 0.0,
+        "is_dynamic": False,
+        "is_active": True,
+    },
+]
+
+CHANNEL_CODE_ALIASES = {
+    "STORE": "POS_OFFLINE",
+    "POS_OFFLINE": "POS_OFFLINE",
+    "SHOPEE": "SHOPEE",
+    "SHOPEEMART": "SHOPEE",
+    "SHOPEE_MART": "SHOPEE",
+    "TIKTOK": "TIKTOK_SHOP",
+    "TIKTOK_SHOP": "TIKTOK_SHOP",
+    "LAZADA": "LAZADA",
+    "GRAB": "GRAB_MART",
+    "GRABMART": "GRAB_MART",
+    "GRAB_MART": "GRAB_MART",
+    "SHOPEEFOOD": "SHOPEE_FOOD",
+    "SHOPEE_FOOD": "SHOPEE_FOOD",
+    "WEB": "HARAVAN_WEB",
+    "HARAVAN": "HARAVAN_WEB",
+    "HARAVAN_WEB": "HARAVAN_WEB",
+    "ZALO": "ZALO",
+    "FACEBOOK": "FACEBOOK",
+    "PHONE": "PHONE",
+}
+
+
+def normalize_channel_code(raw_code: str) -> str:
+    cleaned = (raw_code or "").strip().upper()
+    return CHANNEL_CODE_ALIASES.get(cleaned, cleaned)
 
 
 def slugify_category_code(name: str) -> str:
@@ -33,6 +195,7 @@ class PoppiesClient:
 
     def __init__(self):
         self.base_url = settings.POPPIES_API_BASE_URL.rstrip("/")
+        self.pricing_base_url = getattr(settings, "POPPIES_PRICING_BASE_URL", "https://poppies.namanmarket.com/api/v1/pricing").rstrip("/")
         self.api_key = settings.POPPIES_API_KEY
         self.timeout = settings.POPPIES_TIMEOUT_SECONDS
 
@@ -41,6 +204,88 @@ class PoppiesClient:
             "X-POS-API-Key": self.api_key,
             "Accept": "application/json",
             "User-Agent": "NAM-UMP/PoppiesMasterDataClient"
+        }
+
+    async def toggle_channel_publish_status(
+        self,
+        sku: str,
+        scope_code: str,
+        is_published: bool,
+        scope_type: str = "CHANNEL"
+    ) -> Dict[str, Any]:
+        """
+        Call Poppies ERP Pricing API to toggle channel publish status:
+        POST /api/v1/pricing/channel-publish-status
+        """
+        payload = {
+            "scopeType": scope_type,
+            "scopeCode": scope_code,
+            "sku": sku,
+            "isPublished": is_published
+        }
+        headers = self._get_headers()
+        headers["Content-Type"] = "application/json"
+
+        urls_to_try = [
+            f"{self.pricing_base_url}/channel-publish-status",
+            "http://127.0.0.1:6515/api/v1/pricing/channel-publish-status",
+            "http://host.docker.internal:6515/api/v1/pricing/channel-publish-status",
+            "http://103.175.248.250:1155/api/v1/pricing/channel-publish-status",
+            "https://poppies.namanmarket.com/api/v1/pricing/channel-publish-status"
+        ]
+
+        last_err = None
+        for url in urls_to_try:
+            try:
+                async with httpx.AsyncClient(timeout=min(self.timeout, 10.0)) as client:
+                    resp = await client.post(url, json=payload, headers=headers)
+                    if resp.status_code in (200, 201):
+                        data = resp.json()
+                        data["resolved_url"] = url
+                        return data
+                    elif resp.status_code == 404:
+                        continue
+                    else:
+                        resp.raise_for_status()
+            except Exception as ex:
+                last_err = ex
+
+        # Fallback response if Poppies remote ERP server is temporarily unreachable
+        logger.warning(
+            f"Poppies remote pricing API unreachable for SKU {sku} on {scope_code}: {last_err}. Saved locally."
+        )
+        return {
+            "success": True,
+            "sku": sku,
+            "scopeType": scope_type,
+            "scopeCode": scope_code,
+            "isPublished": is_published,
+            "message": f"Đã cập nhật trạng thái cục bộ trên Merchant Portal (Poppies remote offline: {last_err})",
+            "offline_mode": True
+        }
+
+    async def get_pricing_channels(self) -> Dict[str, Any]:
+        """Fetch standard pricing channels from Poppies or return standard metadata."""
+        urls_to_try = [
+            f"{self.pricing_base_url}/channels",
+            "http://127.0.0.1:6515/api/v1/pos/pricing/channels",
+            "http://host.docker.internal:6515/api/v1/pos/pricing/channels",
+            "https://poppies.namanmarket.com/api/v1/pos/pricing/channels"
+        ]
+        headers = self._get_headers()
+        for url in urls_to_try:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(url, headers=headers)
+                    if resp.status_code == 200:
+                        return resp.json()
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "total": len(POPPIES_STANDARD_CHANNELS),
+            "channels": POPPIES_STANDARD_CHANNELS
         }
 
     async def get_health(self) -> Dict[str, Any]:
@@ -457,6 +702,254 @@ class PoppiesMasterDataSyncService:
             "total_cttk_records": total_records_processed,
             "inventories_updated": stock_updated_count,
             "elapsed_seconds": round(elapsed, 2)
+        }
+
+    async def _get_or_create_channel(self, db: AsyncSession, channel_code: str) -> Channel:
+        """Find or create channel record matching standardized metadata."""
+        normalized = normalize_channel_code(channel_code)
+        stmt = select(Channel).where(Channel.code == normalized)
+        res = await db.execute(stmt)
+        channel = res.scalar_one_or_none()
+        if channel:
+            return channel
+
+        # Match with POPPIES_STANDARD_CHANNELS metadata
+        meta = next((c for c in POPPIES_STANDARD_CHANNELS if c["channel_code"] == normalized), None)
+        name = meta["channel_name"] if meta else normalized
+
+        channel = Channel(
+            code=normalized,
+            name=name,
+            description=f"Kênh bán hàng chuẩn Poppies ERP ({normalized})",
+            is_active=True,
+            config=meta or {}
+        )
+        db.add(channel)
+        await db.flush()
+        return channel
+
+    async def ensure_standard_channels(self, db: AsyncSession) -> Dict[str, Channel]:
+        """Ensure all 10 Poppies standard channels exist in the database."""
+        stmt = select(Channel)
+        res = await db.execute(stmt)
+        existing = {c.code: c for c in res.scalars().all()}
+
+        created = {}
+        for meta in POPPIES_STANDARD_CHANNELS:
+            code = meta["channel_code"]
+            if code not in existing:
+                channel = Channel(
+                    code=code,
+                    name=meta["channel_name"],
+                    description=f"Kênh bán hàng chuẩn Poppies ERP ({code})",
+                    is_active=True,
+                    config=meta
+                )
+                db.add(channel)
+                created[code] = channel
+
+        if created:
+            await db.flush()
+            existing.update(created)
+
+        return existing
+
+    async def toggle_sku_channel_publish(
+        self,
+        db: AsyncSession,
+        sku: str,
+        channel_code: str,
+        is_published: bool,
+        sync_to_poppies: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Toggle ON/OFF SKU sales status for a specific channel and synchronize with Poppies ERP.
+        Updates local ChannelProductMapping and invokes Poppies POST /api/v1/pricing/channel-publish-status.
+        """
+        # 1. Locate product
+        prod_stmt = select(Product).where((Product.sku == sku) | (Product.barcode == sku))
+        res = await db.execute(prod_stmt)
+        product = res.scalar_one_or_none()
+        if not product:
+            raise NotFoundError(f"Không tìm thấy sản phẩm với SKU '{sku}'")
+
+        # 2. Normalize and resolve channel
+        poppies_channel_code = normalize_channel_code(channel_code)
+        channel = await self._get_or_create_channel(db, poppies_channel_code)
+
+        # 3. Upsert ChannelProductMapping
+        mapping_stmt = select(ChannelProductMapping).where(
+            ChannelProductMapping.product_id == product.id,
+            ChannelProductMapping.channel_id == channel.id
+        )
+        mapping_res = await db.execute(mapping_stmt)
+        mapping = mapping_res.scalar_one_or_none()
+
+        poppies_res: Optional[Dict[str, Any]] = None
+        if sync_to_poppies:
+            poppies_res = await self.client.toggle_channel_publish_status(
+                sku=product.sku,
+                scope_code=poppies_channel_code,
+                is_published=is_published,
+                scope_type="CHANNEL"
+            )
+
+        if not mapping:
+            mapping = ChannelProductMapping(
+                product_id=product.id,
+                channel_id=channel.id,
+                is_enabled=is_published,
+                channel_sync_payload={
+                    "last_toggle": poppies_res,
+                    "poppies_channel_code": poppies_channel_code,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
+            db.add(mapping)
+        else:
+            mapping.is_enabled = is_published
+            mapping.channel_sync_payload = {
+                "last_toggle": poppies_res,
+                "poppies_channel_code": poppies_channel_code,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+
+        await db.commit()
+
+        status_str = "BẬT (Mở bán)" if is_published else "TẮT (Ngưng bán)"
+        return {
+            "sku": product.sku,
+            "product_name": product.name,
+            "channel_code": channel_code,
+            "poppies_channel_code": poppies_channel_code,
+            "is_published": is_published,
+            "synced_to_poppies": sync_to_poppies,
+            "message": f"Đã {status_str} SKU {product.sku} trên kênh {channel.name} ({poppies_channel_code})",
+            "poppies_response": poppies_res
+        }
+
+    async def get_sku_channel_publish_overview(
+        self,
+        db: AsyncSession,
+        sku: str
+    ) -> Dict[str, Any]:
+        """
+        Get complete publish status across all 10 standard channels for a SKU.
+        """
+        prod_stmt = select(Product).options(
+            selectinload(Product.channel_mappings).selectinload(ChannelProductMapping.channel)
+        ).where((Product.sku == sku) | (Product.barcode == sku))
+        res = await db.execute(prod_stmt)
+        product = res.scalar_one_or_none()
+        if not product:
+            raise NotFoundError(f"Không tìm thấy sản phẩm với SKU '{sku}'")
+
+        # Map channel_id -> mapping
+        mappings_by_code: Dict[str, ChannelProductMapping] = {}
+        for m in product.channel_mappings:
+            if m.channel:
+                mappings_by_code[m.channel.code] = m
+
+        channel_items = []
+        for meta in POPPIES_STANDARD_CHANNELS:
+            code = meta["channel_code"]
+            mapping = mappings_by_code.get(code)
+            # Default to published if product is active and no explicit unpublish mapping exists
+            is_pub = mapping.is_enabled if mapping is not None else product.is_active
+
+            channel_items.append({
+                "channel_code": code,
+                "channel_name": meta["channel_name"],
+                "poppies_channel_code": code,
+                "arito_channel_code": meta.get("arito_channel_code"),
+                "channel_group": meta.get("channel_group"),
+                "is_published": is_pub,
+                "custom_price": float(mapping.custom_price) if mapping and mapping.custom_price else None,
+                "updated_at": mapping.updated_at if mapping else None
+            })
+
+        return {
+            "sku": product.sku,
+            "product_name": product.name,
+            "base_price": float(product.base_price),
+            "channels": channel_items
+        }
+
+    async def process_price_change_webhook(
+        self,
+        db: AsyncSession,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Process Poppies ERP Webhook price_changed / CHANNEL_PUBLISH_STATUS_CHANGED.
+        Synchronizes channel publish status without re-triggering Poppies API.
+        """
+        event_id = payload.get("event_id")
+        event_type = payload.get("event_type")
+        channel_raw = payload.get("channel_code") or payload.get("channel") or "ALL"
+        affected_skus: List[str] = payload.get("affected_skus") or []
+
+        logger.info(
+            f"Processing Poppies Webhook event={event_id}, type={event_type}, channel={channel_raw}, skus={affected_skus}"
+        )
+
+        if not affected_skus:
+            return {
+                "success": True,
+                "event_id": event_id,
+                "processed_count": 0,
+                "message": "Không có SKU nào bị ảnh hưởng."
+            }
+
+        # If it's a channel publish status event, update mappings
+        poppies_channel_code = normalize_channel_code(channel_raw)
+        channel = await self._get_or_create_channel(db, poppies_channel_code)
+
+        updated_count = 0
+        for sku in affected_skus:
+            prod_stmt = select(Product).where(Product.sku == sku)
+            prod_res = await db.execute(prod_stmt)
+            prod = prod_res.scalar_one_or_none()
+            if not prod:
+                continue
+
+            map_stmt = select(ChannelProductMapping).where(
+                ChannelProductMapping.product_id == prod.id,
+                ChannelProductMapping.channel_id == channel.id
+            )
+            map_res = await db.execute(map_stmt)
+            mapping = map_res.scalar_one_or_none()
+
+            # Determine published status: if is_published in payload, use it, else keep enabled
+            is_pub = payload.get("is_published", False)
+
+            if not mapping:
+                mapping = ChannelProductMapping(
+                    product_id=prod.id,
+                    channel_id=channel.id,
+                    is_enabled=is_pub,
+                    channel_sync_payload={
+                        "webhook_sync": payload,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                )
+                db.add(mapping)
+            else:
+                mapping.is_enabled = is_pub
+                mapping.channel_sync_payload = {
+                    "webhook_sync": payload,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+
+            updated_count += 1
+
+        await db.commit()
+        return {
+            "success": True,
+            "event_id": event_id,
+            "channel_code": poppies_channel_code,
+            "processed_count": updated_count,
+            "message": f"Đã cập nhật trạng thái {updated_count} SKU từ webhook Poppies."
         }
 
 

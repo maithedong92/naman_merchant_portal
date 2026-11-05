@@ -439,6 +439,22 @@ async def push_erp_sku_to_shopee(
             detail=f"Không tìm thấy sản phẩm có SKU '{sku}' trong cơ sở dữ liệu NAM-UMP."
         )
 
+    # Check if SKU is explicitly turned OFF for ShopeeMart on Master Data
+    from app.models.product import ChannelProductMapping
+    disabled_map_stmt = select(ChannelProductMapping).join(
+        Channel, Channel.id == ChannelProductMapping.channel_id
+    ).where(
+        ChannelProductMapping.product_id == product.id,
+        Channel.code.in_(["SHOPEE", "SHOPEEMART"]),
+        ChannelProductMapping.is_enabled == False
+    )
+    disabled_map_res = await db.execute(disabled_map_stmt)
+    if disabled_map_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sản phẩm '{product.name}' (SKU {product.sku}) hiện đang bị TẮT (Ngưng bán) trên kênh Shopee theo cài đặt Master Data. Vui lòng BẬT bán trên kênh Shopee trước khi đồng bộ."
+        )
+
     store_res = await db.execute(
         select(Store).where((Store.code == req.store_code) | (Store.id == req.store_code))
     )

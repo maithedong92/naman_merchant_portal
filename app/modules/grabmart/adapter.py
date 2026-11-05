@@ -150,10 +150,23 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             .where(Product.is_active == True)
         )
         rows = []
+        disabled_grab_ids = set()
         if db:
             try:
                 res = await db.execute(query)
                 rows = res.all()
+
+                from app.models.product import ChannelProductMapping
+                dis_stmt = select(ChannelProductMapping.product_id).join(
+                    Channel, Channel.id == ChannelProductMapping.channel_id
+                ).where(
+                    Channel.code.in_(["GRAB", "GRAB_MART", "GRABMART"]),
+                    ChannelProductMapping.is_enabled == False
+                )
+                dis_res = await db.execute(dis_stmt)
+                scalars = dis_res.scalars() if hasattr(dis_res, "scalars") else None
+                if scalars and hasattr(scalars, "all"):
+                    disabled_grab_ids = set(scalars.all())
             except Exception as ex:
                 logger.error(f"Error querying DB for GrabMart catalog: {ex}. Using default catalog items.")
                 rows = []
@@ -255,6 +268,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 if len(category_map[cat_id]["subCategories"][sub_id]["items"]) >= 1400:
                     continue
 
+                is_disabled_on_grab = (product.id in disabled_grab_ids) or (str(product.sku) in disabled_grab_ids)
                 raw_stock = (
                     int(math.floor(float(inv.available_stock)))
                     if (inv and inv.available_stock is not None)
@@ -262,7 +276,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 )
                 is_available = (
                     "AVAILABLE"
-                    if (inv and not inv.is_out_of_stock and raw_stock > 0)
+                    if (inv and not inv.is_out_of_stock and raw_stock > 0 and not is_disabled_on_grab)
                     else "UNAVAILABLE"
                 )
                 stock_qty = raw_stock if is_available == "AVAILABLE" else 0

@@ -10,9 +10,13 @@ from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.product import (
     CategoryCreate,
     CategoryResponse,
+    ChannelPublishToggleResult,
+    ProductChannelPublishOverviewResponse,
+    ProductChannelPublishToggleRequest,
     ProductCreate,
     ProductResponse,
 )
+from app.services.poppies_service import poppies_service
 from app.services.product_service import ProductService
 
 router = APIRouter(prefix="/products", tags=["Catalog & Products"])
@@ -91,4 +95,34 @@ async def get_product(
     """Get product details by UUID."""
     product = await ProductService.get_product_by_id(product_id, db)
     return APIResponse.ok(data=product)
+
+
+@router.get("/by-sku/{sku}/channels", response_model=APIResponse[ProductChannelPublishOverviewResponse])
+async def get_product_channels_by_sku(
+    sku: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get multichannel publish status for a SKU."""
+    res = await poppies_service.get_sku_channel_publish_overview(db=db, sku=sku)
+    return APIResponse.ok(data=res)
+
+
+@router.post("/by-sku/{sku}/channels/{channel_code}/toggle", response_model=APIResponse[ChannelPublishToggleResult])
+async def toggle_product_channel_by_sku(
+    sku: str,
+    channel_code: str,
+    payload: ProductChannelPublishToggleRequest,
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db)
+):
+    """Toggle publish status for 1 SKU on 1 channel and synchronize with Poppies ERP."""
+    res = await poppies_service.toggle_sku_channel_publish(
+        db=db,
+        sku=sku,
+        channel_code=channel_code,
+        is_published=payload.is_published,
+        sync_to_poppies=True
+    )
+    return APIResponse.ok(data=res, message=res["message"])
 

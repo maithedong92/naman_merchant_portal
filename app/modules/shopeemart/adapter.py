@@ -61,7 +61,19 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             )
 
         try:
-            query = select(Product).where(Product.is_active == True)
+            from app.models.product import ChannelProductMapping
+            # Query active products excluding those explicitly disabled on SHOPEE / SHOPEEMART
+            disabled_shopee_subq = select(ChannelProductMapping.product_id).join(
+                Channel, Channel.id == ChannelProductMapping.channel_id
+            ).where(
+                Channel.code.in_(["SHOPEE", "SHOPEEMART"]),
+                ChannelProductMapping.is_enabled == False
+            )
+
+            query = select(Product).where(
+                Product.is_active == True,
+                ~Product.id.in_(disabled_shopee_subq)
+            )
             res = await db.execute(query)
             products = res.scalars().all()
             prod_by_sku = {p.sku: p for p in products}
@@ -155,11 +167,19 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             skus = [str(it.get("sku", "")) for it in stock_items if it.get("sku")]
             sku_to_item_id: Dict[str, int] = {}
             if skus:
-                prod_stmt = select(Product).where(Product.sku.in_(skus[:500]))
-                prod_res = await db.execute(prod_stmt)
-                for p in prod_res.scalars().all():
-                    if isinstance(p.metadata_json, dict) and p.metadata_json.get("shopee_item_id"):
-                        sku_to_item_id[p.sku] = int(p.metadata_json["shopee_item_id"])
+                try:
+                    prod_stmt = select(Product).where(Product.sku.in_(skus[:500]))
+                    prod_res = await db.execute(prod_stmt)
+                    scalars = prod_res.scalars() if hasattr(prod_res, "scalars") else None
+                    if scalars is not None and hasattr(scalars, "all"):
+                        prods = scalars.all()
+                        if inspect.iscoroutine(prods):
+                            prods = await prods
+                        for p in prods:
+                            if hasattr(p, "metadata_json") and isinstance(p.metadata_json, dict) and p.metadata_json.get("shopee_item_id"):
+                                sku_to_item_id[p.sku] = int(p.metadata_json["shopee_item_id"])
+                except Exception as load_ex:
+                    logger.warning(f"Could not load shopee_item_id from products: {load_ex}")
 
             stock_list = []
             for item in stock_items:

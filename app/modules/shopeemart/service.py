@@ -444,7 +444,16 @@ class ShopeeMartClient:
                     params=query_params,
                     json=body
                 )
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    err_text = resp.text
+                    logger.error(f"ShopeeMart API HTTP {resp.status_code} at {path}: {err_text}")
+                    try:
+                        err_json = resp.json()
+                        err_msg = err_json.get("message") or err_json.get("error") or err_text
+                    except Exception:
+                        err_msg = err_text
+                    raise RuntimeError(f"ShopeeMart API Error {resp.status_code} [{path}]: {err_msg}")
+
                 data = resp.json()
                 if data.get("error"):
                     logger.error(f"ShopeeMart API returned error at {path}: {data.get('error')} - {data.get('message')}")
@@ -1052,6 +1061,21 @@ class ShopeeMartClient:
             )
             resp.raise_for_status()
             return resp.content
+
+    async def download_shipping_document(
+        self,
+        order_sn: str,
+        document_type: str = "THERMAL_AIR_WAYBILL",
+        shop_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Wrapper returning shipping document result dict."""
+        bytes_data = await self.download_shipping_document_bytes(order_sn, document_type, shop_id)
+        return {
+            "order_sn": order_sn,
+            "document_type": document_type,
+            "bytes_length": len(bytes_data) if bytes_data else 0,
+            "message": "sandbox_mode_success" if not self.is_configured else "download_success",
+        }
 
     # ==========================================================================
     # 7. Order Enhancements & Buyer Cancellation Handling

@@ -24,8 +24,21 @@ class ChannelRegistry:
 
     @classmethod
     def get(cls, channel_code: str) -> Optional[BaseChannelAdapter]:
-        """Retrieve adapter for a given channel code."""
-        return cls._adapters.get(channel_code.upper())
+        """Retrieve adapter for a given channel code with alias support."""
+        code = channel_code.upper()
+        if code in cls._adapters:
+            return cls._adapters[code]
+        aliases = {
+            "GRAB": "GRABMART",
+            "GRAB_MART": "GRABMART",
+            "SHOPEE_FOOD": "SHOPEEFOOD",
+            "SHOPEE": "SHOPEEMART",
+            "SHOPEE_MART": "SHOPEEMART",
+        }
+        mapped_code = aliases.get(code)
+        if mapped_code and mapped_code in cls._adapters:
+            return cls._adapters[mapped_code]
+        return None
 
     @classmethod
     def list_channels(cls) -> List[str]:
@@ -35,7 +48,7 @@ class ChannelRegistry:
     @classmethod
     def is_supported(cls, channel_code: str) -> bool:
         """Check whether a channel adapter is registered."""
-        return channel_code.upper() in cls._adapters
+        return cls.get(channel_code) is not None
 
 
 channel_registry = ChannelRegistry()

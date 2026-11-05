@@ -4,6 +4,7 @@ from app.api.v1.channels import router as channels_router
 from app.api.v1.health import router as health_router
 from app.api.v1.inventory import router as inventory_router
 from app.api.v1.orders import router as orders_router
+from app.api.v1.pricing import router as pricing_router
 from app.api.v1.products import router as products_router
 from app.api.v1.reports import router as reports_router
 from app.api.v1.stores import router as stores_router
@@ -21,6 +22,7 @@ api_v1_router.include_router(users_router)
 api_v1_router.include_router(stores_router)
 api_v1_router.include_router(channels_router)
 api_v1_router.include_router(products_router)
+api_v1_router.include_router(pricing_router)
 api_v1_router.include_router(inventory_router)
 api_v1_router.include_router(orders_router)
 api_v1_router.include_router(reports_router)

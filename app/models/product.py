@@ -76,3 +76,11 @@ class ChannelProductMapping(Base, TimestampMixin):
     # Relationships
     product: Mapped["Product"] = relationship("Product", back_populates="channel_mappings")
     channel: Mapped["Channel"] = relationship("Channel", back_populates="product_mappings")
+
+    @property
+    def channel_code(self) -> Optional[str]:
+        return self.channel.code if self.channel else None
+
+    @property
+    def channel_name(self) -> Optional[str]:
+        return self.channel.name if self.channel else None

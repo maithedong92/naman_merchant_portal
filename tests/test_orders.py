@@ -45,7 +45,8 @@ def test_admin_orders_html_route(client):
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Điều Phối & Xử Lý Đơn Hàng Hợp Nhất" in response.text
-    assert "80mm" in response.text
+    assert "pipeline-stage-tabs" in response.text
+    assert "btn-view-table" in response.text
     assert "order-details-modal" in response.text
     assert "detail-modal-status-pipeline" in response.text
     assert "detail-tab-btn-basic" in response.text

@@ -4,30 +4,14 @@
 
 {% block extra_head %}
 <style>
-    /* 80mm POS Thermal Receipt Print Styling */
-    @media print {
-        body * {
-            visibility: hidden;
-        }
-        #thermal-receipt-modal, #thermal-receipt-modal * {
-            visibility: visible;
-        }
-        #thermal-receipt-container {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 80mm;
-            padding: 2mm;
-            margin: 0;
-            background: #fff;
-            color: #000;
-            font-family: 'Inter', monospace;
-            font-size: 12px;
-            line-height: 1.3;
-        }
-        .no-print {
-            display: none !important;
-        }
+    /* Compact Table & Pipeline Styles */
+    .orders-table th, .orders-table td {
+        vertical-align: middle;
+    }
+    .pipeline-tab.active {
+        background-color: #F7F6F3;
+        border-color: rgba(55, 53, 47, 0.2);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     }
 </style>
 {% endblock %}
@@ -92,64 +76,92 @@
         <span class="px-1.5 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] text-[10px] font-mono font-medium">STORE SCOPED</span>
     </div>
 
-    <!-- Notion Metric Blocks (KPIs) -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        <div onclick="filterByStatus('PENDING')" class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] cursor-pointer transition-colors" id="kpi-card-pending">
-            <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-[#CB912F]">Chờ Duyệt</span>
-                <span class="w-1.5 h-1.5 rounded-full bg-[#CB912F]"></span>
+    <!-- Notion Workflow Pipeline Bar (Option A) -->
+    <div class="bg-white rounded-md border border-[rgba(55,53,47,0.09)] p-2.5">
+        <div class="flex items-center justify-between pb-2 mb-2 border-b border-[rgba(55,53,47,0.06)] px-1">
+            <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider flex items-center space-x-1.5">
+                <span>🔄</span>
+                <span>Quy Trình Xử Lý Đơn Hàng (Workflow Pipeline)</span>
             </div>
-            <div id="kpi-pending-count" class="mt-1 text-2xl font-bold font-mono text-[#37352F]">0</div>
-            <p class="text-[10px] text-[#9B9A97] mt-0.5">Cần duyệt ngay</p>
+            <div class="flex items-center space-x-2 text-[12px]">
+                <span class="text-[#787774]">Doanh thu hôm nay:</span>
+                <span id="kpi-revenue-today" class="font-bold font-mono text-[#448361]">0 ₫</span>
+            </div>
         </div>
 
-        <div onclick="filterByStatus('ACCEPTED')" class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] cursor-pointer transition-colors" id="kpi-card-preparing">
-            <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-[#448361]">Đang Chuẩn Bị</span>
-                <span class="text-[11px]">👨‍🍳</span>
-            </div>
-            <div id="kpi-preparing-count" class="mt-1 text-2xl font-bold font-mono text-[#37352F]">0</div>
-            <p class="text-[10px] text-[#9B9A97] mt-0.5">Đang soạn / gói</p>
-        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" id="pipeline-stage-tabs">
+            <!-- Stage 1: Cần Xử Lý Ngay -->
+            <button type="button" onclick="setPipelineStage('URGENT')" id="pipeline-tab-urgent" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-semibold text-[#CB912F] flex items-center gap-1">
+                        <span>⚡</span><span>Cần Xử Lý</span>
+                    </span>
+                    <span id="kpi-pending-count" class="px-1.5 py-0.2 rounded-full bg-[#FBEDD6] text-[#CB912F] text-[11px] font-mono font-bold leading-tight">0</span>
+                </div>
+                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Chờ duyệt / Phân tuyến</p>
+            </button>
 
-        <div onclick="filterByStatus('READY')" class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] cursor-pointer transition-colors" id="kpi-card-ready">
-            <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-[#2F7EA6]">Sẵn Sàng</span>
-                <span class="text-[11px]">📦</span>
-            </div>
-            <div id="kpi-ready-count" class="mt-1 text-2xl font-bold font-mono text-[#37352F]">0</div>
-            <p class="text-[10px] text-[#9B9A97] mt-0.5">Chờ tài xế lấy</p>
-        </div>
+            <!-- Stage 2: Đang Chuẩn Bị -->
+            <button type="button" onclick="setPipelineStage('PREPARING')" id="pipeline-tab-preparing" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-medium text-[#448361] flex items-center gap-1">
+                        <span>👨‍🍳</span><span>Đang Soạn</span>
+                    </span>
+                    <span id="kpi-preparing-count" class="px-1.5 py-0.2 rounded-full bg-[#EDF3EC] text-[#448361] text-[11px] font-mono font-bold leading-tight">0</span>
+                </div>
+                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Đã nhận / Đã phân tuyến</p>
+            </button>
 
-        <div onclick="filterByStatus('PICKED_UP')" class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] cursor-pointer transition-colors" id="kpi-card-delivering">
-            <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-[#9065B0]">Đang Giao</span>
-                <span class="text-[11px]">🛵</span>
-            </div>
-            <div id="kpi-delivering-count" class="mt-1 text-2xl font-bold font-mono text-[#37352F]">0</div>
-            <p class="text-[10px] text-[#9B9A97] mt-0.5">Đang vận chuyển</p>
-        </div>
+            <!-- Stage 3: Sẵn Sàng Giao -->
+            <button type="button" onclick="setPipelineStage('READY')" id="pipeline-tab-ready" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-medium text-[#2F7EA6] flex items-center gap-1">
+                        <span>📦</span><span>Sẵn Sàng</span>
+                    </span>
+                    <span id="kpi-ready-count" class="px-1.5 py-0.2 rounded-full bg-[#E7F3F8] text-[#2F7EA6] text-[11px] font-mono font-bold leading-tight">0</span>
+                </div>
+                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Đã đóng gói / Chờ xế</p>
+            </button>
 
-        <div onclick="filterByStatus('DELIVERED')" class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] hover:bg-[#F7F6F3] cursor-pointer transition-colors" id="kpi-card-delivered">
-            <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-[#787774]">Hoàn Tất</span>
-                <span class="text-[11px]">✅</span>
-            </div>
-            <div id="kpi-delivered-count" class="mt-1 text-2xl font-bold font-mono text-[#37352F]">0</div>
-            <p class="text-[10px] text-[#9B9A97] mt-0.5">Giao thành công</p>
-        </div>
+            <!-- Stage 4: Đang Vận Chuyển -->
+            <button type="button" onclick="setPipelineStage('DELIVERING')" id="pipeline-tab-delivering" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-medium text-[#9065B0] flex items-center gap-1">
+                        <span>🛵</span><span>Đang Giao</span>
+                    </span>
+                    <span id="kpi-delivering-count" class="px-1.5 py-0.2 rounded-full bg-[#F4EFF7] text-[#9065B0] text-[11px] font-mono font-bold leading-tight">0</span>
+                </div>
+                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Đang vận chuyển</p>
+            </button>
 
-        <div class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)]">
-            <div class="text-[11px] font-medium text-[#787774]">Doanh Thu Hôm Nay</div>
-            <div id="kpi-revenue-today" class="mt-1 text-xl font-bold font-mono text-[#448361]">0 ₫</div>
-            <p class="text-[10px] text-[#9B9A97] mt-0.5">Đơn thành công</p>
+            <!-- Stage 5: Hoàn Tất & Hủy -->
+            <button type="button" onclick="setPipelineStage('COMPLETED')" id="pipeline-tab-completed" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-medium text-[#787774] flex items-center gap-1">
+                        <span>✅</span><span>Hoàn Tất</span>
+                    </span>
+                    <span id="kpi-delivered-count" class="px-1.5 py-0.2 rounded-full bg-[#F1F1EF] text-[#787774] text-[11px] font-mono font-bold leading-tight">0</span>
+                </div>
+                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Giao thành công</p>
+            </button>
+
+            <!-- Stage 6: Tất Cả Đơn -->
+            <button type="button" onclick="setPipelineStage('ALL')" id="pipeline-tab-all" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-medium text-[#37352F] flex items-center gap-1">
+                        <span>📑</span><span>Tất Cả</span>
+                    </span>
+                    <span id="kpi-all-count" class="px-1.5 py-0.2 rounded-full bg-[rgba(55,53,47,0.08)] text-[#37352F] text-[11px] font-mono font-bold leading-tight">--</span>
+                </div>
+                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Toàn bộ đơn hàng</p>
+            </button>
         </div>
     </div>
 
-    <!-- Notion Database Filter Toolbar -->
-    <div class="bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] space-y-2.5">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            <!-- Channel & Action Tabs -->
+    <!-- Notion Filter & View Mode Toolbar -->
+    <div class="bg-white rounded-md p-2.5 border border-[rgba(55,53,47,0.09)] space-y-2">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            <!-- Channel Filter Pills -->
             <div class="flex flex-wrap items-center gap-1.5" id="channel-filter-pills">
                 <button onclick="setChannelFilter('')" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors bg-[rgba(55,53,47,0.08)] text-[#37352F]" data-channel="">
                     📑 Tất cả sàn
@@ -171,19 +183,17 @@
                 <span class="text-[rgba(55,53,47,0.15)] mx-0.5">|</span>
 
                 <!-- Quick Action Pills -->
-                <button id="btn-incomplete-filter" onclick="setIncompleteFilter()" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors bg-[#EDF3EC] text-[#448361] hover:bg-[#E2EDE1] flex items-center space-x-1" data-channel="INCOMPLETE">
-                    <span>⏳</span>
-                    <span>Chưa Hoàn Thành</span>
+                <button id="btn-incomplete-filter" onclick="setIncompleteFilter()" class="channel-pill px-2 py-1 rounded text-[12px] font-medium transition-colors bg-[#EDF3EC] text-[#448361] hover:bg-[#E2EDE1] flex items-center space-x-1" data-channel="INCOMPLETE" title="Đơn đang xử lý">
+                    <span>⏳ Chưa Hoàn Thành</span>
                     <span id="incomplete-counter-badge" class="px-1.5 py-0.2 rounded bg-[#448361] text-white text-[10px] font-mono font-bold leading-none">0</span>
                 </button>
-                <button id="btn-unassigned-filter" onclick="setHaravanUnassignedFilter()" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors bg-[#FBEDD6] text-[#CB912F] hover:bg-[#F8E5C4] flex items-center space-x-1" data-channel="HARAVAN_UNASSIGNED">
-                    <span>⚡</span>
-                    <span>Cần Phân Tuyến (Haravan)</span>
+                <button id="btn-unassigned-filter" onclick="setHaravanUnassignedFilter()" class="channel-pill px-2 py-1 rounded text-[12px] font-medium transition-colors bg-[#FBEDD6] text-[#CB912F] hover:bg-[#F8E5C4] flex items-center space-x-1" data-channel="HARAVAN_UNASSIGNED" title="Đơn Haravan cần phân tuyến ngay">
+                    <span>⚡ Cần Phân Tuyến (Haravan)</span>
                     <span id="unassigned-counter-badge" class="px-1.5 py-0.2 rounded bg-[#CB912F] text-white text-[10px] font-mono font-bold leading-none">0</span>
                 </button>
             </div>
 
-            <!-- Store, Status & Search -->
+            <!-- Store, Status, Search & View Switcher -->
             <div class="flex flex-wrap items-center gap-2">
                 <select id="filter-store-code" onchange="onFilterChange()" class="px-2.5 py-1 rounded bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] font-medium text-[#37352F] focus:outline-none focus:border-[#2383E2]">
                     <option value="">Tất cả chi nhánh</option>
@@ -202,10 +212,22 @@
                 </select>
 
                 <div class="relative">
-                    <input type="text" id="search-input" onkeyup="if(event.key==='Enter') onFilterChange()" placeholder="Tìm mã đơn, tên, SĐT..." class="w-56 pl-7 pr-3 py-1 rounded bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                    <input type="text" id="search-input" onkeyup="if(event.key==='Enter') onFilterChange()" placeholder="Tìm mã đơn, tên, SĐT..." class="w-48 pl-7 pr-3 py-1 rounded bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:bg-white focus:border-[#2383E2]">
                     <svg class="w-3.5 h-3.5 text-[#9B9A97] absolute left-2 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
+                </div>
+
+                <!-- View Switcher (Table vs Card) -->
+                <div class="flex items-center bg-[#F7F6F3] p-0.5 rounded border border-[rgba(55,53,47,0.09)]">
+                    <button type="button" id="btn-view-table" onclick="switchViewMode('table')" class="px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors bg-white text-[#37352F] shadow-xs" title="Chế độ Bảng danh sách gọn">
+                        <span>☷</span>
+                        <span>Bảng</span>
+                    </button>
+                    <button type="button" id="btn-view-card" onclick="switchViewMode('card')" class="px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors text-[#787774] hover:text-[#37352F]" title="Chế độ Thẻ chi tiết">
+                        <span>⊞</span>
+                        <span>Thẻ</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -236,33 +258,7 @@
 </div>
 
 <!-- ======================================================================= -->
-<!-- ======================================================================= -->
-<!-- Modal 1: Thermal Receipt 80mm Print Preview -->
-<!-- ======================================================================= -->
-<div id="thermal-receipt-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-sm w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F]">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)] no-print">
-            <h3 class="font-semibold text-[13px] text-[#37352F] flex items-center space-x-1.5">
-                <span>🧾</span>
-                <span>Xem Trước Phiếu In (80mm)</span>
-            </h3>
-            <button onclick="closeReceiptModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
-        </div>
 
-        <!-- Receipt Paper Sheet -->
-        <div id="thermal-receipt-container" class="my-3 font-mono text-[11px] leading-relaxed border border-dashed border-[rgba(55,53,47,0.16)] p-3.5 rounded-md bg-[#FAF9F5]">
-            <!-- Receipt Content Injected via JS -->
-        </div>
-
-        <div class="flex items-center justify-end space-x-2 pt-3 border-t border-[rgba(55,53,47,0.09)] no-print">
-            <button onclick="closeReceiptModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Đóng</button>
-            <button onclick="window.print()" class="px-3 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                <span>In Phiếu Ngay</span>
-            </button>
-        </div>
-    </div>
-</div>
 
 <!-- ======================================================================= -->
 <!-- Modal 2: Cancel Order Modal -->
@@ -679,6 +675,8 @@
 {% block extra_scripts %}
 <script>
     // Global State (Default to Haravan Omnichannel Incomplete Orders like PMDONHANG)
+    let currentViewMode = localStorage.getItem('orders_view_mode') || 'table';
+    let currentPipelineStage = 'ALL';
     let currentFilter = {
         channel_code: 'HARAVAN',
         is_haravan: true,
@@ -911,6 +909,105 @@
         }
     }
 
+    // Switch View Mode (Table vs Card)
+    function switchViewMode(mode) {
+        currentViewMode = mode;
+        localStorage.setItem('orders_view_mode', mode);
+        updateViewModeButtons();
+        if (currentOrdersCache && currentOrdersCache.length > 0) {
+            if (currentFilter.is_haravan) {
+                renderHaravanOrders(currentOrdersCache);
+            } else {
+                renderOrders(currentOrdersCache);
+            }
+        }
+    }
+
+    function updateViewModeButtons() {
+        const btnTable = document.getElementById('btn-view-table');
+        const btnCard = document.getElementById('btn-view-card');
+        if (!btnTable || !btnCard) return;
+
+        if (currentViewMode === 'table') {
+            btnTable.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors bg-white text-[#37352F] shadow-xs";
+            btnCard.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors text-[#787774] hover:text-[#37352F]";
+        } else {
+            btnCard.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors bg-white text-[#37352F] shadow-xs";
+            btnTable.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors text-[#787774] hover:text-[#37352F]";
+        }
+    }
+
+    // Workflow Pipeline Stage Handler
+    function setPipelineStage(stage) {
+        currentPipelineStage = stage;
+        updatePipelineTabsUI(stage);
+
+        if (currentFilter.is_haravan) {
+            if (stage === 'URGENT') {
+                currentFilter.status = '';
+                currentFilter.unassigned_only = true;
+            } else if (stage === 'PREPARING') {
+                currentFilter.status = 'Đã phân tuyến';
+                currentFilter.unassigned_only = false;
+            } else if (stage === 'READY') {
+                currentFilter.status = 'Đã đóng gói';
+                currentFilter.unassigned_only = false;
+            } else if (stage === 'DELIVERING') {
+                currentFilter.status = 'Đã gửi vận đơn';
+                currentFilter.unassigned_only = false;
+            } else if (stage === 'COMPLETED') {
+                currentFilter.status = 'Hoàn thành';
+                currentFilter.unassigned_only = false;
+            } else { // ALL
+                currentFilter.status = '';
+                currentFilter.unassigned_only = false;
+            }
+        } else {
+            if (stage === 'URGENT') {
+                currentFilter.status = 'PENDING';
+            } else if (stage === 'PREPARING') {
+                currentFilter.status = 'PREPARING';
+            } else if (stage === 'READY') {
+                currentFilter.status = 'READY';
+            } else if (stage === 'DELIVERING') {
+                currentFilter.status = 'PICKED_UP';
+            } else if (stage === 'COMPLETED') {
+                currentFilter.status = 'DELIVERED';
+            } else { // ALL
+                currentFilter.status = '';
+            }
+            currentFilter.unassigned_only = false;
+        }
+
+        const select = document.getElementById('filter-status');
+        if (select) select.value = currentFilter.status;
+        currentFilter.page = 1;
+        loadOrdersFeed();
+    }
+
+    function updatePipelineTabsUI(activeStage) {
+        const stageMap = {
+            'URGENT': 'pipeline-tab-urgent',
+            'PREPARING': 'pipeline-tab-preparing',
+            'READY': 'pipeline-tab-ready',
+            'DELIVERING': 'pipeline-tab-delivering',
+            'COMPLETED': 'pipeline-tab-completed',
+            'ALL': 'pipeline-tab-all'
+        };
+
+        Object.keys(stageMap).forEach(key => {
+            const tab = document.getElementById(stageMap[key]);
+            if (!tab) return;
+            if (key === activeStage) {
+                tab.classList.add('bg-[#F7F6F3]', 'border-[rgba(55,53,47,0.2)]', 'shadow-xs');
+                tab.classList.remove('border-transparent');
+            } else {
+                tab.classList.remove('bg-[#F7F6F3]', 'border-[rgba(55,53,47,0.2)]', 'shadow-xs');
+                tab.classList.add('border-transparent');
+            }
+        });
+    }
+
     // Load Order Feed (Omnichannel: Platform + Haravan)
     async function loadOrdersFeed(isManual = false) {
         const spinner = document.getElementById('refresh-spinner');
@@ -993,6 +1090,9 @@
         document.getElementById('kpi-delivering-count').textContent = s.delivering_count;
         document.getElementById('kpi-delivered-count').textContent = s.delivered_today_count;
         document.getElementById('kpi-revenue-today').textContent = formatVND(s.revenue_today);
+        const totalAll = (s.pending_count || 0) + (s.preparing_count || 0) + (s.ready_count || 0) + (s.delivering_count || 0) + (s.delivered_today_count || 0);
+        const allEl = document.getElementById('kpi-all-count');
+        if (allEl) allEl.textContent = totalAll;
 
         // Header Pending Badge
         const navBadge = document.getElementById('nav-pending-orders-badge');
@@ -1034,6 +1134,8 @@
         document.getElementById('kpi-delivering-count').textContent = shipped;
         document.getElementById('kpi-delivered-count').textContent = completed;
         document.getElementById('kpi-revenue-today').textContent = formatVND(revenue);
+        const allEl = document.getElementById('kpi-all-count');
+        if (allEl) allEl.textContent = total !== undefined ? total : items.length;
     }
 
     // Play chime when new pending orders appear
@@ -1052,7 +1154,320 @@
         }
     }
 
-    // Render Order Cards
+    
+    // Render Orders Spreadsheet Table (Platform Orders: ShopeeFood, GrabMart, ShopeeMart)
+    function renderOrdersTable(orders) {
+        let rowsHtml = '';
+        orders.forEach(o => {
+            const isPending = o.status === 'PENDING';
+            const isAccepted = o.status === 'ACCEPTED' || o.status === 'PREPARING';
+            const isReady = o.status === 'READY';
+            const channelBadge = getChannelBadge(o.channel_code);
+            const statusBadge = getStatusBadge(o.status);
+            const timeAgo = formatRelativeTime(o.created_at || o.order_time);
+            const fullDate = o.created_at || o.order_time ? new Date(o.created_at || o.order_time).toLocaleString('vi-VN') : '';
+            const storeLabel = o.store_name || (o.store_code ? `Chi nhánh ${o.store_code}` : 'Nam An Market');
+
+            // Items preview (show first 3 items with badge)
+            const items = o.items || [];
+            let itemsSnippet = '';
+            items.slice(0, 3).forEach(it => {
+                itemsSnippet += `
+                    <div class="flex items-start text-[11px] py-0.5 leading-snug">
+                        <span class="px-1 py-0.2 rounded bg-[rgba(55,53,47,0.08)] font-mono font-semibold text-[#37352F] mr-1.5 shrink-0">${it.quantity}x</span>
+                        <span class="text-[#37352F] truncate" title="${escapeHtml(it.item_name)}">${escapeHtml(it.item_name)}</span>
+                    </div>
+                `;
+            });
+            if (items.length > 3) {
+                itemsSnippet += `<div class="text-[10px] text-[#787774] italic font-medium mt-0.5">+ ${items.length - 3} món khác...</div>`;
+            }
+
+            // Customer & Delivery note
+            const custName = o.customer_name || 'Khách vãng lai';
+            const custPhone = o.customer_phone || '--';
+            const deliveryAddress = o.delivery_address || 'Nhận tại quầy / Không có địa chỉ';
+
+            let deliveryNoteHtml = '';
+            if (o.notes || o.delivery_notes) {
+                deliveryNoteHtml = `
+                    <div class="mt-1 px-1.5 py-0.5 rounded bg-[#FBEDD6]/80 text-[#CB912F] text-[10px] font-medium flex items-center gap-1 border border-[#F8E5C4]">
+                        <span>💬</span><span class="truncate">${escapeHtml(o.notes || o.delivery_notes)}</span>
+                    </div>
+                `;
+            }
+
+            // Action Buttons
+            let actionsHtml = `
+                <div class="flex items-center justify-end flex-wrap gap-1">
+                    ${isPending ? `
+                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2 py-1 rounded border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors">Hủy</button>
+                        <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
+                            <span>✓</span><span>Nhận</span>
+                        </button>
+                    ` : ''}
+
+                    ${isAccepted ? `
+                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2 py-1 rounded border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors">Hủy</button>
+                        <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
+                            <span>📦</span><span>Báo Xong</span>
+                        </button>
+                    ` : ''}
+
+                    ${isReady ? `
+                        <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
+                            <span>🛵</span><span>Giao Xế</span>
+                        </button>
+                    ` : ''}
+
+                    ${o.channel_code === 'SHOPEEMART' ? `
+                        <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-2 py-1 rounded bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[11px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors" title="In Vận Đơn AWB Shopee">
+                            <span>📄 AWB</span>
+                        </button>
+                    ` : ''}
+
+                    <button onclick="openDetailsModal('${o.id}')" class="px-2 py-1 rounded border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[11px] font-medium text-[#37352F] transition-colors" title="Xem chi tiết đơn hàng & lịch sử">
+                        <span>👁️ Chi tiết</span>
+                    </button>
+                </div>
+            `;
+
+            rowsHtml += `
+                <tr class="hover:bg-[#FAF9F6] transition-colors ${isPending ? 'bg-[#FFFDF9] border-l-4 border-l-[#CB912F]' : ''}">
+                    <td class="py-2.5 px-3">
+                        <div class="flex items-center gap-1.5">
+                            <span class="font-mono font-bold text-[#37352F] text-[12px]">${o.order_code}</span>
+                            ${channelBadge}
+                        </div>
+                        <div class="text-[11px] text-[#787774] mt-0.5 flex items-center gap-1" title="${fullDate}">
+                            <span>🕒</span><span>${timeAgo}</span>
+                            <span class="text-[rgba(55,53,47,0.2)]">·</span>
+                            <span class="font-mono text-[10px] text-[#9B9A97]">#${o.display_order_id || o.channel_order_id}</span>
+                        </div>
+                    </td>
+                    <td class="py-2.5 px-3 whitespace-nowrap">
+                        <span class="px-2 py-0.5 rounded bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium border border-[rgba(55,53,47,0.06)]">
+                            📍 ${storeLabel}
+                        </span>
+                    </td>
+                    <td class="py-2.5 px-3 max-w-[240px]">
+                        <div class="flex items-center justify-between">
+                            <span class="font-medium text-[#37352F] text-[12px] truncate">${custName}</span>
+                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-[#2F7EA6] font-medium hover:underline ml-1 shrink-0">📞 ${custPhone}</a>` : ''}
+                        </div>
+                        <div class="text-[11px] text-[#787774] truncate mt-0.5" title="${escapeHtml(deliveryAddress)}">${escapeHtml(deliveryAddress)}</div>
+                        ${deliveryNoteHtml}
+                    </td>
+                    <td class="py-2.5 px-3 max-w-[280px]">
+                        ${itemsSnippet}
+                    </td>
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div class="font-mono font-bold text-[#37352F] text-[13px]">${formatVND(o.total_amount)}</div>
+                        <div class="text-[10px] text-[#9B9A97]">${items.length} món</div>
+                    </td>
+                    <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                        ${statusBadge}
+                    </td>
+                    <td class="py-2.5 px-3 text-right">
+                        ${actionsHtml}
+                    </td>
+                </tr>
+            `;
+        });
+
+        return `
+            <div class="overflow-x-auto bg-white rounded-md border border-[rgba(55,53,47,0.09)]">
+                <table class="w-full text-left border-collapse orders-table">
+                    <thead class="bg-[#F7F6F3] text-[11px] font-semibold text-[#787774] uppercase tracking-wider border-b border-[rgba(55,53,47,0.09)]">
+                        <tr>
+                            <th class="py-2.5 px-3">Mã Đơn & Kênh</th>
+                            <th class="py-2.5 px-3">Chi Nhánh</th>
+                            <th class="py-2.5 px-3">Khách Hàng & Địa Chỉ</th>
+                            <th class="py-2.5 px-3">Món & SL</th>
+                            <th class="py-2.5 px-3 text-right">Tổng Tiền</th>
+                            <th class="py-2.5 px-3 text-center">Trạng Thái</th>
+                            <th class="py-2.5 px-3 text-right">Thao Tác</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[rgba(55,53,47,0.06)] text-[#37352F]">
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // Render Haravan Orders Spreadsheet Table (Omnichannel Orders)
+    function renderHaravanOrdersTable(orders) {
+        const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
+        const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
+        const canDispatch = isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER');
+
+        let rowsHtml = '';
+        orders.forEach(o => {
+            const internal = o.internal || {};
+            const procStatus = internal.order_processing_status || 'Đơn hàng mới';
+            const assignedStore = internal.assigned_store;
+            const isUnassigned = !assignedStore;
+
+            const channelBadge = `<span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-[#E7F3F8] text-[#2F7EA6]">🌐 Haravan (${(o.source || 'Web').toUpperCase()})</span>`;
+            const statusBadge = getHaravanStatusBadge(procStatus);
+            const timeAgo = formatRelativeTime(o.created_at);
+            const fullDate = o.created_at ? new Date(o.created_at).toLocaleString('vi-VN') : '';
+
+            // Store badge
+            let storeBadge = '';
+            if (isUnassigned) {
+                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#FBEDD6] text-[#CB912F] font-semibold text-[11px] border border-[#E8CDA0]">⚠️ Chưa Phân Tuyến</span>`;
+            } else {
+                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] font-medium text-[11px]">📍 CN ${assignedStore}</span>`;
+            }
+
+            // Customer & Delivery
+            const custName = (o.customer && (o.customer.first_name || o.customer.last_name)) 
+                ? `${o.customer.first_name || ''} ${o.customer.last_name || ''}`.trim()
+                : (o.billing_address ? o.billing_address.name : 'Khách Vãng Lai');
+            const custPhone = (o.shipping_address && o.shipping_address.phone) || (o.customer && o.customer.phone) || '--';
+            const deliveryAddr = o.shipping_address 
+                ? `${o.shipping_address.address1 || ''}${o.shipping_address.city ? ', ' + o.shipping_address.city : ''}`
+                : 'Nhận tại quầy / Chưa có địa chỉ';
+
+            let noteHtml = '';
+            if (o.note) {
+                noteHtml = `
+                    <div class="mt-1 px-1.5 py-0.5 rounded bg-[#FBEDD6]/80 text-[#CB912F] text-[10px] font-medium flex items-center gap-1 border border-[#F8E5C4]">
+                        <span>💬</span><span class="truncate">${escapeHtml(o.note)}</span>
+                    </div>
+                `;
+            }
+
+            // Line items snippet
+            const lineItems = o.line_items || [];
+            let itemsSnippet = '';
+            lineItems.slice(0, 3).forEach(it => {
+                itemsSnippet += `
+                    <div class="flex items-start text-[11px] py-0.5 leading-snug">
+                        <span class="px-1 py-0.2 rounded bg-[rgba(55,53,47,0.08)] font-mono font-semibold text-[#37352F] mr-1.5 shrink-0">${it.quantity}x</span>
+                        <span class="text-[#37352F] truncate" title="${escapeHtml(it.title || it.name)}">${escapeHtml(it.title || it.name)}</span>
+                        ${it.sku ? `<span class="ml-1 text-[9px] font-mono text-[#787774] bg-[#F7F6F3] px-1 py-0.2 rounded border border-[rgba(55,53,47,0.06)] shrink-0">${it.sku}</span>` : ''}
+                    </div>
+                `;
+            });
+            if (lineItems.length > 3) {
+                itemsSnippet += `<div class="text-[10px] text-[#787774] italic font-medium mt-0.5">+ ${lineItems.length - 3} món khác...</div>`;
+            }
+
+            const totalAmount = o.total_price || 0;
+
+            // Action Buttons
+            let actionsHtml = `
+                <div class="flex items-center justify-end flex-wrap gap-1">
+                    ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
+                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
+                            <span>⚡</span><span>Phân Tuyến</span>
+                        </button>
+                    ` : ''}
+
+                    ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2 py-1 rounded border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[11px] font-medium transition-colors" title="Đổi chi nhánh thực hiện đơn">
+                            Đổi CN
+                        </button>
+                    ` : ''}
+
+                    ${!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                        <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-2 py-1 rounded border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
+                            Y/C Đổi
+                        </button>
+                    ` : ''}
+
+                    ${!isUnassigned && procStatus === 'Đã phân tuyến' ? `
+                        <button onclick="updateHaravanProcessingStatus('${o.id}', 'Đã đóng gói')" class="px-2.5 py-1 rounded bg-[#EDF3EC] hover:bg-[#E2EDE1] text-[#448361] border border-[#CDE3CD] text-[11px] font-medium transition-colors">
+                            📦 Đóng Gói
+                        </button>
+                    ` : ''}
+
+                    ${!isUnassigned && procStatus === 'Đã đóng gói' ? `
+                        <button onclick="openHaravanFulfillmentModal('${o.id}')" class="px-2.5 py-1 rounded bg-[#F4EFF7] hover:bg-[#EDE5F2] text-[#9065B0] border border-[#E0D2E8] text-[11px] font-medium transition-colors">
+                            🚚 Gửi VĐ
+                        </button>
+                    ` : ''}
+
+                    ${!isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
+                        <button onclick="openHaravanCompleteModal('${o.id}')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors">
+                            ✅ Hoàn Tất
+                        </button>
+                    ` : ''}
+
+                    <button onclick="openHaravanDetailsModal('${o.id}')" class="px-2 py-1 rounded border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[11px] font-medium text-[#37352F] transition-colors" title="Xem chi tiết đơn & lịch sử phân tuyến">
+                        <span>👁️ Chi tiết</span>
+                    </button>
+                </div>
+            `;
+
+            rowsHtml += `
+                <tr class="hover:bg-[#FAF9F6] transition-colors ${isUnassigned ? 'bg-[#FFFDF9] border-l-4 border-l-[#CB912F]' : ''}">
+                    <td class="py-2.5 px-3">
+                        <div class="flex items-center gap-1.5">
+                            <span class="font-mono font-bold text-[#37352F] text-[12px]">${o.order_number || ('#' + o.id)}</span>
+                            ${channelBadge}
+                        </div>
+                        <div class="text-[11px] text-[#787774] mt-0.5 flex items-center gap-1" title="${fullDate}">
+                            <span>🕒</span><span>${timeAgo}</span>
+                            <span class="text-[rgba(55,53,47,0.2)]">·</span>
+                            <span class="font-mono text-[10px] text-[#9B9A97]">#${o.id}</span>
+                        </div>
+                    </td>
+                    <td class="py-2.5 px-3 whitespace-nowrap">
+                        ${storeBadge}
+                    </td>
+                    <td class="py-2.5 px-3 max-w-[240px]">
+                        <div class="flex items-center justify-between">
+                            <span class="font-medium text-[#37352F] text-[12px] truncate">${custName}</span>
+                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-[#2F7EA6] font-medium hover:underline ml-1 shrink-0">📞 ${custPhone}</a>` : ''}
+                        </div>
+                        <div class="text-[11px] text-[#787774] truncate mt-0.5" title="${escapeHtml(deliveryAddr)}">${escapeHtml(deliveryAddr)}</div>
+                        ${noteHtml}
+                    </td>
+                    <td class="py-2.5 px-3 max-w-[280px]">
+                        ${itemsSnippet}
+                    </td>
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div class="font-mono font-bold text-[#37352F] text-[13px]">${formatVND(totalAmount)}</div>
+                        <div class="text-[10px] text-[#9B9A97]">${lineItems.length} món</div>
+                    </td>
+                    <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                        ${statusBadge}
+                    </td>
+                    <td class="py-2.5 px-3 text-right">
+                        ${actionsHtml}
+                    </td>
+                </tr>
+            `;
+        });
+
+        return `
+            <div class="overflow-x-auto bg-white rounded-md border border-[rgba(55,53,47,0.09)]">
+                <table class="w-full text-left border-collapse orders-table">
+                    <thead class="bg-[#F7F6F3] text-[11px] font-semibold text-[#787774] uppercase tracking-wider border-b border-[rgba(55,53,47,0.09)]">
+                        <tr>
+                            <th class="py-2.5 px-3">Mã Đơn & Kênh</th>
+                            <th class="py-2.5 px-3">Chi Nhánh</th>
+                            <th class="py-2.5 px-3">Khách Hàng & Địa Chỉ</th>
+                            <th class="py-2.5 px-3">Danh Sách Món</th>
+                            <th class="py-2.5 px-3 text-right">Tổng Tiền</th>
+                            <th class="py-2.5 px-3 text-center">Trạng Thái</th>
+                            <th class="py-2.5 px-3 text-right">Thao Tác Quản Trị</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[rgba(55,53,47,0.06)] text-[#37352F]">
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    // Render Orders Feed (Supports Table & Card Views)
     function renderOrders(orders) {
         currentOrdersCache = orders;
         const container = document.getElementById('orders-container');
@@ -1063,9 +1478,14 @@
                         🛵
                     </div>
                     <h3 class="font-semibold text-sm text-[#37352F]">Hiện không có đơn hàng nào</h3>
-                    <p class="text-[12px] text-[#787774] mt-1">Đơn hàng mới từ ShopeeFood, GrabMart sẽ tự động xuất hiện tại đây ngay khi có khách đặt.</p>
+                    <p class="text-[12px] text-[#787774] mt-1">Đơn hàng mới từ ShopeeFood, GrabMart, ShopeeMart sẽ tự động xuất hiện tại đây ngay khi có khách đặt.</p>
                 </div>
             `;
+            return;
+        }
+
+        if (currentViewMode === 'table') {
+            container.innerHTML = renderOrdersTable(orders);
             return;
         }
 
@@ -1177,10 +1597,6 @@
                     <!-- Bottom Row: 1-Click Action Buttons -->
                     <div class="pt-3 border-t border-[rgba(55,53,47,0.09)] flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-1.5">
-                            <button onclick="openReceiptModal('${o.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1">
-                                <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                                <span>In Phiếu 80mm</span>
-                            </button>
                             ${o.channel_code === 'SHOPEEMART' ? `
                                 <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
                                     <span>📄</span>
@@ -1407,10 +1823,6 @@
                     <!-- Bottom Row: Action Buttons Follow PMDONHANG -->
                     <div class="pt-3 border-t border-[rgba(55,53,47,0.09)] flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-1.5">
-                            <button onclick="openReceiptModal('${o.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1">
-                                <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                                <span>In Phiếu 80mm</span>
-                            </button>
                             <button onclick="openDetailsModal('${o.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors">
                                 Chi tiết & Lịch sử
                             </button>
@@ -1691,135 +2103,6 @@
         }
     }
 
-    // Thermal Receipt Modal (80mm) - Supports Platform & Haravan
-    function openReceiptModal(orderId) {
-        const order = currentOrdersCache.find(x => String(x.id) === String(orderId));
-        if (!order) return;
-
-        const isHaravan = !!(order.source || order.line_items || order.order_number);
-        const dateStr = new Date(order.created_at || order.order_time).toLocaleString('vi-VN');
-        
-        let storeLabel = 'Nam An Market';
-        let channelTitle = '';
-        let orderCodeStr = '';
-        let channelCodeStr = '';
-        let custNameStr = '';
-        let custPhoneStr = '';
-        let deliveryAddrStr = '';
-        let driverStr = '';
-        let subtotalVal = 0;
-        let discountVal = 0;
-        let shippingVal = 0;
-        let totalVal = 0;
-        let itemsLines = '';
-
-        if (isHaravan) {
-            const internal = order.internal || {};
-            storeLabel = internal.assigned_store ? `Chi nhánh ${internal.assigned_store}` : 'Tổng Đài Điều Phối (Chưa phân tuyến)';
-            channelTitle = `HARAVAN OMNICHANNEL (${(order.source || 'WEB').toUpperCase()})`;
-            orderCodeStr = order.order_number || ('#' + order.id);
-            channelCodeStr = '#' + order.id;
-            custNameStr = (order.customer && (order.customer.first_name || order.customer.last_name))
-                ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
-                : (order.billing_address ? order.billing_address.name : 'Khách Vãng Lai');
-            custPhoneStr = (order.shipping_address && order.shipping_address.phone) || (order.customer && order.customer.phone) || '--';
-            deliveryAddrStr = order.shipping_address 
-                ? `${order.shipping_address.address1 || ''}${order.shipping_address.city ? ', ' + order.shipping_address.city : ''}`
-                : 'Nhận tại quầy / Chưa có địa chỉ';
-            if (internal.carrier || internal.tracking_code) {
-                driverStr = `<div><strong>Vận chuyển:</strong> ${internal.carrier || 'Nam An Market'} (Mã VĐ: ${internal.tracking_code || 'Chưa có'})</div>`;
-            }
-            subtotalVal = order.total_line_items_price || order.subtotal_price || order.total_price || 0;
-            discountVal = order.total_discounts || 0;
-            shippingVal = (order.shipping_lines && order.shipping_lines[0] && order.shipping_lines[0].price) || 0;
-            totalVal = order.total_price || 0;
-
-            (order.line_items || []).forEach(itm => {
-                const itmTotal = (itm.price || 0) * (itm.quantity || 1);
-                itemsLines += `
-                    <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
-                        <span style="flex:1;">${itm.quantity}x ${itm.title || itm.name}</span>
-                        <span style="font-weight:bold;">${formatVND(itmTotal)}</span>
-                    </div>
-                    ${itm.sku ? `<div style="font-size:10px; color:#666; padding-left:10px;">SKU: ${itm.sku}</div>` : ''}
-                `;
-            });
-        } else {
-            storeLabel = order.store_name || (order.store_code ? `Chi nhánh ${order.store_code}` : 'Nam An Market');
-            channelTitle = `ĐƠN HÀNG: ${order.channel_code}`;
-            orderCodeStr = order.order_code;
-            channelCodeStr = '#' + (order.display_order_id || order.channel_order_id);
-            custNameStr = order.customer_name || 'Khách vãng lai';
-            custPhoneStr = order.customer_phone || '--';
-            deliveryAddrStr = order.delivery_address || 'Quầy thu ngân';
-            if (order.driver_name) {
-                driverStr = `<div><strong>Tài xế:</strong> ${order.driver_name} (${order.driver_phone || ''})</div>`;
-            }
-            subtotalVal = order.subtotal_amount || 0;
-            discountVal = order.discount_amount || 0;
-            shippingVal = order.delivery_fee || 0;
-            totalVal = order.total_amount || 0;
-
-            (order.items || []).forEach(itm => {
-                itemsLines += `
-                    <div style="display:flex; justify-content:space-between; margin-bottom: 2px;">
-                        <span style="flex:1;">${itm.quantity}x ${itm.item_name}</span>
-                        <span style="font-weight:bold;">${formatVND(itm.total_price)}</span>
-                    </div>
-                    ${itm.notes ? `<div style="font-size:10px; color:#555; padding-left:10px; font-style:italic;">* ${itm.notes}</div>` : ''}
-                `;
-            });
-        }
-
-        const receiptHtml = `
-            <div style="text-align:center; padding-bottom: 6px; border-bottom: 1px dashed #000;">
-                <div style="font-weight:900; font-size:15px;">NAM AN MARKET</div>
-                <div style="font-size:11px;">Thực Phẩm Tươi Sống Hữu Cơ</div>
-                <div style="font-size:10px; color:#444;">${storeLabel}</div>
-                <div style="font-weight:bold; margin-top:4px; font-size:13px; text-transform:uppercase;">
-                    ${channelTitle}
-                </div>
-            </div>
-
-            <div style="margin: 8px 0; font-size:11px;">
-                <div><strong>Mã đơn:</strong> ${orderCodeStr}</div>
-                <div><strong>Mã sàn:</strong> ${channelCodeStr}</div>
-                <div><strong>Thời gian:</strong> ${dateStr}</div>
-                <div><strong>Khách hàng:</strong> ${custNameStr}</div>
-                <div><strong>SĐT:</strong> ${custPhoneStr}</div>
-                <div><strong>Địa chỉ:</strong> ${deliveryAddrStr}</div>
-                ${driverStr}
-            </div>
-
-            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 6px 0; margin: 6px 0;">
-                ${itemsLines}
-            </div>
-
-            <div style="font-size:11px; margin-bottom: 8px;">
-                <div style="display:flex; justify-content:space-between;"><span>Tạm tính:</span><span>${formatVND(subtotalVal)}</span></div>
-                ${discountVal > 0 ? `<div style="display:flex; justify-content:space-between; color:#c00;"><span>Khuyến mãi:</span><span>-${formatVND(discountVal)}</span></div>` : ''}
-                ${shippingVal > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Phí giao:</span><span>${formatVND(shippingVal)}</span></div>` : ''}
-                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:bold; margin-top:4px; border-top:1px solid #000; padding-top:4px;">
-                    <span>TỔNG CỘNG:</span>
-                    <span>${formatVND(totalVal)}</span>
-                </div>
-            </div>
-
-            <div style="text-align:center; font-size:10px; border-top: 1px dashed #000; padding-top: 6px;">
-                <div>Cảm ơn quý khách đã tin dùng Nam An Market!</div>
-                <div>Hotline hỗ trợ: 1900 636 123</div>
-            </div>
-        `;
-
-        document.getElementById('thermal-receipt-container').innerHTML = receiptHtml;
-        document.getElementById('thermal-receipt-modal').classList.remove('hidden');
-    }
-
-    function closeReceiptModal() {
-        document.getElementById('thermal-receipt-modal').classList.add('hidden');
-    }
-
-    // =========================================================================
     // ORDER DETAILS & AUDIT DIALOG (FOLLOW 100% PMDONHANG ARCHITECTURE)
     // =========================================================================
     let currentDetailOrder = null;
@@ -2573,11 +2856,7 @@
         // 7. FOOTER ACTION BUTTONS
         let footerHtml = `
             <div class="flex items-center space-x-2">
-                <button onclick="openReceiptModal('${order.id}')" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1.5">
-                    <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                    <span>🖨️ In Đơn (80mm)</span>
-                </button>
-            </div>
+                </div>
 
             <div class="flex flex-wrap items-center gap-2">
                 ${(isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
@@ -2758,10 +3037,6 @@
         // FOOTER ACTIONS
         let footerHtml = `
             <div class="flex items-center space-x-2">
-                <button onclick="openReceiptModal('${order.id}')" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1.5">
-                    <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                    <span>In Phiếu 80mm</span>
-                </button>
                 ${order.channel_code === 'SHOPEEMART' ? `
                     <button onclick="openShopeeAwbModal('${order.channel_order_id || order.display_order_id}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
                         <span>📄</span>
@@ -3425,6 +3700,8 @@
 
     // Initialize Page
     document.addEventListener('DOMContentLoaded', async () => {
+        updateViewModeButtons();
+        updatePipelineTabsUI(currentPipelineStage);
         updateStatusDropdown(currentFilter.is_haravan);
         updateChannelPillsActive('INCOMPLETE');
         await loadStoresForFilter();
