@@ -1216,8 +1216,9 @@
                         </button>
                     ` : ''}
 
-                    <button onclick="openDetailsModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all" title="Xem chi tiết đơn hàng & lịch sử">
-                        Chi Tiết
+                    <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs" title="Xem chi tiết đơn hàng & lịch sử">
+                        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        <span>Chi Tiết</span>
                     </button>
                 </div>
             `;
@@ -1225,12 +1226,17 @@
             rowsHtml += `
                 <tr class="transition-colors ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/80'}">
                     <td class="py-4 px-5">
-                        <div class="flex items-center gap-2">
-                            <span class="font-mono font-bold text-slate-900 text-sm">${o.order_code}</span>
-                            ${channelBadge}
-                        </div>
-                        <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
-                            ${timeAgo} · #${o.display_order_id || o.channel_order_id}
+                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono font-bold text-slate-900 text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
+                                    ${o.order_code}
+                                    <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </span>
+                                ${channelBadge}
+                            </div>
+                            <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                                ${timeAgo} · #${o.display_order_id || o.channel_order_id}
+                            </div>
                         </div>
                     </td>
                     <td class="py-4 px-5 whitespace-nowrap">
@@ -1388,8 +1394,9 @@
                         </button>
                     ` : ''}
 
-                    <button onclick="openHaravanDetailsModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all" title="Xem chi tiết đơn & lịch sử phân tuyến">
-                        Chi Tiết
+                    <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs" title="Xem chi tiết đơn & lịch sử phân tuyến">
+                        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        <span>Chi Tiết</span>
                     </button>
                 </div>
             `;
@@ -1397,12 +1404,17 @@
             rowsHtml += `
                 <tr class="transition-colors ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/80'}">
                     <td class="py-4 px-5">
-                        <div class="flex items-center gap-2">
-                            <span class="font-mono font-bold text-slate-900 text-sm">${o.order_number || ('#' + o.id)}</span>
-                            ${channelBadge}
-                        </div>
-                        <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
-                            ${timeAgo} · #${o.id}
+                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
+                            <div class="flex items-center gap-2">
+                                <span class="font-mono font-bold text-slate-900 text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
+                                    ${o.order_number || ('#' + o.id)}
+                                    <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </span>
+                                ${channelBadge}
+                            </div>
+                            <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                                ${timeAgo} · #${o.id}
+                            </div>
                         </div>
                     </td>
                     <td class="py-4 px-5 whitespace-nowrap">
@@ -1808,8 +1820,9 @@
                     <!-- Bottom Row: Action Buttons Follow PMDONHANG -->
                     <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-2">
-                            <button onclick="openHaravanDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
-                                Chi tiết & Lịch sử
+                            <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all flex items-center space-x-1.5 shadow-2xs">
+                                <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                <span>Chi tiết & Lịch sử</span>
                             </button>
                         </div>
 
@@ -3060,8 +3073,33 @@
 
     // Main Open Details Modal function
     async function openDetailsModal(orderId) {
-        let order = currentOrdersCache.find(x => String(x.id) === String(orderId));
-        if (!order) return;
+        if (!orderId) return;
+
+        let order = currentOrdersCache.find(x => String(x.id) === String(orderId) || String(x.order_number) === String(orderId) || String(x.order_code) === String(orderId));
+        
+        // Fallback: If not found in memory cache, fetch directly from API
+        if (!order) {
+            try {
+                let res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
+                let json = await res.json();
+                if (res.ok && json.success && json.data) {
+                    order = json.data;
+                } else {
+                    res = await authFetch(`/api/v1/orders/${orderId}`);
+                    json = await res.json();
+                    if (res.ok && json.success && json.data) {
+                        order = json.data;
+                    }
+                }
+            } catch (e) {
+                console.error("Lỗi khi tải chi tiết đơn hàng:", e);
+            }
+        }
+
+        if (!order) {
+            showToast("Không tìm thấy thông tin đơn hàng #" + orderId, "error");
+            return;
+        }
 
         currentDetailOrder = order;
         switchDetailTab('basic');
@@ -3093,6 +3131,13 @@
             renderPlatformDetailModal(order);
         }
     }
+
+    // Alias for backwards compatibility
+    function openHaravanDetailsModal(orderId) {
+        return openDetailsModal(orderId);
+    }
+    window.openHaravanDetailsModal = openHaravanDetailsModal;
+    window.openDetailsModal = openDetailsModal;
 
     // =========================================================================
     // HARAVAN DISPATCH & LIFECYCLE MODAL HANDLERS (FOLLOW 100% PMDONHANG)
