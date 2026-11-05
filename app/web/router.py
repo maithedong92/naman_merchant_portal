@@ -63,6 +63,11 @@ async def orders_dispatch_page(request: Request):
             "active_page": "orders",
             "app_name": settings.APP_NAME,
             "app_version": settings.APP_VERSION,
+        },
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
         }
     )
 

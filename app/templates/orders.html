@@ -1669,6 +1669,11 @@
             return;
         }
 
+        if (currentViewMode === 'table') {
+            container.innerHTML = renderHaravanOrdersTable(orders);
+            return;
+        }
+
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
         const canDispatch = isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER');
