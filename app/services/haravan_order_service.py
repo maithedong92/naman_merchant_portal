@@ -255,6 +255,10 @@ class HaravanOrderService:
                 {"order_number": order_id_or_sn},
             ]
         }
+        try:
+            query["$or"].append({"id": int(order_id_or_sn)})
+        except (ValueError, TypeError):
+            pass
         if ObjectId.is_valid(order_id_or_sn):
             query["$or"].append({"_id": ObjectId(order_id_or_sn)})
 

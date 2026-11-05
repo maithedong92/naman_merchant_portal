@@ -257,8 +257,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 2: Cancel Order Modal -->
 <!-- ======================================================================= -->
-<div id="cancel-order-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+<div id="cancel-order-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
             <h3 class="font-extrabold text-sm text-rose-700 flex items-center space-x-2">
                 <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -304,8 +304,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 3: Comprehensive Order Details Dialog (Option 3 Apple Retail - Follow 100% PMDONHANG) -->
 <!-- ======================================================================= -->
-<div id="order-details-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
-    <div class="bg-white rounded-3xl max-w-5xl w-full p-6 sm:p-7 border border-slate-200/80 apple-shadow relative text-slate-900 max-h-[92vh] flex flex-col">
+<div id="order-details-modal" onclick="handleDetailsBackdropClick(event)" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-5xl w-full p-6 sm:p-7 border border-slate-200/80 apple-shadow relative text-slate-900 max-h-[92vh] flex flex-col" onclick="event.stopPropagation()">
         <!-- 1. Header Bar: Channel Badge, Order Code, Copy button, Close button -->
         <div class="flex flex-wrap items-center justify-between pb-4 border-b border-slate-100 shrink-0 gap-2">
             <div class="flex flex-wrap items-center gap-2.5">
@@ -370,8 +370,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 4: ShopeeMart AWB Airway Bill Print Preview (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="shopee-awb-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-lg w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+<div id="shopee-awb-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 no-print">
             <div class="flex items-center space-x-2">
                 <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
@@ -397,8 +397,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 5: Haravan Order Store Assignment Modal with Live Arito ERP Stock (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-assign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-7 border border-slate-200/80 apple-shadow relative text-slate-900 max-h-[92vh] overflow-y-auto">
+<div id="haravan-assign-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-7 border border-slate-200/80 apple-shadow relative text-slate-900 max-h-[92vh] overflow-y-auto" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
                 <div class="flex items-center space-x-2 mb-1">
@@ -502,8 +502,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 6: Request Reassignment Modal (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-reassign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+<div id="haravan-reassign-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
             <h3 class="font-extrabold text-sm text-rose-700 flex items-center space-x-2">
                 <span>Yêu Cầu Phân Tuyến Lại</span>
@@ -550,8 +550,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 7: Ship Order Modal (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-ship-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+<div id="haravan-ship-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
             <h3 class="font-extrabold text-sm text-purple-700 flex items-center space-x-2">
                 <span>Xác Nhận Gửi Vận Đơn</span>
@@ -603,8 +603,8 @@
 <!-- ======================================================================= -->
 <!-- Modal 8: Complete Order Modal (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-complete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+<div id="haravan-complete-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900" onclick="event.stopPropagation()">
         <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
             <h3 class="font-extrabold text-sm text-emerald-800 flex items-center space-x-2">
                 <span>Xác Nhận Hoàn Thành Đơn Hàng</span>
@@ -665,7 +665,14 @@
 {% block extra_scripts %}
 <script>
     // Global State (Default to Haravan Omnichannel Incomplete Orders like PMDONHANG)
-    let currentViewMode = localStorage.getItem('orders_view_mode') || 'table';
+    function getStoredViewMode() {
+        try {
+            return localStorage.getItem('orders_view_mode') || 'table';
+        } catch(e) {
+            return 'table';
+        }
+    }
+    let currentViewMode = getStoredViewMode();
     let currentPipelineStage = 'ALL';
     let currentFilter = {
         channel_code: 'HARAVAN',
@@ -1147,6 +1154,7 @@
     
     // Render Orders Spreadsheet Table (Platform Orders: ShopeeFood, GrabMart, ShopeeMart - Option 3 Apple Retail)
     function renderOrdersTable(orders) {
+        currentOrdersCache = orders;
         let rowsHtml = '';
         orders.forEach(o => {
             const isPending = o.status === 'PENDING';
@@ -1224,7 +1232,7 @@
             `;
 
             rowsHtml += `
-                <tr class="transition-colors ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/80'}">
+                <tr onclick="handleOrderRowClick(event, '${o.id}')" class="transition-colors cursor-pointer ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
                     <td class="py-4 px-5">
                         <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
                             <div class="flex items-center gap-2">
@@ -1235,6 +1243,10 @@
                                 ${channelBadge}
                             </div>
                             <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                                ${timeAgo} · #${o.display_order_id || o.channel_order_id}
+                            </div>
+                        </div>
+                    </td>
                                 ${timeAgo} · #${o.display_order_id || o.channel_order_id}
                             </div>
                         </div>
@@ -1295,6 +1307,7 @@
 
     // Render Haravan Orders Spreadsheet Table (Omnichannel Orders - Option 3 Apple Retail)
     function renderHaravanOrdersTable(orders) {
+        currentOrdersCache = orders;
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
         const canDispatch = isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER');
@@ -1377,19 +1390,19 @@
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã phân tuyến' ? `
-                        <button onclick="updateHaravanProcessingStatus('${o.id}', 'Đã đóng gói')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="executeHaravanPack('${o.id}')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
                             Đóng Gói
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã đóng gói' ? `
-                        <button onclick="openHaravanFulfillmentModal('${o.id}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
                             Gửi VĐ
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
-                        <button onclick="openHaravanCompleteModal('${o.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
                             Hoàn Tất
                         </button>
                     ` : ''}
@@ -1402,7 +1415,7 @@
             `;
 
             rowsHtml += `
-                <tr class="transition-colors ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/80'}">
+                <tr onclick="handleOrderRowClick(event, '${o.id}')" class="transition-colors cursor-pointer ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
                     <td class="py-4 px-5">
                         <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
                             <div class="flex items-center gap-2">
@@ -1536,8 +1549,13 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <span class="text-sm font-extrabold text-slate-900 font-mono">${o.order_code}</span>
-                            <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.display_order_id || o.channel_order_id}</span>
+                            <div onclick="openDetailsModal('${o.id}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
+                                <span class="text-sm font-extrabold text-slate-900 font-mono group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
+                                    ${o.order_code}
+                                    <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.display_order_id || o.channel_order_id}</span>
+                            </div>
                             <span class="text-xs text-slate-500 font-medium">• ${storeLabel}</span>
                         </div>
                         <div class="flex items-center space-x-2">
@@ -1770,8 +1788,13 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <span class="text-sm font-extrabold text-slate-900 font-mono">${o.order_number || ('#' + o.id)}</span>
-                            <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.id}</span>
+                            <div onclick="openDetailsModal('${o.id}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
+                                <span class="text-sm font-extrabold text-slate-900 font-mono group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
+                                    ${o.order_number || ('#' + o.id)}
+                                    <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.id}</span>
+                            </div>
                             ${storeBadge}
                         </div>
                         <div class="flex items-center space-x-2">
@@ -2026,7 +2049,11 @@
         currentCancellingOrderIsHaravan = false;
         document.getElementById('cancel-modal-order-code').textContent = orderCode;
         document.getElementById('cancel-modal-note').value = '';
-        document.getElementById('cancel-order-modal').classList.remove('hidden');
+        const m = document.getElementById('cancel-order-modal');
+        if (m) {
+            m.classList.remove('hidden');
+            m.style.display = 'flex';
+        }
     }
 
     function openHaravanCancelModal(orderId, orderNumber) {
@@ -2034,13 +2061,21 @@
         currentCancellingOrderIsHaravan = true;
         document.getElementById('cancel-modal-order-code').textContent = orderNumber || ('#' + orderId);
         document.getElementById('cancel-modal-note').value = '';
-        document.getElementById('cancel-order-modal').classList.remove('hidden');
+        const m = document.getElementById('cancel-order-modal');
+        if (m) {
+            m.classList.remove('hidden');
+            m.style.display = 'flex';
+        }
     }
 
     function closeCancelModal() {
         currentCancellingOrderId = null;
         currentCancellingOrderIsHaravan = false;
-        document.getElementById('cancel-order-modal').classList.add('hidden');
+        const m = document.getElementById('cancel-order-modal');
+        if (m) {
+            m.classList.add('hidden');
+            m.style.display = 'none';
+        }
     }
 
     async function executeCancelOrder() {
@@ -2122,8 +2157,29 @@
         }
     }
 
+    function handleOrderRowClick(event, orderId) {
+        if (!orderId) return;
+        // Don't trigger if clicked on interactive elements (buttons, links, inputs, selects, labels)
+        if (event.target.closest('button, a, input, select, textarea, label, [onclick*="Cancel"], [onclick*="Assign"], [onclick*="Ship"], [onclick*="Complete"], [onclick*="Pack"]')) {
+            return;
+        }
+        openDetailsModal(orderId);
+    }
+    window.handleOrderRowClick = handleOrderRowClick;
+
+    function handleDetailsBackdropClick(event) {
+        if (event.target.id === 'order-details-modal') {
+            closeDetailsModal();
+        }
+    }
+    window.handleDetailsBackdropClick = handleDetailsBackdropClick;
+
     function closeDetailsModal() {
-        document.getElementById('order-details-modal').classList.add('hidden');
+        const modal = document.getElementById('order-details-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
     }
 
     function switchDetailTab(tabName) {
@@ -3074,9 +3130,16 @@
     // Main Open Details Modal function
     async function openDetailsModal(orderId) {
         if (!orderId) return;
+        console.log('[openDetailsModal] Opening modal for ID:', orderId);
 
         let order = currentOrdersCache.find(x => String(x.id) === String(orderId) || String(x.order_number) === String(orderId) || String(x.order_code) === String(orderId));
         
+        const modal = document.getElementById('order-details-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
         // Fallback: If not found in memory cache, fetch directly from API
         if (!order) {
             try {
@@ -3098,37 +3161,45 @@
 
         if (!order) {
             showToast("Không tìm thấy thông tin đơn hàng #" + orderId, "error");
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
             return;
         }
 
         currentDetailOrder = order;
         switchDetailTab('basic');
-        document.getElementById('order-details-modal').classList.remove('hidden');
 
         const isHaravan = !!(order.source || order.line_items || order.order_number || (order.channel_code && order.channel_code.toUpperCase().includes('HARAVAN')));
 
-        if (isHaravan) {
-            // Hiển thị ngay lập tức với dữ liệu cache (Zero Latency)
-            renderHaravanDetailModal(order, true);
+        try {
+            if (isHaravan) {
+                // Hiển thị ngay lập tức với dữ liệu cache (Zero Latency)
+                renderHaravanDetailModal(order, true);
 
-            // Tải chi tiết và tồn kho Arito thời gian thực từ API
-            try {
-                const res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
-                if (res.ok) {
-                    const json = await res.json();
-                    if (json.success && json.data) {
-                        currentDetailOrder = json.data;
-                        const idx = currentOrdersCache.findIndex(x => String(x.id) === String(orderId));
-                        if (idx !== -1) currentOrdersCache[idx] = json.data;
-                        renderHaravanDetailModal(json.data, false);
+                // Tải chi tiết và tồn kho Arito thời gian thực từ API
+                try {
+                    const res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        if (json.success && json.data && typeof json.data === 'object' && !Array.isArray(json.data)) {
+                            currentDetailOrder = json.data;
+                            const idx = currentOrdersCache.findIndex(x => String(x.id) === String(orderId));
+                            if (idx !== -1) currentOrdersCache[idx] = json.data;
+                            renderHaravanDetailModal(json.data, false);
+                        }
                     }
+                } catch (e) {
+                    console.warn('Lỗi khi tải tồn kho Arito cho đơn hàng:', e);
+                    renderHaravanDetailModal(order, false);
                 }
-            } catch (e) {
-                console.warn('Lỗi khi tải tồn kho Arito cho đơn hàng:', e);
-                renderHaravanDetailModal(order, false);
+            } else {
+                renderPlatformDetailModal(order);
             }
-        } else {
-            renderPlatformDetailModal(order);
+        } catch (err) {
+            console.error('Lỗi khi render modal chi tiết đơn:', err);
+            showToast('Không thể hiển thị chi tiết đơn: ' + err.message, 'error');
         }
     }
 
@@ -3157,6 +3228,7 @@
         tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-gray-400">Đang đối chiếu dữ liệu tồn kho từ Arito ERP...</td></tr>`;
         recBox.classList.add('hidden');
         modal.classList.remove('hidden');
+        modal.style.display = 'flex';
 
         try {
             const res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
@@ -3279,7 +3351,11 @@
     function closeHaravanAssignModal() {
         currentHaravanOrderId = null;
         currentHaravanOrderDetail = null;
-        document.getElementById('haravan-assign-modal').classList.add('hidden');
+        const modal = document.getElementById('haravan-assign-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
     }
 
     async function executeHaravanAssign() {
@@ -3320,14 +3396,26 @@
     // 2. Reassignment Request Modal Handlers
     function openHaravanReassignModal(orderId, orderNumber) {
         currentHaravanOrderId = orderId;
+        if (!orderNumber) {
+            const found = currentOrdersCache.find(x => String(x.id) === String(orderId));
+            if (found) orderNumber = found.order_number || ('#' + found.id);
+        }
         document.getElementById('reassign-modal-order-number').textContent = orderNumber || orderId;
         document.getElementById('reassign-input-note').value = '';
-        document.getElementById('haravan-reassign-modal').classList.remove('hidden');
+        const modal = document.getElementById('haravan-reassign-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
     }
 
     function closeHaravanReassignModal() {
         currentHaravanOrderId = null;
-        document.getElementById('haravan-reassign-modal').classList.add('hidden');
+        const modal = document.getElementById('haravan-reassign-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
     }
 
     async function executeHaravanReassign() {
@@ -3383,15 +3471,27 @@
     // 4. Ship Order Modal Handlers
     function openHaravanShipModal(orderId, orderNumber) {
         currentHaravanOrderId = orderId;
+        if (!orderNumber) {
+            const found = currentOrdersCache.find(x => String(x.id) === String(orderId));
+            if (found) orderNumber = found.order_number || ('#' + found.id);
+        }
         document.getElementById('ship-modal-order-number').textContent = orderNumber || orderId;
         document.getElementById('ship-input-tracking').value = '';
         document.getElementById('ship-input-note').value = '';
-        document.getElementById('haravan-ship-modal').classList.remove('hidden');
+        const modal = document.getElementById('haravan-ship-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
     }
 
     function closeHaravanShipModal() {
         currentHaravanOrderId = null;
-        document.getElementById('haravan-ship-modal').classList.add('hidden');
+        const modal = document.getElementById('haravan-ship-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
     }
 
     async function executeHaravanShip() {
@@ -3437,18 +3537,33 @@
     // 5. Complete Order Modal Handlers
     function openHaravanCompleteModal(orderId, orderNumber, totalPrice) {
         currentHaravanOrderId = orderId;
+        if (!orderNumber || totalPrice === undefined) {
+            const found = currentOrdersCache.find(x => String(x.id) === String(orderId));
+            if (found) {
+                if (!orderNumber) orderNumber = found.order_number || ('#' + found.id);
+                if (totalPrice === undefined) totalPrice = found.total_price || 0;
+            }
+        }
         document.getElementById('complete-modal-order-number').textContent = orderNumber || orderId;
         document.getElementById('complete-input-total').value = totalPrice || 0;
         document.getElementById('complete-input-shipping').value = 0;
         document.getElementById('complete-input-carrier').value = 'Nam An Market';
         document.getElementById('complete-input-tracking').value = '';
         document.getElementById('complete-input-note').value = '';
-        document.getElementById('haravan-complete-modal').classList.remove('hidden');
+        const modal = document.getElementById('haravan-complete-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
     }
 
     function closeHaravanCompleteModal() {
         currentHaravanOrderId = null;
-        document.getElementById('haravan-complete-modal').classList.add('hidden');
+        const modal = document.getElementById('haravan-complete-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
     }
 
     async function executeHaravanComplete() {
@@ -3499,7 +3614,10 @@
     async function openShopeeAwbModal(orderSn) {
         const modal = document.getElementById('shopee-awb-modal');
         const container = document.getElementById('shopee-awb-content');
-        modal.classList.remove('hidden');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
         container.innerHTML = `<div class="p-8 text-center text-gray-400">Đang khởi tạo phiếu vận đơn AWB từ Shopee...</div>`;
 
         try {
@@ -3580,8 +3698,50 @@
     }
 
     function closeShopeeAwbModal() {
-        document.getElementById('shopee-awb-modal').classList.add('hidden');
+        const modal = document.getElementById('shopee-awb-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
     }
+
+    // Register all Modal Functions globally for foolproof inline onclick support
+    window.openHaravanFulfillmentModal = openHaravanShipModal;
+    window.updateHaravanProcessingStatus = function(orderId, status) {
+        if (status === 'Đã đóng gói') return executeHaravanPack(orderId);
+    };
+    window.openHaravanShipModal = openHaravanShipModal;
+    window.closeHaravanShipModal = closeHaravanShipModal;
+    window.openHaravanCompleteModal = openHaravanCompleteModal;
+    window.closeHaravanCompleteModal = closeHaravanCompleteModal;
+    window.openHaravanAssignModal = openHaravanAssignModal;
+    window.closeHaravanAssignModal = closeHaravanAssignModal;
+    window.openHaravanReassignModal = openHaravanReassignModal;
+    window.closeHaravanReassignModal = closeHaravanReassignModal;
+    window.executeHaravanPack = executeHaravanPack;
+    window.executeHaravanShip = executeHaravanShip;
+    window.executeHaravanComplete = executeHaravanComplete;
+    window.openShopeeAwbModal = openShopeeAwbModal;
+    window.closeShopeeAwbModal = closeShopeeAwbModal;
+    window.openCancelModal = openCancelModal;
+    window.openHaravanCancelModal = openHaravanCancelModal;
+    window.closeCancelModal = closeCancelModal;
+    window.openDetailsModal = openDetailsModal;
+    window.openHaravanDetailsModal = openDetailsModal;
+    window.closeDetailsModal = closeDetailsModal;
+
+    // Global keyboard listener for Escape key to dismiss any open modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+            closeDetailsModal();
+            closeCancelModal();
+            closeHaravanAssignModal();
+            closeHaravanReassignModal();
+            closeHaravanShipModal();
+            closeHaravanCompleteModal();
+            closeShopeeAwbModal();
+        }
+    });
 
     async function triggerShopeeMartPoll() {
         const btn = document.getElementById('btn-poll-shopeemart');
@@ -3663,7 +3823,7 @@
             if (res.ok) {
                 const json = await res.json();
                 if (json.success && json.data) {
-                    availableStores = json.data;
+                    availableStores = Array.isArray(json.data) ? json.data : (Array.isArray(json.data.items) ? json.data.items : []);
                     const selectEl = document.getElementById('filter-store-code');
                     if (selectEl) {
                         selectEl.innerHTML = '<option value="">Tất cả chi nhánh</option>';
