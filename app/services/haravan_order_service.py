@@ -125,10 +125,12 @@ class HaravanOrderService:
         has_global_access = (
             current_user.is_superuser
             or current_user.role == UserRole.SUPER_ADMIN.value
-            or user_store is None
+            or (user_store is None and current_user.role != UserRole.STAFF.value)
         )
 
         if not has_global_access:
+            if not user_store and current_user.role == UserRole.STAFF.value:
+                return [], 0
             # Tài khoản chi nhánh (CH10001..CH10006) chỉ thấy đơn đã phân tuyến về cửa hàng mình
             query["internal.assigned_store"] = user_store
         else:

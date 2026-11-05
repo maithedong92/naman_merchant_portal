@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Option 1: Modern SaaS (Linear & Vercel Ops) - Nam An Merchant Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        /* High-contrast crisp border styling */
+        .glass-header { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px); }
+    </style>
+</head>
+<body class="h-full text-slate-800 antialiased flex flex-col">
+
+    <!-- Option Indicator Bar -->
+    <div class="bg-slate-900 text-white text-xs px-4 py-2 flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div class="flex items-center space-x-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded font-mono font-bold bg-indigo-500 text-white text-[11px]">OPTION 1</span>
+            <span class="font-semibold text-slate-200">Phong cách: Modern SaaS Operations (Linear / Vercel Dashboard)</span>
+            <span class="text-slate-400 hidden sm:inline">· Độ tương phản cực cao, màu chữ đậm sắc nét, viền sắc cạnh, icon SVG chuẩn mực.</span>
+        </div>
+        <div class="flex items-center space-x-2 text-xs">
+            <span class="text-emerald-400 font-medium">● Độ tương phản: 9.2:1 (AAA)</span>
+        </div>
+    </div>
+
+    <!-- Top Navigation Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shrink-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                        NA
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-slate-900 leading-tight">Nam An Market</div>
+                        <div class="text-[11px] text-slate-500 font-medium">Merchant Dispatch Portal</div>
+                    </div>
+                </div>
+
+                <nav class="hidden md:flex items-center space-x-1">
+                    <a href="#" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-900">Đơn hàng</a>
+                    <a href="#" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">Tồn kho & SKU</a>
+                    <a href="#" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">Báo cáo</a>
+                    <a href="#" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors">Cấu hình kênh</a>
+                </nav>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <button class="px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 shadow-sm transition-colors flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Quét ShopeeMart</span>
+                </button>
+                <button class="px-3 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 shadow-sm transition-colors flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Đồng bộ Haravan</span>
+                </button>
+                <div class="h-4 w-px bg-slate-200"></div>
+                <div class="flex items-center space-x-2">
+                    <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="text-xs font-mono font-medium text-slate-600">Live POS: OK</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
+
+        <!-- Page Header & Summary Bar -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                    <span>Điều Phối Đơn Hàng Đa Kênh</span>
+                    <span class="px-2 py-0.5 rounded-full text-xs font-mono font-medium bg-slate-100 text-slate-700 border border-slate-200">5 đơn hôm nay</span>
+                </h1>
+                <p class="text-xs text-slate-500 mt-0.5">Tiếp nhận tức thời đơn ShopeeFood, GrabMart, ShopeeMart và phân tuyến Haravan theo tồn kho Arito ERP.</p>
+            </div>
+            <div class="flex items-center space-x-3">
+                <div class="text-right">
+                    <div class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Doanh Thu Thành Công</div>
+                    <div class="text-lg font-bold font-mono text-emerald-600 leading-tight">2.425.000 ₫</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6-Stage Workflow Pipeline Ribbon -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-1.5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5">
+            <!-- Stage 1: Cần Xử Lý -->
+            <button class="text-left p-2.5 rounded-lg border-2 border-amber-500 bg-amber-50/50 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                        Cần Xử Lý
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-mono text-xs font-bold">1</span>
+                </div>
+                <div class="text-[11px] font-medium text-amber-700 mt-1">Chờ duyệt / Phân tuyến</div>
+            </button>
+
+            <!-- Stage 2: Đang Soạn Hàng -->
+            <button class="text-left p-2.5 rounded-lg border border-transparent hover:bg-slate-50 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                        Đang Soạn
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 font-mono text-xs font-bold">1</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-1">Đã nhận / Đã phân tuyến</div>
+            </button>
+
+            <!-- Stage 3: Sẵn Sàng Giao -->
+            <button class="text-left p-2.5 rounded-lg border border-transparent hover:bg-slate-50 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                        Sẵn Sàng
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 font-mono text-xs font-bold">1</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-1">Đã đóng gói / Chờ xế</div>
+            </button>
+
+            <!-- Stage 4: Đang Vận Chuyển -->
+            <button class="text-left p-2.5 rounded-lg border border-transparent hover:bg-slate-50 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                        Đang Giao
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 font-mono text-xs font-bold">1</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-1">Tài xế / 3PL đang giao</div>
+            </button>
+
+            <!-- Stage 5: Hoàn Tất -->
+            <button class="text-left p-2.5 rounded-lg border border-transparent hover:bg-slate-50 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                        Hoàn Tất
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 font-mono text-xs font-bold">1</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-1">Đã giao thành công</div>
+            </button>
+
+            <!-- Stage 6: Tất Cả Đơn -->
+            <button class="text-left p-2.5 rounded-lg border border-transparent hover:bg-slate-50 transition-all">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-slate-900"></span>
+                        Tất Cả
+                    </span>
+                    <span class="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 font-mono text-xs font-bold">5</span>
+                </div>
+                <div class="text-[11px] text-slate-500 mt-1">Toàn bộ đơn hàng</div>
+            </button>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="bg-white rounded-xl border border-slate-200 p-3 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <!-- Channel Tabs -->
+            <div class="flex flex-wrap items-center gap-1.5">
+                <button class="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white shadow-sm">Tất cả sàn</button>
+                <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center space-x-1.5">
+                    <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                    <span>ShopeeFood</span>
+                </button>
+                <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center space-x-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    <span>GrabMart</span>
+                </button>
+                <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center space-x-1.5">
+                    <span class="w-2 h-2 rounded-full bg-pink-600"></span>
+                    <span>ShopeeMart</span>
+                </button>
+                <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center space-x-1.5">
+                    <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                    <span>Haravan Omnichannel</span>
+                </button>
+            </div>
+
+            <!-- Branch, Status & Search -->
+            <div class="flex flex-wrap items-center gap-2">
+                <select class="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white">
+                    <option value="">Tất cả chi nhánh (4 Siêu Thị)</option>
+                    <option value="10001">10001 - 21 Thảo Điền</option>
+                    <option value="10004">10004 - 46 Nguyễn Lương Bằng</option>
+                    <option value="10005">10005 - 17 Mai Chí Thọ</option>
+                    <option value="10006">10006 - 303 Nguyễn Văn Trỗi</option>
+                </select>
+
+                <div class="relative">
+                    <input type="text" placeholder="Tìm mã đơn, tên, SĐT..." class="w-52 pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white">
+                    <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                </div>
+
+                <!-- View Switcher -->
+                <div class="flex items-center p-0.5 rounded-lg border border-slate-200 bg-slate-100">
+                    <button class="px-2.5 py-1 rounded-md text-xs font-bold bg-white text-slate-900 shadow-sm flex items-center space-x-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                        <span>Bảng</span>
+                    </button>
+                    <button class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center space-x-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                        <span>Thẻ</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- High-Contrast Dense Orders Table -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100/75 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                            <th class="py-3 px-4">Mã Đơn & Sàn</th>
+                            <th class="py-3 px-4">Chi Nhánh</th>
+                            <th class="py-3 px-4">Khách Hàng & Giao Hàng</th>
+                            <th class="py-3 px-4 min-w-[240px]">Danh Sách Món</th>
+                            <th class="py-3 px-4 text-right">Tổng Tiền</th>
+                            <th class="py-3 px-4 text-center">Trạng Thái</th>
+                            <th class="py-3 px-4 text-right">Thao Tác Quản Trị</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 font-normal text-slate-800">
+
+                        <!-- Row 1: Haravan Unassigned (URGENT HIGHLIGHT) -->
+                        <tr class="bg-amber-50/40 hover:bg-amber-50/70 transition-colors">
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono font-bold text-slate-900 text-sm">#HD10928</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan Web</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    <span>3 phút trước</span>
+                                    <span class="text-slate-300">·</span>
+                                    <span class="font-mono text-slate-400">#10029482</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[11px]">
+                                    <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                                    CHƯA PHÂN TUYẾN
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 max-w-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-900">Nguyễn Văn An</span>
+                                    <a href="tel:0903123456" class="font-mono font-semibold text-blue-600 hover:underline text-[11px]">0903 123 456</a>
+                                </div>
+                                <div class="text-[11px] text-slate-600 mt-0.5 truncate">Villa 12, Thảo Điền, TP. Thủ Đức, TP.HCM</div>
+                                <div class="mt-1.5 px-2 py-1 rounded bg-amber-100/70 border border-amber-300/80 text-amber-900 font-medium text-[11px] flex items-center gap-1.5">
+                                    <span class="font-bold">Ghi chú:</span>
+                                    <span class="truncate">Giao trước 17h, gọi trước khi tới cửa nhà</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <div class="space-y-1">
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">1x</span>
+                                        <span class="text-slate-900 font-medium truncate">Cá Hồi Nauy Tươi Fillet (500g)</span>
+                                    </div>
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">2x</span>
+                                        <span class="text-slate-900 font-medium truncate">Sữa Tươi Dalat Milk Thanh Trùng 450ml</span>
+                                    </div>
+                                    <div class="text-[11px] text-slate-500 italic font-medium">+ 1 món rau xà lách hữu cơ khác...</div>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="font-mono font-bold text-slate-900 text-sm">485.000 ₫</div>
+                                <div class="text-[10px] text-slate-500 font-medium">3 món · Đã TT Online</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                    <span>●</span> Đơn Hàng Mới
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <button class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow transition-colors flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                                        <span>Phân Tuyến Ngay</span>
+                                    </button>
+                                    <button class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors" title="Xem chi tiết">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 2: ShopeeFood Preparing -->
+                        <tr class="hover:bg-slate-50/80 transition-colors">
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono font-bold text-slate-900 text-sm">#SPF-882194</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">ShopeeFood</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    <span>8 phút trước</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-200">
+                                    CN 10004 (46 NLB)
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 max-w-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-900">Trần Thị Bích</span>
+                                    <span class="font-mono font-semibold text-slate-700 text-[11px]">0988 777 666</span>
+                                </div>
+                                <div class="text-[11px] text-slate-600 mt-0.5 truncate">Chung cư Sky Garden 3, Phú Mỹ Hưng, Q.7</div>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <div class="space-y-1">
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">1x</span>
+                                        <span class="text-slate-900 font-medium truncate">Thịt Bò Úc Xay 300g (Hút Chân Không)</span>
+                                    </div>
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">1x</span>
+                                        <span class="text-slate-900 font-medium truncate">Trứng Gà Ta Hữu Cơ (Hộp 10 Trứng)</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="font-mono font-bold text-slate-900 text-sm">245.000 ₫</div>
+                                <div class="text-[10px] text-slate-500 font-medium">2 món · Tiền mặt COD</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    <span>●</span> Đang Soạn Hàng
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <button class="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow transition-colors flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                        <span>Báo Sẵn Sàng</span>
+                                    </button>
+                                    <button class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors" title="Xem chi tiết">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 3: GrabMart Ready -->
+                        <tr class="hover:bg-slate-50/80 transition-colors">
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono font-bold text-slate-900 text-sm">#GRAB-59281</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">GrabMart</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    <span>15 phút trước</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-200">
+                                    CN 10005 (17 MCT)
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 max-w-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-900">Lê Minh Tuấn</span>
+                                    <span class="font-mono font-semibold text-slate-700 text-[11px]">0912 334 556</span>
+                                </div>
+                                <div class="text-[11px] text-slate-600 mt-0.5 truncate">The Sun Avenue, Tháp 4, P. An Phú, Q.2</div>
+                                <div class="mt-1 text-[11px] text-blue-700 font-medium">
+                                    Tài xế Grab: <span class="font-bold">Phạm Văn Đức (59P1-882.11)</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <div class="space-y-1">
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">2x</span>
+                                        <span class="text-slate-900 font-medium truncate">Táo Envy New Zealand Size 30 (Hộp 1kg)</span>
+                                    </div>
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">1x</span>
+                                        <span class="text-slate-900 font-medium truncate">Nho Đen Không Hạt Mỹ (Hộp 500g)</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="font-mono font-bold text-slate-900 text-sm">620.000 ₫</div>
+                                <div class="text-[10px] text-slate-500 font-medium">3 món · Đã Thanh Toán</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
+                                    <span>●</span> Chờ Xế Nhận
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <button class="px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-bold text-xs shadow transition-colors flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                                        <span>Giao Tài Xế</span>
+                                    </button>
+                                    <button class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors" title="Xem chi tiết">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 4: ShopeeMart Delivering with AWB -->
+                        <tr class="hover:bg-slate-50/80 transition-colors">
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono font-bold text-slate-900 text-sm">#SPM-2948102</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-100 text-pink-800 border border-pink-200">ShopeeMart</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                                    <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    <span>32 phút trước</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 font-bold text-[11px] border border-slate-200">
+                                    CN 10006 (303 NVT)
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 max-w-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-900">Hoàng Thu Thủy</span>
+                                    <span class="font-mono font-semibold text-slate-700 text-[11px]">0945 889 911</span>
+                                </div>
+                                <div class="text-[11px] text-slate-600 mt-0.5 truncate">72 Lê Văn Sỹ, Phường 10, Phú Nhuận</div>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <div class="space-y-1">
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">1x</span>
+                                        <span class="text-slate-900 font-medium truncate">Dầu Oliu Olitalia Extra Virgin 500ml</span>
+                                    </div>
+                                    <div class="flex items-start text-xs">
+                                        <span class="px-1.5 py-0.2 rounded font-mono font-bold bg-slate-200 text-slate-800 text-[11px] mr-1.5 shrink-0">1x</span>
+                                        <span class="text-slate-900 font-medium truncate">Mì Ý De Cecco No.12 Spaghetti 500g</span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="font-mono font-bold text-slate-900 text-sm">310.000 ₫</div>
+                                <div class="text-[10px] text-slate-500 font-medium">2 món · ShopeePay</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-300">
+                                    <span>●</span> Đang Vận Chuyển
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="flex items-center justify-end gap-1.5">
+                                    <button class="px-2.5 py-1.5 rounded-lg bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-300 font-bold text-xs transition-colors flex items-center gap-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                                        <span>In AWB</span>
+                                    </button>
+                                    <button class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 transition-colors" title="Xem chi tiết">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <!-- Row 5: Completed -->
+                        <tr class="hover:bg-slate-50/80 transition-colors opacity-80">
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-mono font-bold text-slate-800 text-sm">#HD10925</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5 font-medium">
+                                    <span>2 giờ trước</span>
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <span class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200">
+                                    CN 10001 (21 TD)
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 max-w-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-bold text-slate-800">Bùi Quốc Dũng</span>
+                                    <span class="font-mono text-slate-600 text-[11px]">0908 990 011</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500 mt-0.5 truncate">Riverside Residence, Phú Mỹ Hưng, Q.7</div>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <div class="text-xs text-slate-700 font-medium truncate">Combo Giỏ Quà Trái Cây Nhập Khẩu Cao Cấp</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <div class="font-mono font-bold text-slate-900 text-sm">1.250.000 ₫</div>
+                                <div class="text-[10px] text-slate-500 font-medium">1 combo</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                                    <span>✓</span> Đã Giao Thành Công
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                <button class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-medium transition-colors">
+                                    Xem Lịch Sử
+                                </button>
+                            </td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Table Footer Pagination -->
+            <div class="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
+                <div>Hiển thị <span class="font-bold text-slate-900">1 - 5</span> trong tổng số <span class="font-bold text-slate-900">5</span> đơn hàng</div>
+                <div class="flex items-center space-x-1">
+                    <button class="px-3 py-1 rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">Trước</button>
+                    <span class="px-3 py-1 font-mono font-bold text-slate-900">Trang 1</span>
+                    <button class="px-3 py-1 rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">Sau</button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</body>
+</html>

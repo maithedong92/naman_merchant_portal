@@ -1,139 +1,103 @@
 # Nam An Unified Merchant Platform (NAM-UMP) - Design System & UI Specification
-> **Theme:** Notion Design Language (Minimalist, Typographic, Monospaced Accents, Hairline Borders, Pastel Property Badges)
+> **Theme:** Apple Retail & Merchant Pro (Shopify Polaris / Human Interface / High-Contrast Modern Retail)
+> **Approved Direction:** Phương án 3 (Apple Retail & Merchant Pro)
 
 ---
 
 ## 1. Triết lý Thiết kế (Design Philosophy)
 
-Hệ thống giao diện được tái cấu trúc (refactor) toàn diện theo ngôn ngữ thiết kế của **Notion** – công cụ quản lý tri thức và cơ sở dữ liệu hàng đầu thế giới:
-1. **Tối Giản & Thanh Lịch (Minimalism & Elegance):** Loại bỏ các khối màu đặc, hiệu ứng đổ bóng cồng kềnh, viền bo tròn quá đà (`rounded-full` tròn trịa). Chuyển sang các đường nét thanh mảnh, góc bo chuẩn mực (`rounded-md` 6px, `rounded-lg` 8px).
-2. **Màu Nền Trung Tính & Tương Phản Dịu (Soft Contrasts):** Nền trang màu trắng tinh khôi (`#FFFFFF`) kết hợp màu xám nhạt giấy cổ điển Notion (`#F7F6F3`, `#F1F1EF`). Chữ chính mang màu than chì mềm (`#37352F`), không dùng đen thuần `#000000` để tránh mỏi mắt trong ca làm việc dài.
-3. **Phân Cấp Dữ Liệu Dạng Bảng Dữ Liệu (Notion Database Aesthetic):** Đơn hàng, tồn kho và danh sách người dùng được hiển thị như một Notion Database trực quan, với các chế độ xem (Views), bộ lọc linh hoạt (Filters), và nhãn trạng thái (Select Tags) chuẩn bảng màu pastel của Notion.
-4. **Biểu tượng Cảm Xúc & Ký Hiệu Trực Quan (Icon & Emoji Accents):** Kết hợp hài hòa giữa các icon SVG hairline và emoji đại diện (ví dụ: `📦 Đơn hàng`, `🌐 Haravan`, `⚡ Cần Phân Tuyến`, `⏳ Chưa Hoàn Thành`, `📍 Chi nhánh`), mang lại cảm giác thân thiện, dễ nắm bắt quy trình.
+Hệ thống giao diện Nam An Unified Merchant Platform được xây dựng dựa trên phong cách **Apple Retail & Merchant Pro** kết hợp tinh hoa từ **Shopify Polaris**:
+1. **Trực quan, Sang trọng & Thân thiện (Clean, Sophisticated & Human-Centric):**
+   - Loại bỏ phong cách Notion xám nhờ, mờ nhạt và lạm dụng emoji.
+   - Sử dụng nền xám ngọc trai dịu mát (`#F8FAFC` / `#F1F5F9`), bề mặt thẻ trắng tinh khiết (`#FFFFFF`) kết hợp bo góc mềm mại (`rounded-2xl` 16px, `rounded-xl` 12px) và hiệu ứng đổ bóng đa tầng đặc trưng của Apple (`apple-shadow`).
+2. **Độ tương phản cao & Dễ đọc (High Contrast & Glanceability - WCAG AAA):**
+   - Chữ chính sử dụng Slate-900 (`#0F172A`) trên nền trắng, đạt tỷ lệ tương phản `14.2:1` (vượt xa chuẩn WCAG AAA `7:1`).
+   - Phụ đề sử dụng Slate-600 (`#475569`) và Slate-500 (`#64748B`), tuyệt đối không dùng màu xám bợt `#787774` gây nhức mắt.
+   - Giúp nhân viên điều phối và nhân viên kho dễ dàng nhận diện thông tin đơn hàng trong chớp mắt (0.5 giây) hoặc từ khoảng cách 1-2 mét.
+3. **Màu sắc Thương hiệu Hữu cơ Nam An Market (Emerald Accents):**
+   - Màu nhận diện chủ đạo là xanh lục bảo hữu cơ (Emerald-600 `#059669`, Emerald-700 `#047857`, Emerald-950 `#064E3B`), phản ánh định vị siêu thị thực phẩm tươi sống cao cấp của Nam An.
+4. **Chuẩn mực Biểu tượng & Trình bày Số liệu (Iconography & Tabular Data):**
+   - 100% biểu tượng là Crisp SVG Icons với nét vẽ đồng nhất (`stroke-width: 1.8px - 2px`). Không dùng emoji làm biểu tượng hệ thống.
+   - Toàn bộ giá tiền (VND), mã đơn hàng (`#HD10928`, `#SPF-882194`), mã SKU và số lượng (`1x`, `2x`) đều dùng font Monospace (`JetBrains Mono / SF Mono`) với thuộc tính `tabular-nums` để các chữ số luôn thẳng hàng hoàn hảo.
 
 ---
 
-## 2. Bảng Màu Chuẩn Notion (Color Palette)
+## 2. Bảng Màu Hệ Thống (Color Tokens)
 
-### 2.1. Màu Nền & Khung (Surfaces & Canvas)
-| Tên Token | Mã Màu Hex / RGBA | Công Dụng |
+### 2.1. Màu Nền & Mặt Bề Mặt (Surfaces & Canvas)
+| Tên Token | Mã Hex / Class Tailwind | Mục Đích Sử Dụng |
 | :--- | :--- | :--- |
-| `notion-canvas` | `#FFFFFF` | Nền trang chính, thẻ đơn hàng, modal dialog |
-| `notion-bg-subtle` | `#F7F6F3` | Nền thanh bên, khối thống kê KPI, callout banner |
-| `notion-bg-muted` | `#F1F1EF` | Nền ô tìm kiếm, bảng header, dòng hover phụ |
-| `notion-hover` | `rgba(55, 53, 47, 0.08)` | Trạng thái hover chuột của button, menu item |
-| `notion-active` | `rgba(55, 53, 47, 0.12)` | Trạng thái active/selected của thẻ hoặc tab |
-| `notion-border` | `rgba(55, 53, 47, 0.09)` | Đường viền hairline siêu mảnh giữa các hàng/cột |
-| `notion-border-strong` | `rgba(55, 53, 47, 0.16)` | Đường viền khung modal, ô nhập liệu đang focus |
+| `surface-canvas` | `#F8FAFC` (`slate-50`) / `#F1F5F9` | Nền tổng thể toàn trang, giảm lóa mắt |
+| `surface-card` | `#FFFFFF` (`white`) | Thẻ đơn hàng, bảng dữ liệu, modal popup |
+| `surface-muted` | `#F1F5F9` (`slate-100`) | Nền ô input, header bảng dữ liệu, thanh tìm kiếm |
+| `surface-hover` | `#F8FAFC` (`slate-50/80`) | Trạng thái hover dòng dữ liệu |
+| `border-subtle` | `#E2E8F0` (`slate-200`) | Viền thẻ, viền bảng, viền phân cách |
+| `border-medium` | `#CBD5E1` (`slate-300`) | Viền ô input, viền nút outline |
 
-### 2.2. Màu Chữ & Biểu Tượng (Typography Colors)
-| Tên Token | Mã Màu Hex / RGBA | Công Dụng |
-| :--- | :--- | :--- |
-| `notion-text` | `#37352F` | Màu chữ tiêu đề và nội dung chính |
-| `notion-text-muted` | `#787774` | Phụ đề, nhãn mô tả, thông tin thời gian |
-| `notion-text-subtle` | `#9B9A97` | Placeholder, icon thứ cấp, số đếm không active |
-
-### 2.3. Bảng Màu Nhãn Trạng Thái Pastel Notion (Select & Status Tags)
-Các nhãn trạng thái đơn hàng và kênh bán hàng sử dụng đúng tỷ lệ màu nền pastel + chữ đậm nhẹ đặc trưng của Notion:
-
-| Phân Loại | Màu Nền (Background) | Màu Chữ (Text) | Áp Dụng Cho Trạng Thái |
+### 2.2. Màu Chữ & Phân Cấp (Typography Contrast)
+| Cấp độ | Mã Hex / Class Tailwind | Tỷ lệ Tương Phản (WCAG) | Công Dụng |
 | :--- | :--- | :--- | :--- |
-| **Default Gray** | `#F1F1EF` | `#787774` | Đơn hàng mới, Chưa xác định |
-| **Brown** | `#F4EEEE` | `#937264` | Ghi chú điều phối, POS tại quầy |
-| **Orange** | `#FAECE3` | `#D9730D` | ShopeeFood, Yêu cầu phân tuyến lại |
-| **Yellow** | `#FBEDD6` | `#CB912F` | Chờ duyệt (PENDING), Cần phân tuyến |
-| **Green** | `#EDF3EC` | `#448361` | Đã nhận (ACCEPTED), GrabMart, Đang soạn hàng |
-| **Blue** | `#E7F3F8` | `#2F7EA6` | Đã phân tuyến, Sẵn sàng (READY), Haravan |
-| **Purple** | `#F4EFF7` | `#9065B0` | Đã đóng gói, Đã gửi vận đơn, Đang giao |
-| **Pink** | `#FBF1F5` | `#C14C8A` | ShopeeMart, Đổi trả hàng |
-| **Red** | `#FDEBEC` | `#D44C47` | Đã hủy (CANCELLED), Cảnh báo sự cố |
+| **Headline / Primary** | `#0F172A` (`slate-900`) | `14.2:1` (AAA) | Tên khách hàng, mã đơn, tiêu đề modal, giá tiền |
+| **Secondary / Body** | `#334155` (`slate-700`) | `10.5:1` (AAA) | Tên món, địa chỉ giao hàng, nội dung thông báo |
+| **Muted / Caption** | `#64748B` (`slate-500`) | `4.8:1` (AA) | Thời gian đặt hàng, ghi chú phụ, nhãn cột |
+| **Subtle** | `#94A3B8` (`slate-400`) | `3.2:1` | Placeholder, icon trang trí |
+
+### 2.3. Bảng Màu Kênh Bán Hàng (Channel Badges)
+Mỗi kênh bán hàng có badge riêng biệt, gồm chấm tròn trạng thái hoặc icon nhận diện:
+- **ShopeeFood:** Nền `#FFF7ED` (`orange-50`), Viền `#FDBA74` (`orange-300`), Chữ `#C2410C` (`orange-700`), Chấm `#F97316` (`orange-500`).
+- **GrabMart:** Nền `#ECFDF5` (`emerald-50`), Viền `#A7F3D0` (`emerald-300`), Chữ `#047857` (`emerald-700`), Chấm `#10B981` (`emerald-500`).
+- **ShopeeMart:** Nền `#FDF2F8` (`pink-50`), Viền `#FBCFE8` (`pink-300`), Chữ `#BE185D` (`pink-700`), Chấm `#EC4899` (`pink-500`).
+- **Haravan Omnichannel:** Nền `#EFF6FF` (`blue-50`), Viền `#BFDBFE` (`blue-300`), Chữ `#1D4ED8` (`blue-700`), Chấm `#3B82F6` (`blue-500`).
+
+### 2.4. Trạng Thái Vận Hành & Pipeline (Operational Stages)
+| Giai Đoạn | Mã Token | Màu Nền / Viền / Chữ | Ý Nghĩa Vận Hành |
+| :--- | :--- | :--- | :--- |
+| **1. Cần Xử Lý Ngay** | `URGENT` | `amber-50` / `amber-200` / `amber-900` | Đơn mới chưa duyệt hoặc Haravan chưa phân tuyến (Chấm vàng nhấp nháy `animate-pulse`) |
+| **2. Đang Chuẩn Bị** | `PREPARING` | `emerald-50` / `emerald-200` / `emerald-900` | Siêu thị đã nhận đơn, nhân viên đang nhặt hàng tại kệ |
+| **3. Sẵn Sàng Giao** | `READY` | `blue-50` / `blue-200` / `blue-900` | Đã đóng gói xong, chờ shipper lấy hàng |
+| **4. Đang Vận Chuyển** | `DELIVERING`| `purple-50` / `purple-200` / `purple-900`| Shipper đang giao tới khách hàng |
+| **5. Hoàn Tất** | `COMPLETED` | `slate-100` / `slate-200` / `slate-800` | Khách đã nhận hàng thành công |
+| **6. Đã Hủy** | `CANCELLED` | `rose-50` / `rose-200` / `rose-900` | Hết hàng, hủy do khách hoặc sự cố |
 
 ---
 
-## 3. Kiểu Chữ & Phân Cấp (Typography Hierarchy)
+## 3. Kiểu Chữ & Hiệu Ứng (Typography & Shadows)
 
-* **Font chữ hệ thống (System Font Stack):**
-  `ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"` (kèm Google Fonts `Inter` làm fallback cao cấp).
-* **Font Monospace số & mã đơn:**
-  `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` (cho mã SKU, mã vận đơn, số tiền VND).
-* **Quy tắc phân cấp kích thước:**
-  * **H1 (Tiêu đề trang):** `text-2xl font-bold tracking-tight text-[#37352F]` (ví dụ: `📦 Đơn hàng & Phân tuyến`).
-  * **H2 (Phần/Khối chính):** `text-lg font-semibold text-[#37352F]`.
-  * **H3 (Tiêu đề modal/card):** `text-sm font-semibold text-[#37352F]`.
-  * **Body chính:** `text-[13px] leading-relaxed text-[#37352F]`.
-  * **Small / Caption:** `text-[12px] text-[#787774]`.
-  * **Micro / Tag:** `text-[11px] font-medium leading-none px-2 py-0.5 rounded`.
+### 3.1. Font Stack
+* **Chữ giao diện:** `'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
+* **Mã số & Tiền tệ:** `'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace`
 
----
-
-## 4. Các Thành Phần Giao Diện Chuẩn (UI Components)
-
-### 4.1. Top Navigation & Breadcrumbs (Thanh Điều Hướng Workspace)
-* Thiết kế thanh trắng tinh tế (`h-12` hoặc `h-14`, border dưới `1px solid rgba(55, 53, 47, 0.09)`).
-* Breadcrumb bên trái:
-  `🏛️ Nam An Market / 📦 Đơn Hàng`
-* Menu Tabs ở giữa:
-  Hiển thị dạng danh sách phẳng Notion. Tab đang active có gạch chân thanh mảnh hoặc nền `bg-[#EFEFED]` nhẹ nhàng.
-* User Pill bên phải:
-  Avatar viết tắt, tên nhân sự, nhãn vai trò (`SUPER_ADMIN` hoặc `📍 10001 - Thảo Điền`).
-
-### 4.2. Notion Database View Tabs & Filter Pills
-* **Hàng chọn kênh bán:**
-  * `📑 Tất cả kênh`
-  * `🛍️ ShopeeFood`
-  * `🟢 GrabMart`
-  * `🛒 ShopeeMart`
-  * `🌐 Haravan Omnichannel`
-* **Hàng nút tác vụ nhanh & bộ lọc:**
-  * `⏳ Chưa Hoàn Thành [N]`: Nút lọc tức thì các đơn đang trong tiến trình xử lý.
-  * `⚡ Cần Phân Tuyến [N]`: Nút lọc đơn Haravan trung tâm cần phân về siêu thị.
-  * `Dropdown Chi Nhánh`: Lọc theo mã kho (`10001`, `10004`, `10005`, `10006`).
-  * `Dropdown Trạng Thái`: Có tùy chọn `⏳ Chưa hoàn thành (Đang xử lý)` đứng đầu tiên.
-  * `Search Input`: Thanh tìm kiếm tối giản có icon kính lúp, nền `#F7F6F3`, viền mờ.
-
-### 4.3. KPI Counters (Notion Metric Blocks)
-* Các thẻ KPI được thiết kế như ô số liệu Notion Database:
-  * Không dùng hiệu ứng đổ bóng cồng kềnh.
-  * Nền trắng viền hairline `border border-[rgba(55,53,47,0.09)]`.
-  * Tiêu đề nhỏ xám `text-[11px] text-[#787774] font-medium`.
-  * Số liệu lớn sắc nét `text-2xl font-bold font-mono text-[#37352F]`.
-  * Khi hover: Chuyển nền sang `#F7F6F3` rất mượt.
-
-### 4.4. Thẻ Đơn Hàng (Notion Order Card)
-* Header thẻ: Mã đơn dạng monospace `#NA243900`, kênh bán hàng (Notion tag), ngày giờ relative (`5 phút trước`).
-* Body:
-  * Khách hàng: Tên và SĐT hiển thị gọn gàng.
-  * Chi nhánh phụ trách: Tag màu xanh biển Notion `📍 10001 (21 Thảo Điền)`.
-  * Danh sách món: Bảng mini tối giản, số lượng nổi bật `x2`, đơn giá rõ ràng.
-* Footer thao tác:
-  * Nút hành động chính (`Phân Tuyến`, `Đóng Gói`, `Gửi Vận Đơn`, `Hoàn Tất`): Nút bo góc nhẹ `rounded-md`, chữ đen than chì hoặc xanh Notion, hiệu ứng nhấn xúc giác.
-  * Nút phụ (`In Phiếu Nhiệt`, `Hủy Đơn`): Nút ghost text với hover xám nhẹ.
-
-### 4.5. Hộp Thoại Modal (Notion Dialog Page)
-* Hộp thoại mở ra như một trang Notion nổi (Page Dialog):
-  * Header có biểu tượng emoji (ví dụ: `🚚 Gửi Vận Đơn`, `🎯 Phân Tuyến Đơn Hàng`).
-  * Bảng đối chiếu tồn kho Arito ERP 4 siêu thị: Thiết kế như bảng cơ sở dữ liệu Notion, cột được căn chỉnh chính xác, số tồn kho dưới định mức hiển thị nhãn đỏ pastel, siêu thị đủ hàng hiển thị nhãn xanh lá pastel.
-  * Nút bấm xác nhận: Nút màu đen than chì Notion (`bg-[#2F3437] hover:bg-[#191919] text-white`) hoặc xanh Notion (`#2383E2`).
-
-### 4.6. Notion Callouts (Khung Thông Báo Gợi Ý)
-* Dùng cho khung cảnh báo phân quyền chi nhánh (Store Scoped) hoặc gợi ý hệ thống 1-chạm:
-  * Nền `#F7F6F3` hoặc `#FBFAF9`.
-  * Viền trái hoặc viền toàn phần `border border-[rgba(55,53,47,0.09)]`.
-  * Icon emoji kích thước `18px` nằm bên trái.
-  * Chữ nội dung `text-[12px] text-[#37352F]`.
+### 3.2. Hiệu ứng Chiều Sâu (Apple Elevation)
+```css
+.apple-shadow {
+    box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+}
+.apple-card {
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.apple-card:hover {
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.03);
+    transform: translateY(-1px);
+}
+```
 
 ---
 
-## 5. Hướng Dẫn Refactor Cho Toàn Bộ Trang (Implementation Guide)
+## 4. Quy Chuẩn Thành Phần Giao Diện (Components)
 
-1. **`app/templates/base.html`:**
-   * Cập nhật cấu hình Tailwind CSS mở rộng màu Notion (`notion-canvas`, `notion-bg-subtle`, `notion-text`, `notion-border`...).
-   * Thay thế toàn bộ Top Navbar sang chuẩn Notion Workspace Navbar.
-   * Xóa bỏ style gradient bóng bẩy, bo tròn elip quá mức.
-2. **`app/templates/orders.html`:**
-   * Tái cấu trúc thanh lọc kênh và trạng thái theo Notion Database View.
-   * Cập nhật thẻ hiển thị đơn hàng dạng card/table clean Notion.
-   * Tái cấu trúc 4 Modal điều phối (`#haravan-assign-modal`, `#haravan-reassign-modal`, `#haravan-ship-modal`, `#haravan-complete-modal`) theo phong cách Notion Page.
-   * Giữ nguyên 100% logic API, WebSocket, Polling, In nhiệt POS 80mm, và các bộ lọc `Chưa hoàn thành` / `Cần phân tuyến`.
-3. **`app/templates/users.html`, `admin_dashboard.html`, `inventory.html`, `reports.html`, `system_status.html`, `login.html`:**
-   * Áp dụng thống nhất typography, bảng màu Notion, và các thành phần callout/card tương ứng.
+1. **Top Navigation Bar (`base.html`):**
+   - Header cố định kính mờ (`bg-white/90 backdrop-blur-md border-b border-slate-200/80`).
+   - Logo Nam An Market bo góc `rounded-2xl` với gradient `from-emerald-800 to-emerald-600`.
+   - Tab điều hướng active dùng `bg-slate-900 text-white shadow-sm rounded-xl`.
+   - Thông tin tài nguyên và chi nhánh hiển thị với badge kính mờ `bg-slate-100 text-slate-800`.
+2. **Pipeline Ribbon Thống Kê (`orders.html`):**
+   - 5 thẻ giai đoạn lớn với số đếm to rõ `text-3xl font-black font-mono`.
+   - Thẻ "Cần Duyệt Ngay" nổi bật với gradient vàng hổ phách và chấm đèn led cảnh báo.
+3. **Bảng Danh Sách Đơn Hàng:**
+   - Hàng xen kẽ tinh tế, hover phản hồi tức thì.
+   - Cột số lượng món `1x`, `2x` đóng khung badge nhỏ gọn `bg-slate-100 font-mono font-bold`.
+   - Cột giá tiền to rõ `text-sm font-black font-mono text-slate-900`.
+   - Nút hành động chính (`Phân Tuyến`, `Báo Xong`) có hiệu ứng `hover:scale-105 active:scale-95`.
+4. **Loại Bỏ Tính Năng Không Phù Hợp:**
+   - Ứng dụng chỉ phục vụ điều phối và quản trị đơn hàng, không phải POS bán hàng.
+   - Bãi bỏ hoàn toàn các nút in bill nhiệt 80mm. Chỉ giữ in phiếu vận chuyển (AWB A6) và phiếu giao hàng A4/A5.

@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="vi" class="h-full">
+<html lang="vi" class="h-full bg-slate-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Nam An Market - Unified Merchant Portal{% endblock %}</title>
 
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -17,36 +17,20 @@
             theme: {
                 extend: {
                     colors: {
-                        notion: {
-                            canvas: '#FFFFFF',
-                            subtle: '#F7F6F3',
-                            muted: '#F1F1EF',
-                            text: '#37352F',
-                            textMuted: '#787774',
-                            textSubtle: '#9B9A97',
-                            border: 'rgba(55, 53, 47, 0.09)',
-                            borderStrong: 'rgba(55, 53, 47, 0.16)',
-                            hover: 'rgba(55, 53, 47, 0.06)',
-                            active: 'rgba(55, 53, 47, 0.10)',
-                            blue: '#2383E2',
-                            dark: '#2F3437',
-                        },
-                        // Notion Tag Pastel Colors
-                        tag: {
-                            grayBg: '#F1F1EF', grayText: '#787774',
-                            brownBg: '#F4EEEE', brownText: '#937264',
-                            orangeBg: '#FAECE3', orangeText: '#D9730D',
-                            yellowBg: '#FBEDD6', yellowText: '#CB912F',
-                            greenBg: '#EDF3EC', greenText: '#448361',
-                            blueBg: '#E7F3F8', blueText: '#2F7EA6',
-                            purpleBg: '#F4EFF7', purpleText: '#9065B0',
-                            pinkBg: '#FBF1F5', pinkText: '#C14C8A',
-                            redBg: '#FDEBEC', redText: '#D44C47',
+                        brand: {
+                            50: '#ECFDF5',
+                            100: '#D1FAE5',
+                            500: '#10B981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065F46',
+                            900: '#064E3B',
+                            950: '#022C22',
                         }
                     },
                     fontFamily: {
-                        sans: ['"Inter"', 'ui-sans-serif', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+                        sans: ['"Plus Jakarta Sans"', 'Inter', 'ui-sans-serif', '-apple-system', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
                     }
                 }
             }
@@ -54,101 +38,121 @@
     </script>
     <style>
         body {
-            font-family: 'Inter', ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: #FAFAFA;
-            color: #37352F;
+            font-family: 'Plus Jakarta Sans', Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #F8FAFC;
+            color: #0F172A;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
-        /* Notion-style subtle scrollbar */
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .apple-shadow {
+            box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+        }
+        .apple-card {
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .apple-card:hover {
+            box-shadow: 0 10px 25px -3px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
+            transform: translateY(-1px);
+        }
+        /* Custom Clean Scrollbar */
         ::-webkit-scrollbar {
-            width: 5px;
-            height: 5px;
+            width: 6px;
+            height: 6px;
         }
         ::-webkit-scrollbar-track {
             background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: rgba(55, 53, 47, 0.15);
-            border-radius: 4px;
+            background: #CBD5E1;
+            border-radius: 9999px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: rgba(55, 53, 47, 0.28);
+            background: #94A3B8;
         }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
-<body class="min-h-full flex flex-col bg-[#FAFAFA]">
+<body class="min-h-full flex flex-col bg-slate-50 text-slate-900 antialiased">
 
-    <!-- Notion Workspace Top Navigation Bar -->
-    <header class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[rgba(55,53,47,0.09)]">
-        <div class="max-w-[1400px] mx-auto px-4 sm:px-6">
-            <div class="flex items-center justify-between h-13 py-2">
+    <!-- Top Navigation Bar: Apple Retail & Merchant Pro -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
                 
-                <!-- Left: Workspace Breadcrumb & Brand -->
-                <div class="flex items-center space-x-4">
-                    <a href="/admin" class="flex items-center space-x-2 text-[13px] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] px-2 py-1 rounded transition-colors group">
-                        <div class="w-6 h-6 rounded bg-[#2F3437] text-white flex items-center justify-center text-[10px] font-bold tracking-tighter">
+                <!-- Left: Brand & Navigation Items -->
+                <div class="flex items-center space-x-6 lg:space-x-8">
+                    <!-- Brand Logo -->
+                    <a href="/admin" class="flex items-center space-x-3 group">
+                        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-800 to-emerald-600 flex items-center justify-center text-white font-black text-sm shadow-md shadow-emerald-900/10 group-hover:scale-105 transition-transform">
                             NA
                         </div>
-                        <span class="font-semibold text-[#37352F]">Nam An Market</span>
-                        <span class="text-[10px] px-1.5 py-0.2 rounded bg-[#EDF3EC] text-[#448361] font-mono font-medium">PORTAL</span>
+                        <div>
+                            <div class="text-sm font-extrabold tracking-tight text-slate-900 leading-none">Nam An Market</div>
+                            <div class="text-[11px] font-semibold text-emerald-700 mt-0.5">Unified Merchant Portal</div>
+                        </div>
                     </a>
 
-                    <span class="text-[rgba(55,53,47,0.2)]">/</span>
+                    <!-- Navigation Items -->
+                    <nav class="hidden md:flex items-center space-x-1.5">
+                        <a href="/admin" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 {% if active_page == 'dashboard' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                            <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                            <span>Tổng quan</span>
+                        </a>
 
-                    <!-- Breadcrumb Page Indicator -->
-                    <div class="text-[13px] font-medium text-[#787774] flex items-center space-x-1">
-                        {% block breadcrumb %}<span>Dashboard</span>{% endblock %}
-                    </div>
+                        <a href="/admin/orders" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all relative flex items-center space-x-1.5 {% if active_page == 'orders' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                            <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                            <span>Điều phối đơn</span>
+                            <span id="nav-pending-orders-badge" class="hidden px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-amber-400 text-slate-950 ml-1">0</span>
+                        </a>
 
-                    <!-- Navigation Items (Notion Page Links) -->
-                    <nav class="hidden lg:flex items-center space-x-1 pl-4 border-l border-[rgba(55,53,47,0.09)]">
-                        <a href="/admin" class="px-2.5 py-1 rounded text-[13px] font-medium transition-colors {% if active_page == 'dashboard' %}bg-[rgba(55,53,47,0.08)] text-[#37352F]{% else %}text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]{% endif %}">
-                            📊 Tổng quan
+                        <a href="/admin/inventory" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 {% if active_page == 'inventory' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                            <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                            <span>Kho & Tồn ERP</span>
                         </a>
-                        <a href="/admin/orders" class="px-2.5 py-1 rounded text-[13px] font-medium transition-colors relative flex items-center space-x-1.5 {% if active_page == 'orders' %}bg-[rgba(55,53,47,0.08)] text-[#37352F]{% else %}text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]{% endif %}">
-                            <span>📦 Đơn hàng</span>
-                            <span id="nav-pending-orders-badge" class="hidden px-1.5 py-0.2 text-[10px] font-mono font-bold rounded bg-[#FAECE3] text-[#D9730D]">0</span>
+
+                        <a href="/admin/reports" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 {% if active_page == 'reports' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                            <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                            <span>Báo cáo</span>
                         </a>
-                        <a href="/system-status" class="px-2.5 py-1 rounded text-[13px] font-medium transition-colors relative flex items-center space-x-1.5 {% if active_page == 'system_status' %}bg-[rgba(55,53,47,0.08)] text-[#37352F]{% else %}text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]{% endif %}">
-                            <span>⚡ System Status</span>
-                            <span id="nav-error-badge" class="hidden px-1.5 py-0.2 text-[10px] font-mono font-bold rounded bg-[#FDEBEC] text-[#D44C47]">0</span>
+
+                        <a href="/system-status" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all relative flex items-center space-x-1.5 {% if active_page == 'system_status' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                            <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            <span>Hệ thống</span>
+                            <span id="nav-error-badge" class="hidden px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-rose-500 text-white ml-1">0</span>
                         </a>
-                        <a href="/admin/reports" class="px-2.5 py-1 rounded text-[13px] font-medium transition-colors {% if active_page == 'reports' %}bg-[rgba(55,53,47,0.08)] text-[#37352F]{% else %}text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]{% endif %}">
-                            📈 Báo cáo
-                        </a>
-                        <a href="/admin/inventory" class="px-2.5 py-1 rounded text-[13px] font-medium transition-colors {% if active_page == 'inventory' %}bg-[rgba(55,53,47,0.08)] text-[#37352F]{% else %}text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]{% endif %}">
-                            🏬 Kho & Menu
-                        </a>
-                        <a href="/admin/users" id="nav-users-link" class="px-2.5 py-1 rounded text-[13px] font-medium transition-colors {% if active_page == 'users' %}bg-[rgba(55,53,47,0.08)] text-[#37352F]{% else %}text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]{% endif %}">
-                            👥 Phân quyền
+
+                        <a href="/admin/users" id="nav-users-link" class="hidden px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-1.5 {% if active_page == 'users' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                            <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                            <span>Phân quyền</span>
                         </a>
                     </nav>
                 </div>
 
-                <!-- Right: Status Dot, User Workspace Profile, Logout -->
+                <!-- Right: Status Indicator & User Profile Pill -->
                 <div class="flex items-center space-x-3">
-                    <!-- Live Server Indicator -->
-                    <div id="system-status-indicator" class="hidden sm:flex items-center space-x-1.5 px-2 py-0.5 rounded text-[11px] font-mono text-[#787774] bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)]">
-                        <span class="w-1.5 h-1.5 rounded-full bg-[#448361]"></span>
-                        <span id="system-status-text">ONLINE :3001</span>
+                    <!-- Live Server & ERP Indicator -->
+                    <div id="system-status-indicator" class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="system-status-text">4 Chi nhánh ERP</span>
                     </div>
 
-                    <!-- User Account / Notion Profile Tag -->
-                    <div class="flex items-center space-x-2 pl-2 border-l border-[rgba(55,53,47,0.09)]">
+                    <!-- User Account / Profile Pill -->
+                    <div class="flex items-center space-x-2.5 pl-3 border-l border-slate-200">
                         <div class="text-right hidden sm:block">
-                            <div id="user-display-name" class="text-[12px] font-medium text-[#37352F] leading-tight">Quản trị viên</div>
-                            <div class="flex items-center space-x-1 justify-end mt-0.5">
-                                <span id="user-store-badge" class="hidden text-[10px] px-1.5 py-0.2 rounded bg-[#E7F3F8] text-[#2F7EA6] font-mono">10001</span>
-                                <span id="user-role-badge" class="text-[10px] font-mono text-[#9B9A97]">SUPER_ADMIN</span>
+                            <div id="user-display-name" class="text-xs font-bold text-slate-900 leading-tight">Quản trị viên</div>
+                            <div class="flex items-center space-x-1.5 justify-end mt-0.5">
+                                <span id="user-store-badge" class="hidden text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-mono font-bold border border-blue-200">10001</span>
+                                <span id="user-role-badge" class="text-[10px] font-mono font-bold text-slate-500">SUPER_ADMIN</span>
                             </div>
                         </div>
 
                         <!-- Logout Button -->
-                        <button onclick="logoutAdmin()" title="Đăng xuất" class="p-1.5 rounded text-[#787774] hover:text-[#D44C47] hover:bg-[#FDEBEC] transition-colors">
+                        <button onclick="logoutAdmin()" title="Đăng xuất" class="p-2 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                             </svg>
                         </button>
                     </div>
@@ -159,12 +163,12 @@
     </header>
 
     <!-- Main Content Canvas -->
-    <main class="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-6">
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {% block content %}{% endblock %}
     </main>
 
-    <!-- Notion Toast Notification Container -->
-    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+    <!-- Modern Apple-style Toast Notification Container -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
 
     <!-- Global Client Scripts -->
     <script>
@@ -197,30 +201,39 @@
             }
         };
 
-        // Notion-style Subtle Toast Notification
+        // Modern Apple Toast Notification
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            const colorClass = (type === 'error' ? 'bg-[#FDEBEC] text-[#D44C47] border-[#F5C2C7]' :
-                                type === 'success' ? 'bg-[#EDF3EC] text-[#448361] border-[#C3E6CB]' :
-                                'bg-white text-[#37352F] border-[rgba(55,53,47,0.14)]');
-
-            toast.className = `pointer-events-auto px-3.5 py-2.5 rounded-md shadow-md border ${colorClass} flex items-center space-x-2 text-[12px] font-medium transition-all duration-200 transform translate-y-2 opacity-0`;
             
-            const icon = type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️';
+            let colorClass = 'bg-white text-slate-900 border-slate-200/80';
+            let iconSvg = '<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+
+            if (type === 'error') {
+                colorClass = 'bg-rose-50 text-rose-900 border-rose-200';
+                iconSvg = '<svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+            } else if (type === 'success') {
+                colorClass = 'bg-emerald-50 text-emerald-950 border-emerald-200';
+                iconSvg = '<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+            }
+
+            toast.className = `pointer-events-auto px-4 py-3 rounded-2xl apple-shadow border ${colorClass} flex items-center space-x-3 text-xs font-semibold transition-all duration-300 transform translate-y-3 opacity-0`;
+            
             toast.innerHTML = `
-                <span>${icon}</span>
-                <span class="flex-1 leading-tight">${message}</span>
-                <button onclick="this.parentElement.remove()" class="text-[#787774] hover:text-[#37352F] ml-2 font-bold">✕</button>
+                <div class="shrink-0">${iconSvg}</div>
+                <div class="flex-1 leading-snug">${message}</div>
+                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-700 ml-2 font-bold p-1">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
             `;
             container.appendChild(toast);
             setTimeout(() => {
-                toast.classList.remove('translate-y-2', 'opacity-0');
+                toast.classList.remove('translate-y-3', 'opacity-0');
             }, 10);
             setTimeout(() => {
-                toast.classList.add('opacity-0');
-                setTimeout(() => toast.remove(), 250);
-            }, 3500);
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3800);
         }
 
         // Authenticated Fetch wrapper
@@ -285,11 +298,11 @@
             if (roleEl && user.role) roleEl.textContent = user.role;
             if (storeEl) {
                 if (user.store_code) {
-                    storeEl.textContent = `📍 ${user.store_code}`;
+                    storeEl.textContent = `CN ${user.store_code}`;
                     storeEl.title = user.store_name ? `${user.store_name} (${user.store_code})` : user.store_code;
                     storeEl.classList.remove('hidden');
                 } else {
-                    storeEl.textContent = '🌐 Toàn chuỗi';
+                    storeEl.textContent = 'Toàn chuỗi';
                     storeEl.classList.remove('hidden');
                 }
             }

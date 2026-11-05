@@ -4,257 +4,251 @@
 
 {% block extra_head %}
 <style>
-    /* Compact Table & Pipeline Styles */
+    /* Option 3: Apple Retail & Merchant Pro Styles */
     .orders-table th, .orders-table td {
         vertical-align: middle;
     }
+    .pipeline-tab {
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .pipeline-tab:hover {
+        transform: translateY(-2px);
+    }
     .pipeline-tab.active {
-        background-color: #F7F6F3;
-        border-color: rgba(55, 53, 47, 0.2);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        box-shadow: 0 10px 25px -3px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
+        border-color: #059669 !important;
+        background-color: #FFFFFF !important;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="space-y-4">
+<div class="space-y-6">
 
-    <!-- Notion Page Header -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[rgba(55,53,47,0.09)]">
-        <div class="flex items-center space-x-2.5">
-            <span class="text-2xl">📦</span>
-            <div>
-                <h1 class="text-xl font-bold tracking-tight text-[#37352F]">
-                    Điều Phối & Xử Lý Đơn Hàng Hợp Nhất
-                </h1>
-                <p class="text-[12px] text-[#787774]">
-                    Tiếp nhận đa kênh sàn TMĐT & phân tuyến đơn Haravan Omnichannel theo tồn kho Arito ERP.
-                </p>
-            </div>
+    <!-- Top Greeting & Action Controls -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-black tracking-tight text-slate-900">
+                Điều Phối & Xử Lý Đơn Hàng Hợp Nhất
+            </h1>
+            <p class="text-xs text-slate-500 mt-1">
+                Điều hướng đa kênh từ ShopeeFood, GrabMart, ShopeeMart và phân tuyến Haravan theo tồn kho thời gian thực Arito ERP.
+            </p>
         </div>
 
         <!-- Controls: Sync, Audio, Auto-refresh, Refresh -->
-        <div class="flex items-center space-x-2 text-[12px]">
-            <button id="btn-poll-shopeemart" onclick="triggerShopeeMartPoll()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium shadow-none" title="Quét & đối soát đơn hàng ShopeeMart mới nhất">
-                <svg id="shopeemart-poll-spinner" class="w-3.5 h-3.5 text-[#C14C8A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>🛒 Quét Đơn ShopeeMart</span>
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+            <button id="btn-poll-shopeemart" onclick="triggerShopeeMartPoll()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 apple-shadow transition-all font-semibold flex items-center space-x-1.5" title="Quét & đối soát đơn hàng ShopeeMart mới nhất">
+                <svg id="shopeemart-poll-spinner" class="w-4 h-4 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span>Quét ShopeeMart</span>
             </button>
-            <button id="btn-sync-haravan" onclick="triggerManualHaravanSync()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium shadow-none" title="Đồng bộ ngay đơn hàng từ Haravan API">
-                <svg id="haravan-sync-spinner" class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button id="btn-sync-haravan" onclick="triggerManualHaravanSync()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 apple-shadow transition-all font-semibold flex items-center space-x-1.5" title="Đồng bộ ngay đơn hàng từ Haravan API">
+                <svg id="haravan-sync-spinner" class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
                 <span>Đồng bộ Haravan</span>
             </button>
 
-            <button id="btn-toggle-sound" onclick="toggleAudioChime()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium shadow-none">
+            <button id="btn-toggle-sound" onclick="toggleAudioChime()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 apple-shadow transition-all font-semibold flex items-center space-x-1.5">
                 <span id="sound-icon">🔔</span>
                 <span id="sound-text">Chuông: BẬT</span>
             </button>
 
-            <div class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[12px] text-[#787774]">
+            <div class="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200/80 apple-shadow text-xs text-slate-600 font-medium">
                 <span>Tự động (8s)</span>
                 <label class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" id="toggle-auto-refresh" checked class="sr-only peer" onchange="toggleAutoRefresh(this.checked)">
-                    <div class="w-7 h-3.5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#2F3437]"></div>
+                    <div class="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
                 </label>
             </div>
 
-            <button onclick="loadOrdersFeed(true)" class="p-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#787774] transition-colors" title="Tải lại ngay">
-                <svg id="refresh-spinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button onclick="loadOrdersFeed(true)" class="p-2 rounded-xl bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-600 apple-shadow transition-all" title="Tải lại ngay">
+                <svg id="refresh-spinner" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
             </button>
         </div>
     </div>
 
-    <!-- Notion Callout Banner for Branch Isolation -->
-    <div id="branch-isolation-banner" class="hidden rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] p-2.5 flex items-center justify-between text-[12px] text-[#37352F]">
-        <div class="flex items-center space-x-2">
-            <span>📍</span>
-            <span>Bạn đang làm việc tại: <strong id="current-branch-label" class="font-semibold text-[#2F7EA6]">--</strong> (Đã khóa phạm vi hiển thị cho chi nhánh này).</span>
+    <!-- Branch Isolation Banner -->
+    <div id="branch-isolation-banner" class="hidden rounded-2xl bg-blue-50/80 border border-blue-200/80 p-3.5 flex items-center justify-between text-xs text-blue-950">
+        <div class="flex items-center space-x-2.5">
+            <span class="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+            <span>Bạn đang làm việc tại: <strong id="current-branch-label" class="font-bold text-blue-900">--</strong> (Phạm vi hiển thị đã được giới hạn theo chi nhánh).</span>
         </div>
-        <span class="px-1.5 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] text-[10px] font-mono font-medium">STORE SCOPED</span>
+        <span class="px-2.5 py-1 rounded-full bg-blue-200/80 text-blue-900 text-[10px] font-mono font-bold">STORE SCOPED</span>
     </div>
 
-    <!-- Notion Workflow Pipeline Bar (Option A) -->
-    <div class="bg-white rounded-md border border-[rgba(55,53,47,0.09)] p-2.5">
-        <div class="flex items-center justify-between pb-2 mb-2 border-b border-[rgba(55,53,47,0.06)] px-1">
-            <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider flex items-center space-x-1.5">
-                <span>🔄</span>
-                <span>Quy Trình Xử Lý Đơn Hàng (Workflow Pipeline)</span>
+    <!-- Apple Retail Metric & Workflow Pipeline Stage Cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" id="pipeline-stage-tabs">
+        <!-- Stage 1: Cần Duyệt Ngay -->
+        <button type="button" onclick="setPipelineStage('URGENT')" id="pipeline-tab-urgent" class="pipeline-tab text-left bg-gradient-to-br from-amber-50 to-amber-100/60 rounded-2xl p-4 border border-amber-200/80 apple-shadow cursor-pointer relative overflow-hidden">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold uppercase tracking-wider text-amber-900">1. Cần Duyệt Ngay</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
             </div>
-            <div class="flex items-center space-x-2 text-[12px]">
-                <span class="text-[#787774]">Doanh thu hôm nay:</span>
-                <span id="kpi-revenue-today" class="font-bold font-mono text-[#448361]">0 ₫</span>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="kpi-pending-count" class="text-3xl font-black font-mono text-amber-950">0</span>
+                <span class="text-[11px] font-bold text-amber-800">Chưa phân tuyến</span>
             </div>
-        </div>
+        </button>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" id="pipeline-stage-tabs">
-            <!-- Stage 1: Cần Xử Lý Ngay -->
-            <button type="button" onclick="setPipelineStage('URGENT')" id="pipeline-tab-urgent" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-semibold text-[#CB912F] flex items-center gap-1">
-                        <span>⚡</span><span>Cần Xử Lý</span>
-                    </span>
-                    <span id="kpi-pending-count" class="px-1.5 py-0.2 rounded-full bg-[#FBEDD6] text-[#CB912F] text-[11px] font-mono font-bold leading-tight">0</span>
-                </div>
-                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Chờ duyệt / Phân tuyến</p>
-            </button>
+        <!-- Stage 2: Đang Chuẩn Bị -->
+        <button type="button" onclick="setPipelineStage('PREPARING')" id="pipeline-tab-preparing" class="pipeline-tab text-left bg-white rounded-2xl p-4 border border-slate-200/80 apple-shadow cursor-pointer">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">2. Đang Soạn Hàng</span>
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="kpi-preparing-count" class="text-3xl font-black font-mono text-slate-900">0</span>
+                <span class="text-[11px] font-medium text-slate-500">Tại siêu thị</span>
+            </div>
+        </button>
 
-            <!-- Stage 2: Đang Chuẩn Bị -->
-            <button type="button" onclick="setPipelineStage('PREPARING')" id="pipeline-tab-preparing" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-medium text-[#448361] flex items-center gap-1">
-                        <span>👨‍🍳</span><span>Đang Soạn</span>
-                    </span>
-                    <span id="kpi-preparing-count" class="px-1.5 py-0.2 rounded-full bg-[#EDF3EC] text-[#448361] text-[11px] font-mono font-bold leading-tight">0</span>
-                </div>
-                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Đã nhận / Đã phân tuyến</p>
-            </button>
+        <!-- Stage 3: Sẵn Sàng Giao -->
+        <button type="button" onclick="setPipelineStage('READY')" id="pipeline-tab-ready" class="pipeline-tab text-left bg-white rounded-2xl p-4 border border-slate-200/80 apple-shadow cursor-pointer">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">3. Đã Đóng Gói</span>
+                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="kpi-ready-count" class="text-3xl font-black font-mono text-slate-900">0</span>
+                <span class="text-[11px] font-medium text-slate-500">Chờ bàn giao</span>
+            </div>
+        </button>
 
-            <!-- Stage 3: Sẵn Sàng Giao -->
-            <button type="button" onclick="setPipelineStage('READY')" id="pipeline-tab-ready" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-medium text-[#2F7EA6] flex items-center gap-1">
-                        <span>📦</span><span>Sẵn Sàng</span>
-                    </span>
-                    <span id="kpi-ready-count" class="px-1.5 py-0.2 rounded-full bg-[#E7F3F8] text-[#2F7EA6] text-[11px] font-mono font-bold leading-tight">0</span>
-                </div>
-                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Đã đóng gói / Chờ xế</p>
-            </button>
+        <!-- Stage 4: Đang Vận Chuyển -->
+        <button type="button" onclick="setPipelineStage('DELIVERING')" id="pipeline-tab-delivering" class="pipeline-tab text-left bg-white rounded-2xl p-4 border border-slate-200/80 apple-shadow cursor-pointer">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">4. Đang Giao</span>
+                <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="kpi-delivering-count" class="text-3xl font-black font-mono text-slate-900">0</span>
+                <span class="text-[11px] font-medium text-slate-500">Shipper đang đi</span>
+            </div>
+        </button>
 
-            <!-- Stage 4: Đang Vận Chuyển -->
-            <button type="button" onclick="setPipelineStage('DELIVERING')" id="pipeline-tab-delivering" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-medium text-[#9065B0] flex items-center gap-1">
-                        <span>🛵</span><span>Đang Giao</span>
-                    </span>
-                    <span id="kpi-delivering-count" class="px-1.5 py-0.2 rounded-full bg-[#F4EFF7] text-[#9065B0] text-[11px] font-mono font-bold leading-tight">0</span>
-                </div>
-                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Đang vận chuyển</p>
-            </button>
+        <!-- Stage 5: Hoàn Tất -->
+        <button type="button" onclick="setPipelineStage('COMPLETED')" id="pipeline-tab-completed" class="pipeline-tab text-left bg-white rounded-2xl p-4 border border-slate-200/80 apple-shadow cursor-pointer">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">5. Doanh Thu Ngày</span>
+                <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="kpi-revenue-today" class="text-xl font-black font-mono text-emerald-700">0 ₫</span>
+                <span id="kpi-delivered-count" class="text-[11px] font-bold text-slate-500">0 đơn</span>
+            </div>
+        </button>
 
-            <!-- Stage 5: Hoàn Tất & Hủy -->
-            <button type="button" onclick="setPipelineStage('COMPLETED')" id="pipeline-tab-completed" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-medium text-[#787774] flex items-center gap-1">
-                        <span>✅</span><span>Hoàn Tất</span>
-                    </span>
-                    <span id="kpi-delivered-count" class="px-1.5 py-0.2 rounded-full bg-[#F1F1EF] text-[#787774] text-[11px] font-mono font-bold leading-tight">0</span>
-                </div>
-                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Giao thành công</p>
-            </button>
-
-            <!-- Stage 6: Tất Cả Đơn -->
-            <button type="button" onclick="setPipelineStage('ALL')" id="pipeline-tab-all" class="pipeline-tab text-left p-2.5 rounded border border-transparent hover:bg-[#F7F6F3] transition-all cursor-pointer">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-medium text-[#37352F] flex items-center gap-1">
-                        <span>📑</span><span>Tất Cả</span>
-                    </span>
-                    <span id="kpi-all-count" class="px-1.5 py-0.2 rounded-full bg-[rgba(55,53,47,0.08)] text-[#37352F] text-[11px] font-mono font-bold leading-tight">--</span>
-                </div>
-                <p class="text-[10px] text-[#9B9A97] mt-1 truncate">Toàn bộ đơn hàng</p>
-            </button>
-        </div>
+        <!-- Stage 6: Tất Cả Đơn -->
+        <button type="button" onclick="setPipelineStage('ALL')" id="pipeline-tab-all" class="pipeline-tab text-left bg-white rounded-2xl p-4 border border-slate-200/80 apple-shadow cursor-pointer">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">6. Tất Cả Đơn</span>
+                <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="kpi-all-count" class="text-3xl font-black font-mono text-slate-900">--</span>
+                <span class="text-[11px] font-medium text-slate-500">Toàn bộ</span>
+            </div>
+        </button>
     </div>
 
-    <!-- Notion Filter & View Mode Toolbar -->
-    <div class="bg-white rounded-md p-2.5 border border-[rgba(55,53,47,0.09)] space-y-2">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-            <!-- Channel Filter Pills -->
-            <div class="flex flex-wrap items-center gap-1.5" id="channel-filter-pills">
-                <button onclick="setChannelFilter('')" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors bg-[rgba(55,53,47,0.08)] text-[#37352F]" data-channel="">
-                    📑 Tất cả sàn
-                </button>
-                <button onclick="setChannelFilter('SHOPEEFOOD')" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]" data-channel="SHOPEEFOOD">
-                    🛍️ ShopeeFood
-                </button>
-                <button onclick="setChannelFilter('GRABMART')" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]" data-channel="GRABMART">
-                    🟢 GrabMart
-                </button>
-                <button onclick="setChannelFilter('SHOPEEMART')" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F]" data-channel="SHOPEEMART">
-                    🛒 ShopeeMart
-                </button>
-                <button id="btn-haravan-filter" onclick="setChannelFilter('HARAVAN')" class="channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F] flex items-center space-x-1" data-channel="HARAVAN">
-                    <span>🌐</span>
-                    <span>Haravan Omnichannel</span>
-                </button>
+    <!-- Filter Pills, Dropdowns, Search & View Switcher -->
+    <div class="bg-white rounded-2xl border border-slate-200/80 p-3.5 apple-shadow flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <!-- Channel Filter Pills -->
+        <div class="flex flex-wrap items-center gap-2" id="channel-filter-pills">
+            <button onclick="setChannelFilter('')" class="channel-pill px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-900 text-white shadow-sm" data-channel="">
+                Tất cả sàn
+            </button>
+            <button onclick="setChannelFilter('SHOPEEFOOD')" class="channel-pill px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/70 transition-all flex items-center space-x-1.5" data-channel="SHOPEEFOOD">
+                <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                <span>ShopeeFood</span>
+            </button>
+            <button onclick="setChannelFilter('GRABMART')" class="channel-pill px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/70 transition-all flex items-center space-x-1.5" data-channel="GRABMART">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>GrabMart</span>
+            </button>
+            <button onclick="setChannelFilter('SHOPEEMART')" class="channel-pill px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/70 transition-all flex items-center space-x-1.5" data-channel="SHOPEEMART">
+                <span class="w-2 h-2 rounded-full bg-pink-500"></span>
+                <span>ShopeeMart</span>
+            </button>
+            <button id="btn-haravan-filter" onclick="setChannelFilter('HARAVAN')" class="channel-pill px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/70 transition-all flex items-center space-x-1.5" data-channel="HARAVAN">
+                <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                <span>Haravan Omnichannel</span>
+            </button>
 
-                <span class="text-[rgba(55,53,47,0.15)] mx-0.5">|</span>
+            <span class="text-slate-200 mx-1">|</span>
 
-                <!-- Quick Action Pills -->
-                <button id="btn-incomplete-filter" onclick="setIncompleteFilter()" class="channel-pill px-2 py-1 rounded text-[12px] font-medium transition-colors bg-[#EDF3EC] text-[#448361] hover:bg-[#E2EDE1] flex items-center space-x-1" data-channel="INCOMPLETE" title="Đơn đang xử lý">
-                    <span>⏳ Chưa Hoàn Thành</span>
-                    <span id="incomplete-counter-badge" class="px-1.5 py-0.2 rounded bg-[#448361] text-white text-[10px] font-mono font-bold leading-none">0</span>
-                </button>
-                <button id="btn-unassigned-filter" onclick="setHaravanUnassignedFilter()" class="channel-pill px-2 py-1 rounded text-[12px] font-medium transition-colors bg-[#FBEDD6] text-[#CB912F] hover:bg-[#F8E5C4] flex items-center space-x-1" data-channel="HARAVAN_UNASSIGNED" title="Đơn Haravan cần phân tuyến ngay">
-                    <span>⚡ Cần Phân Tuyến (Haravan)</span>
-                    <span id="unassigned-counter-badge" class="px-1.5 py-0.2 rounded bg-[#CB912F] text-white text-[10px] font-mono font-bold leading-none">0</span>
-                </button>
+            <!-- Quick Action Pills -->
+            <button id="btn-incomplete-filter" onclick="setIncompleteFilter()" class="channel-pill px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 flex items-center space-x-1.5" data-channel="INCOMPLETE" title="Đơn đang xử lý">
+                <span>Chưa Hoàn Thành</span>
+                <span id="incomplete-counter-badge" class="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-mono font-bold">0</span>
+            </button>
+            <button id="btn-unassigned-filter" onclick="setHaravanUnassignedFilter()" class="channel-pill px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 flex items-center space-x-1.5" data-channel="HARAVAN_UNASSIGNED" title="Đơn Haravan cần phân tuyến ngay">
+                <span>Cần Phân Tuyến (Haravan)</span>
+                <span id="unassigned-counter-badge" class="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[10px] font-mono font-bold">0</span>
+            </button>
+        </div>
+
+        <!-- Store, Status, Search & Segmented View Switcher -->
+        <div class="flex flex-wrap items-center gap-2">
+            <select id="filter-store-code" onchange="onFilterChange()" class="px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs font-semibold text-slate-800 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
+                <option value="">Tất cả chi nhánh</option>
+            </select>
+
+            <select id="filter-status" onchange="onFilterChange()" class="px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs font-semibold text-slate-800 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
+                <option value="">Tất cả trạng thái</option>
+                <option value="INCOMPLETE">Chưa hoàn thành</option>
+                <option value="PENDING">Chờ duyệt (PENDING)</option>
+                <option value="ACCEPTED">Đã nhận (ACCEPTED)</option>
+                <option value="PREPARING">Đang soạn hàng (PREPARING)</option>
+                <option value="READY">Sẵn sàng (READY)</option>
+                <option value="PICKED_UP">Đang giao (PICKED_UP)</option>
+                <option value="DELIVERED">Hoàn tất (DELIVERED)</option>
+                <option value="CANCELLED">Đã hủy (CANCELLED)</option>
+            </select>
+
+            <div class="relative">
+                <input type="text" id="search-input" onkeyup="if(event.key==='Enter') onFilterChange()" placeholder="Tìm mã đơn, tên, SĐT..." class="w-52 pl-9 pr-4 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all">
+                <svg class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             </div>
 
-            <!-- Store, Status, Search & View Switcher -->
-            <div class="flex flex-wrap items-center gap-2">
-                <select id="filter-store-code" onchange="onFilterChange()" class="px-2.5 py-1 rounded bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] font-medium text-[#37352F] focus:outline-none focus:border-[#2383E2]">
-                    <option value="">Tất cả chi nhánh</option>
-                </select>
-
-                <select id="filter-status" onchange="onFilterChange()" class="px-2.5 py-1 rounded bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] font-medium text-[#37352F] focus:outline-none focus:border-[#2383E2]">
-                    <option value="">Tất cả trạng thái</option>
-                    <option value="INCOMPLETE">⏳ Chưa hoàn thành</option>
-                    <option value="PENDING">Chờ duyệt (PENDING)</option>
-                    <option value="ACCEPTED">Đã nhận (ACCEPTED)</option>
-                    <option value="PREPARING">Đang soạn hàng (PREPARING)</option>
-                    <option value="READY">Sẵn sàng (READY)</option>
-                    <option value="PICKED_UP">Đang giao (PICKED_UP)</option>
-                    <option value="DELIVERED">Hoàn tất (DELIVERED)</option>
-                    <option value="CANCELLED">Đã hủy (CANCELLED)</option>
-                </select>
-
-                <div class="relative">
-                    <input type="text" id="search-input" onkeyup="if(event.key==='Enter') onFilterChange()" placeholder="Tìm mã đơn, tên, SĐT..." class="w-48 pl-7 pr-3 py-1 rounded bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:bg-white focus:border-[#2383E2]">
-                    <svg class="w-3.5 h-3.5 text-[#9B9A97] absolute left-2 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                    </svg>
-                </div>
-
-                <!-- View Switcher (Table vs Card) -->
-                <div class="flex items-center bg-[#F7F6F3] p-0.5 rounded border border-[rgba(55,53,47,0.09)]">
-                    <button type="button" id="btn-view-table" onclick="switchViewMode('table')" class="px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors bg-white text-[#37352F] shadow-xs" title="Chế độ Bảng danh sách gọn">
-                        <span>☷</span>
-                        <span>Bảng</span>
-                    </button>
-                    <button type="button" id="btn-view-card" onclick="switchViewMode('card')" class="px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors text-[#787774] hover:text-[#37352F]" title="Chế độ Thẻ chi tiết">
-                        <span>⊞</span>
-                        <span>Thẻ</span>
-                    </button>
-                </div>
+            <!-- Segmented View Mode Toggle -->
+            <div class="flex items-center p-1 rounded-2xl bg-slate-200/80 border border-slate-300/60 shadow-inner">
+                <button type="button" id="btn-view-table" onclick="switchViewMode('table')" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm transition-all flex items-center space-x-1.5" title="Chế độ Bảng danh sách">
+                    <span>☷</span>
+                    <span>Bảng</span>
+                </button>
+                <button type="button" id="btn-view-card" onclick="switchViewMode('card')" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-1.5" title="Chế độ Thẻ trực quan">
+                    <span>⊞</span>
+                    <span>Thẻ</span>
+                </button>
             </div>
         </div>
     </div>
 
     <!-- Active Orders Feed Grid -->
-    <div id="orders-container" class="space-y-2.5">
+    <div id="orders-container" class="space-y-4">
         <!-- Dynamic Orders List Rendered by JS -->
-        <div class="p-8 text-center text-[#787774] bg-white rounded-md border border-[rgba(55,53,47,0.09)]">
-            <svg class="w-6 h-6 mx-auto mb-2 animate-spin text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="p-12 text-center text-slate-500 bg-white rounded-3xl border border-slate-200/80 apple-shadow">
+            <svg class="w-8 h-8 mx-auto mb-3 animate-spin text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
-            <span class="text-[12px]">Đang tải danh sách đơn hàng...</span>
+            <div class="text-sm font-semibold text-slate-800">Đang tải danh sách đơn hàng...</div>
+            <div class="text-xs text-slate-400 mt-1">Đồng bộ dữ liệu thời gian thực từ các kênh sàn</div>
         </div>
     </div>
 
     <!-- Pagination Controls -->
-    <div id="pagination-bar" class="hidden flex items-center justify-between bg-white rounded-md p-3 border border-[rgba(55,53,47,0.09)] text-[12px] text-[#787774]">
-        <div>Hiển thị <span id="page-item-range" class="font-mono font-semibold text-[#37352F]">0</span> / <span id="page-total-items" class="font-mono font-semibold text-[#37352F]">0</span> đơn hàng</div>
-        <div class="flex items-center space-x-1.5">
-            <button id="btn-prev-page" onclick="changePage(-1)" class="px-2.5 py-1 rounded bg-[#F7F6F3] hover:bg-[rgba(55,53,47,0.08)] text-[#37352F] font-medium disabled:opacity-40 border border-[rgba(55,53,47,0.09)]">&larr; Trước</button>
-            <span id="page-current" class="font-mono px-2 text-[#37352F]">Trang 1</span>
-            <button id="btn-next-page" onclick="changePage(1)" class="px-2.5 py-1 rounded bg-[#F7F6F3] hover:bg-[rgba(55,53,47,0.08)] text-[#37352F] font-medium disabled:opacity-40 border border-[rgba(55,53,47,0.09)]">Sau &rarr;</button>
+    <div id="pagination-bar" class="hidden flex items-center justify-between bg-white rounded-2xl p-4 border border-slate-200/80 apple-shadow text-xs text-slate-600">
+        <div>Hiển thị <span id="page-item-range" class="font-mono font-bold text-slate-900">0</span> / <span id="page-total-items" class="font-mono font-bold text-slate-900">0</span> đơn hàng</div>
+        <div class="flex items-center space-x-2">
+            <button id="btn-prev-page" onclick="changePage(-1)" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/70 text-slate-800 font-bold disabled:opacity-40 border border-slate-200 transition-all">&larr; Trước</button>
+            <span id="page-current" class="font-mono px-3 font-bold text-slate-900">Trang 1</span>
+            <button id="btn-next-page" onclick="changePage(1)" class="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/70 text-slate-800 font-bold disabled:opacity-40 border border-slate-200 transition-all">Sau &rarr;</button>
         </div>
     </div>
-</div>
-
 </div>
 
 <!-- ======================================================================= -->
@@ -263,28 +257,28 @@
 <!-- ======================================================================= -->
 <!-- Modal 2: Cancel Order Modal -->
 <!-- ======================================================================= -->
-<div id="cancel-order-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-md w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F]">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)]">
-            <h3 class="font-semibold text-[13px] text-[#D44C47] flex items-center space-x-1.5">
-                <span>⚠️</span>
+<div id="cancel-order-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+        <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
+            <h3 class="font-extrabold text-sm text-rose-700 flex items-center space-x-2">
+                <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                 <span>Xác Nhận Hủy Đơn Hàng</span>
             </h3>
-            <button onclick="closeCancelModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
+            <button onclick="closeCancelModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-sm transition-all">✕</button>
         </div>
-        <p class="text-[12px] text-[#787774] mt-2">
+        <p class="text-xs text-slate-500 mt-2.5 leading-relaxed">
             Đơn hàng sẽ bị hủy trên hệ thống và tự động gửi lý do hủy về sàn tương ứng.
         </p>
 
-        <div class="mt-3.5 space-y-3">
+        <div class="mt-4 space-y-3.5">
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Mã đơn:</label>
-                <div id="cancel-modal-order-code" class="font-mono text-[12px] text-[#37352F] bg-[#F7F6F3] p-2 rounded-md border border-[rgba(55,53,47,0.09)]">--</div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Mã đơn:</label>
+                <div id="cancel-modal-order-code" class="font-mono text-xs text-slate-900 font-bold bg-slate-50 p-2.5 rounded-xl border border-slate-200">--</div>
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Lý do hủy đơn:</label>
-                <select id="cancel-modal-reason" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Lý do hủy đơn:</label>
+                <select id="cancel-modal-reason" class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 font-semibold focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                     <option value="Hết món ăn / hết tồn kho tại chi nhánh">Hết món / hết hàng tại cửa hàng (Out of Stock)</option>
                     <option value="Cửa hàng quá tải / tạm đóng cửa">Cửa hàng quá tải / tạm đóng (Store Busy / Closed)</option>
                     <option value="Sai giá bán hoặc thực đơn">Sai giá hoặc thông tin món</option>
@@ -293,14 +287,14 @@
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú bổ sung (tùy chọn):</label>
-                <input type="text" id="cancel-modal-note" placeholder="Chi tiết lý do..." class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Ghi chú bổ sung (tùy chọn):</label>
+                <input type="text" id="cancel-modal-note" placeholder="Chi tiết lý do..." class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
             </div>
         </div>
 
-        <div class="flex items-center justify-end space-x-2 mt-4 pt-3 border-t border-[rgba(55,53,47,0.09)]">
-            <button onclick="closeCancelModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Đóng</button>
-            <button id="btn-confirm-cancel" onclick="executeCancelOrder()" class="px-3.5 py-1.5 rounded-md bg-[#EB5757] hover:bg-[#D44C47] text-white text-[12px] font-medium transition-colors">
+        <div class="flex items-center justify-end space-x-2 mt-5 pt-3.5 border-t border-slate-100">
+            <button onclick="closeCancelModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all">Đóng</button>
+            <button id="btn-confirm-cancel" onclick="executeCancelOrder()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-sm">
                 Xác Nhận Hủy Đơn
             </button>
         </div>
@@ -308,95 +302,92 @@
 </div>
 
 <!-- ======================================================================= -->
-<!-- Modal 3: Comprehensive Order Details Dialog (Follow 100% PMDONHANG) -->
+<!-- Modal 3: Comprehensive Order Details Dialog (Option 3 Apple Retail - Follow 100% PMDONHANG) -->
 <!-- ======================================================================= -->
-<div id="order-details-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-5">
-    <div class="bg-white rounded-lg max-w-5xl w-full p-5 sm:p-6 border border-[rgba(55,53,47,0.12)] shadow-2xl relative text-[#37352F] max-h-[92vh] flex flex-col">
+<div id="order-details-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+    <div class="bg-white rounded-3xl max-w-5xl w-full p-6 sm:p-7 border border-slate-200/80 apple-shadow relative text-slate-900 max-h-[92vh] flex flex-col">
         <!-- 1. Header Bar: Channel Badge, Order Code, Copy button, Close button -->
-        <div class="flex flex-wrap items-center justify-between pb-3.5 border-b border-[rgba(55,53,47,0.09)] shrink-0 gap-2">
-            <div class="flex flex-wrap items-center gap-2">
-                <span id="detail-modal-channel-badge" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#E7F3F8] text-[#2F7EA6]">HARAVAN</span>
-                <h3 id="detail-modal-title" class="font-semibold text-base sm:text-lg text-[#37352F] tracking-tight">Chi Tiết Đơn Hàng</h3>
-                <span id="detail-modal-id-badge" class="px-2 py-0.5 rounded bg-[#F7F6F3] text-[11px] font-mono text-[#787774] border border-[rgba(55,53,47,0.06)]"></span>
+        <div class="flex flex-wrap items-center justify-between pb-4 border-b border-slate-100 shrink-0 gap-2">
+            <div class="flex flex-wrap items-center gap-2.5">
+                <span id="detail-modal-channel-badge" class="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">HARAVAN</span>
+                <h3 id="detail-modal-title" class="font-black text-lg text-slate-900 tracking-tight">Chi Tiết Đơn Hàng</h3>
+                <span id="detail-modal-id-badge" class="px-2.5 py-0.5 rounded-full bg-slate-100 text-xs font-mono text-slate-600 font-bold border border-slate-200"></span>
             </div>
             <div class="flex items-center space-x-2">
-                <button id="detail-modal-copy-btn" onclick="copyCurrentDetailOrderCode()" class="px-2.5 py-1 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1.5" title="Copy mã đơn hàng">
-                    <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                    <span id="detail-modal-copy-text">📋 Copy mã đơn</span>
+                <button id="detail-modal-copy-btn" onclick="copyCurrentDetailOrderCode()" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all flex items-center space-x-1.5" title="Copy mã đơn hàng">
+                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                    <span id="detail-modal-copy-text">Copy mã đơn</span>
                 </button>
-                <button onclick="closeDetailsModal()" class="w-7 h-7 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-base transition-colors">✕</button>
+                <button onclick="closeDetailsModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-base transition-all">✕</button>
             </div>
         </div>
 
         <!-- 2. Status Progression Pipeline Flow Bar -->
-        <div id="detail-modal-status-pipeline" class="py-2.5 border-b border-[rgba(55,53,47,0.09)] shrink-0 overflow-x-auto">
+        <div id="detail-modal-status-pipeline" class="py-3 border-b border-slate-100 shrink-0 overflow-x-auto">
             <!-- Pipeline badges dynamically rendered via JS -->
         </div>
 
         <!-- 3. Tab Buttons Header -->
-        <div class="flex items-center space-x-1 border-b border-[rgba(55,53,47,0.09)] pt-2 shrink-0">
-            <button id="detail-tab-btn-basic" onclick="switchDetailTab('basic')" class="px-3.5 py-2 text-[12.5px] font-semibold border-b-2 border-[#37352F] text-[#37352F] transition-colors flex items-center space-x-1.5">
-                <span>📋</span>
-                <span>Thông tin cơ bản & Điều phối</span>
+        <div class="flex items-center space-x-2 border-b border-slate-100 pt-2 shrink-0">
+            <button id="detail-tab-btn-basic" onclick="switchDetailTab('basic')" class="px-4 py-2.5 text-xs font-bold border-b-2 border-emerald-600 text-emerald-700 transition-all flex items-center space-x-2">
+                <span>Thông tin & Điều phối</span>
             </button>
-            <button id="detail-tab-btn-products" onclick="switchDetailTab('products')" class="px-3.5 py-2 text-[12.5px] font-medium border-b-2 border-transparent text-[#787774] hover:text-[#37352F] transition-colors flex items-center space-x-1.5">
-                <span>📦</span>
+            <button id="detail-tab-btn-products" onclick="switchDetailTab('products')" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-900 transition-all flex items-center space-x-2">
                 <span>Sản phẩm & Tồn kho Arito</span>
-                <span id="detail-tab-products-badge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-[#F7F6F3] text-[#787774] font-mono">0</span>
+                <span id="detail-tab-products-badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-mono font-bold">0</span>
             </button>
-            <button id="detail-tab-btn-history" onclick="switchDetailTab('history')" class="px-3.5 py-2 text-[12.5px] font-medium border-b-2 border-transparent text-[#787774] hover:text-[#37352F] transition-colors flex items-center space-x-1.5">
-                <span>🕒</span>
+            <button id="detail-tab-btn-history" onclick="switchDetailTab('history')" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-900 transition-all flex items-center space-x-2">
                 <span>Lịch sử thay đổi (Audit)</span>
-                <span id="detail-tab-history-badge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-[#F7F6F3] text-[#787774] font-mono">0</span>
+                <span id="detail-tab-history-badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-mono font-bold">0</span>
             </button>
         </div>
 
         <!-- 4. Scrollable Tab Panes Container -->
-        <div class="flex-1 overflow-y-auto py-3.5 space-y-4 pr-1 min-h-[360px]" id="detail-modal-body">
+        <div class="flex-1 overflow-y-auto py-4 space-y-4 pr-1 min-h-[360px]" id="detail-modal-body">
             <!-- Tab 1 Pane: Basic Info & Dispatch -->
-            <div id="detail-tab-pane-basic" class="space-y-3.5">
+            <div id="detail-tab-pane-basic" class="space-y-4">
                 <!-- Injected via JS -->
             </div>
 
             <!-- Tab 2 Pane: Products & Live Stock -->
-            <div id="detail-tab-pane-products" class="hidden space-y-3.5">
+            <div id="detail-tab-pane-products" class="hidden space-y-4">
                 <!-- Injected via JS -->
             </div>
 
             <!-- Tab 3 Pane: History Audit Trail -->
-            <div id="detail-tab-pane-history" class="hidden space-y-3.5">
+            <div id="detail-tab-pane-history" class="hidden space-y-4">
                 <!-- Injected via JS -->
             </div>
         </div>
 
-        <!-- 5. Footer Action Bar (Status Transition Buttons + Print + Close) -->
-        <div id="detail-modal-footer" class="pt-3 border-t border-[rgba(55,53,47,0.09)] flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <!-- 5. Footer Action Bar (Status Transition Buttons + Close) -->
+        <div id="detail-modal-footer" class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
             <!-- Injected via JS -->
         </div>
     </div>
 </div>
 
 <!-- ======================================================================= -->
-<!-- Modal 4: ShopeeMart AWB Airway Bill Print Preview -->
+<!-- Modal 4: ShopeeMart AWB Airway Bill Print Preview (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="shopee-awb-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-lg w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F]">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)] no-print">
+<div id="shopee-awb-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+        <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 no-print">
             <div class="flex items-center space-x-2">
-                <span class="w-2 h-2 rounded-full bg-[#EB5757]"></span>
-                <h3 class="font-semibold text-[13px] text-[#37352F]">Phiếu Gửi Hàng ShopeeMart (Airway Bill - AWB)</h3>
+                <span class="w-2.5 h-2.5 rounded-full bg-pink-500"></span>
+                <h3 class="font-extrabold text-sm text-slate-900">Phiếu Gửi Hàng ShopeeMart (Airway Bill - AWB)</h3>
             </div>
-            <button onclick="closeShopeeAwbModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
+            <button onclick="closeShopeeAwbModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-sm transition-all">✕</button>
         </div>
 
-        <div id="shopee-awb-content" class="my-3">
+        <div id="shopee-awb-content" class="my-4">
             <!-- Injected via JS -->
         </div>
 
-        <div class="flex items-center justify-end space-x-2 pt-3 border-t border-[rgba(55,53,47,0.09)] no-print">
-            <button onclick="closeShopeeAwbModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Đóng</button>
-            <button onclick="window.print()" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+        <div class="flex items-center justify-end space-x-2 pt-4 border-t border-slate-100 no-print">
+            <button onclick="closeShopeeAwbModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all">Đóng</button>
+            <button onclick="window.print()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm flex items-center space-x-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                 <span>In Phiếu AWB</span>
             </button>
         </div>
@@ -404,59 +395,59 @@
 </div>
 
 <!-- ======================================================================= -->
-<!-- Modal 5: Haravan Order Store Assignment Modal with Live Arito ERP Stock -->
+<!-- Modal 5: Haravan Order Store Assignment Modal with Live Arito ERP Stock (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-assign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-3xl w-full p-5 sm:p-6 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F] max-h-[92vh] overflow-y-auto">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)]">
+<div id="haravan-assign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-7 border border-slate-200/80 apple-shadow relative text-slate-900 max-h-[92vh] overflow-y-auto">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
-                <div class="flex items-center space-x-1.5 mb-1">
-                    <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#E7F3F8] text-[#2F7EA6]">HARAVAN OMNICHANNEL</span>
-                    <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#FBEDD6] text-[#CB912F]">DISPATCHING</span>
+                <div class="flex items-center space-x-2 mb-1">
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">HARAVAN OMNICHANNEL</span>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900">ĐIỀU PHỐI</span>
                 </div>
-                <h3 class="font-semibold text-base text-[#37352F]">
-                    ⚡ Phân Tuyến Cửa Hàng & Tra Cứu Tồn Kho Arito ERP
+                <h3 class="font-extrabold text-base text-slate-900">
+                    Phân Tuyến Cửa Hàng & Tra Cứu Tồn Kho Arito ERP
                 </h3>
-                <p class="text-[12px] text-[#787774] mt-0.5" id="assign-modal-order-subtitle">Đang tải thông tin đơn hàng...</p>
+                <p class="text-xs text-slate-500 mt-0.5" id="assign-modal-order-subtitle">Đang tải thông tin đơn hàng...</p>
             </div>
-            <button onclick="closeHaravanAssignModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
+            <button onclick="closeHaravanAssignModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-sm transition-all">✕</button>
         </div>
 
         <!-- Order Quick Info -->
-        <div id="assign-modal-order-summary" class="my-3 p-3 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div id="assign-modal-order-summary" class="my-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
             <!-- Injected via JS -->
         </div>
 
         <!-- Arito ERP Live Stock Table -->
-        <div class="my-3.5 space-y-2">
+        <div class="my-4 space-y-2.5">
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-2">
-                    <span class="text-[12px] font-semibold text-[#37352F]">📦 Tồn Kho Thực Tế Arito ERP (4 Siêu Thị)</span>
-                    <span class="text-[10px] px-1.5 py-0.2 rounded bg-[#EDF3EC] text-[#448361] font-medium">LIVE SYNC</span>
+                    <span class="text-xs font-bold text-slate-900">Tồn Kho Thực Tế Arito ERP (4 Siêu Thị)</span>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">LIVE SYNC</span>
                 </div>
-                <span class="text-[11px] text-[#787774]">Dữ liệu thực tế từ Arito DB (cttk)</span>
+                <span class="text-xs text-slate-400">Dữ liệu từ Arito ERP DB</span>
             </div>
 
             <!-- Recommendation Banner -->
-            <div id="assign-modal-recommendation-box" class="hidden p-3 rounded-md bg-[#EDF3EC] border border-[#B3D6B5] text-[12px] text-[#2E5E3D] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div id="assign-modal-recommendation-box" class="hidden p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <!-- Injected via JS -->
             </div>
 
             <!-- Stock Table Container -->
-            <div class="border border-[rgba(55,53,47,0.09)] rounded-md overflow-hidden bg-white">
+            <div class="border border-slate-200 rounded-2xl overflow-hidden bg-white apple-shadow">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-[12px]">
-                        <thead class="bg-[#F7F6F3] border-b border-[rgba(55,53,47,0.09)] text-[11px] font-semibold text-[#787774]">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500">
                             <tr>
-                                <th class="px-3 py-2">Mặt hàng / SKU</th>
-                                <th class="px-2 py-2 text-center">SL Cần</th>
-                                <th class="px-2 py-2 text-center bg-[#E7F3F8]/30">10001 (21TD)</th>
-                                <th class="px-2 py-2 text-center bg-[#FBEDD6]/30">10004 (46NLB)</th>
-                                <th class="px-2 py-2 text-center bg-[#EDF3EC]/30">10005 (17MCT)</th>
-                                <th class="px-2 py-2 text-center bg-[#F4EFF7]/30">10006 (303NVT)</th>
+                                <th class="px-3.5 py-2.5">Mặt hàng / SKU</th>
+                                <th class="px-2.5 py-2.5 text-center">SL Cần</th>
+                                <th class="px-2.5 py-2.5 text-center bg-blue-50/50">10001 (21TD)</th>
+                                <th class="px-2.5 py-2.5 text-center bg-amber-50/50">10004 (46NLB)</th>
+                                <th class="px-2.5 py-2.5 text-center bg-emerald-50/50">10005 (17MCT)</th>
+                                <th class="px-2.5 py-2.5 text-center bg-purple-50/50">10006 (303NVT)</th>
                             </tr>
                         </thead>
-                        <tbody id="assign-modal-stock-tbody" class="divide-y divide-[rgba(55,53,47,0.06)] font-mono text-[12px]">
+                        <tbody id="assign-modal-stock-tbody" class="divide-y divide-slate-100 font-mono text-xs">
                             <!-- Injected via JS -->
                         </tbody>
                     </table>
@@ -465,13 +456,13 @@
         </div>
 
         <!-- Assignment Form -->
-        <div class="my-3.5 p-3.5 rounded-md bg-[#FAF9F5] border border-[rgba(55,53,47,0.09)] space-y-2.5 text-[12px]">
-            <div class="font-semibold text-[13px] text-[#37352F]">Quyết Định Phân Tuyến (Follow Chuẩn PMDONHANG):</div>
+        <div class="my-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
+            <div class="font-bold text-sm text-slate-900">Quyết Định Phân Tuyến Cửa Hàng:</div>
             
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
-                    <label class="block font-semibold text-[#787774] mb-1">Cửa hàng tiếp nhận (*):</label>
-                    <select id="assign-select-store" class="w-full px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[12px] font-medium text-[#37352F] focus:outline-none focus:border-[#2383E2]">
+                    <label class="block font-bold text-slate-700 mb-1">Cửa hàng tiếp nhận (*):</label>
+                    <select id="assign-select-store" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-400">
                         <option value="10001">10001 - 21TD (21 Thảo Điền)</option>
                         <option value="10004">10004 - 46NLB (46 Hưng Phúc Q.7)</option>
                         <option value="10005">10005 - 17MCT (17 Mai Chí Thọ)</option>
@@ -481,8 +472,8 @@
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-[#787774] mb-1">Lý do phân tuyến (*):</label>
-                    <select id="assign-select-reason" class="w-full px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[12px] font-medium text-[#37352F] focus:outline-none focus:border-[#2383E2]">
+                    <label class="block font-bold text-slate-700 mb-1">Lý do phân tuyến (*):</label>
+                    <select id="assign-select-reason" class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-900 focus:outline-none focus:border-slate-400">
                         <option value="Gần cửa hàng">Gần cửa hàng</option>
                         <option value="Cửa hàng có sẵn hàng">Cửa hàng có sẵn hàng</option>
                         <option value="Shipper gần nhất">Shipper gần nhất</option>
@@ -493,47 +484,45 @@
             </div>
 
             <div>
-                <label class="block font-semibold text-[#787774] mb-1">Ghi chú phân tuyến bổ sung:</label>
-                <input type="text" id="assign-input-note" placeholder="Nhập lưu ý gửi cửa hàng (ví dụ: liên hệ khách trước khi giao, hàng tươi sống giao gấp)..." class="w-full px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[12px] text-[#37352F] focus:outline-none focus:border-[#2383E2]">
+                <label class="block font-bold text-slate-700 mb-1">Ghi chú phân tuyến bổ sung:</label>
+                <input type="text" id="assign-input-note" placeholder="Nhập lưu ý gửi cửa hàng (ví dụ: liên hệ khách trước khi giao, hàng tươi sống giao gấp)..." class="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-400">
             </div>
         </div>
 
         <!-- Action buttons -->
-        <div class="flex items-center justify-end space-x-2 pt-3 border-t border-[rgba(55,53,47,0.09)]">
-            <button onclick="closeHaravanAssignModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Hủy Bỏ</button>
-            <button id="btn-confirm-assign" onclick="executeHaravanAssign()" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                <span>⚡</span>
-                <span>Xác Nhận Phân Tuyến Cửa Hàng</span>
+        <div class="flex items-center justify-end space-x-2 pt-3.5 border-t border-slate-100">
+            <button onclick="closeHaravanAssignModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all">Hủy Bỏ</button>
+            <button id="btn-confirm-assign" onclick="executeHaravanAssign()" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm flex items-center space-x-1.5 hover:scale-105 active:scale-95">
+                <span>Xác Nhận Phân Tuyến</span>
             </button>
         </div>
     </div>
 </div>
 
 <!-- ======================================================================= -->
-<!-- Modal 6: Request Reassignment Modal (Cửa hàng báo thiếu hàng / quá tải) -->
+<!-- Modal 6: Request Reassignment Modal (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-reassign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-md w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F]">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)]">
-            <h3 class="font-semibold text-[13px] text-[#D44C47] flex items-center space-x-1.5">
-                <span>⚠️</span>
+<div id="haravan-reassign-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+        <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
+            <h3 class="font-extrabold text-sm text-rose-700 flex items-center space-x-2">
                 <span>Yêu Cầu Phân Tuyến Lại</span>
             </h3>
-            <button onclick="closeHaravanReassignModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
+            <button onclick="closeHaravanReassignModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-sm transition-all">✕</button>
         </div>
-        <p class="text-[12px] text-[#787774] mt-2">
+        <p class="text-xs text-slate-500 mt-2.5 leading-relaxed">
             Cửa hàng không thể thực hiện đơn này? Hệ thống sẽ gỡ bỏ phân tuyến và chuyển đơn về hàng đợi <strong>Tổng Đài Điều Phối</strong> để chuyển chi nhánh khác.
         </p>
 
-        <div class="mt-3.5 space-y-3">
+        <div class="mt-4 space-y-3.5">
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Mã đơn Haravan:</label>
-                <div id="reassign-modal-order-number" class="font-mono text-[12px] text-[#37352F] bg-[#F7F6F3] p-2 rounded-md border border-[rgba(55,53,47,0.09)] font-semibold">--</div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Mã đơn Haravan:</label>
+                <div id="reassign-modal-order-number" class="font-mono text-xs text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 font-bold">--</div>
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Lý do yêu cầu phân tuyến lại (*):</label>
-                <select id="reassign-select-reason" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Lý do yêu cầu phân tuyến lại (*):</label>
+                <select id="reassign-select-reason" class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 font-semibold focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                     <option value="Cửa hàng không có hàng">Cửa hàng không có hàng (Hết tồn kho)</option>
                     <option value="Cửa hàng quá tải">Cửa hàng quá tải (Không kịp chuẩn bị)</option>
                     <option value="Địa chỉ giao hàng quá xa">Địa chỉ giao hàng quá xa</option>
@@ -544,45 +533,44 @@
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú chi tiết cho điều phối viên:</label>
-                <input type="text" id="reassign-input-note" placeholder="Chi tiết món hết hàng hoặc lý do..." class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Ghi chú chi tiết cho điều phối viên:</label>
+                <input type="text" id="reassign-input-note" placeholder="Chi tiết món hết hàng hoặc lý do..." class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
             </div>
         </div>
 
-        <div class="flex items-center justify-end space-x-2 mt-4 pt-3 border-t border-[rgba(55,53,47,0.09)]">
-            <button onclick="closeHaravanReassignModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Hủy</button>
-            <button id="btn-confirm-reassign" onclick="executeHaravanReassign()" class="px-3.5 py-1.5 rounded-md bg-[#EB5757] hover:bg-[#D44C47] text-white text-[12px] font-medium transition-colors">
-                ⚠️ Trả Đơn Về Tổng Đài
+        <div class="flex items-center justify-end space-x-2 mt-5 pt-3.5 border-t border-slate-100">
+            <button onclick="closeHaravanReassignModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all">Hủy</button>
+            <button id="btn-confirm-reassign" onclick="executeHaravanReassign()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-sm">
+                Trả Đơn Về Tổng Đài
             </button>
         </div>
     </div>
 </div>
 
 <!-- ======================================================================= -->
-<!-- Modal 7: Ship Order Modal (Bàn giao vận chuyển) -->
+<!-- Modal 7: Ship Order Modal (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-ship-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-md w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F]">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)]">
-            <h3 class="font-semibold text-[13px] text-[#9065B0] flex items-center space-x-1.5">
-                <span>🚚</span>
+<div id="haravan-ship-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+        <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
+            <h3 class="font-extrabold text-sm text-purple-700 flex items-center space-x-2">
                 <span>Xác Nhận Gửi Vận Đơn</span>
             </h3>
-            <button onclick="closeHaravanShipModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
+            <button onclick="closeHaravanShipModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-sm transition-all">✕</button>
         </div>
-        <p class="text-[12px] text-[#787774] mt-2">
+        <p class="text-xs text-slate-500 mt-2.5 leading-relaxed">
             Bàn giao hàng cho tài xế hoặc đối tác giao nhận 3PL.
         </p>
 
-        <div class="mt-3.5 space-y-3">
+        <div class="mt-4 space-y-3.5">
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Mã đơn Haravan:</label>
-                <div id="ship-modal-order-number" class="font-mono text-[12px] text-[#37352F] bg-[#F7F6F3] p-2 rounded-md border border-[rgba(55,53,47,0.09)] font-semibold">--</div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Mã đơn Haravan:</label>
+                <div id="ship-modal-order-number" class="font-mono text-xs text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 font-bold">--</div>
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Đơn vị vận chuyển (*):</label>
-                <select id="ship-select-carrier" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Đơn vị vận chuyển (*):</label>
+                <select id="ship-select-carrier" class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 font-semibold focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                     <option value="Nam An Market">Nam An Market (Tài xế nội bộ)</option>
                     <option value="Ahamove">Ahamove</option>
                     <option value="Giao Hang Nhanh (GHN)">Giao Hàng Nhanh (GHN)</option>
@@ -593,80 +581,82 @@
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Mã vận đơn (Tracking Code) (*):</label>
-                <input type="text" id="ship-input-tracking" placeholder="VD: AHA-123456, GHN987654..." class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] font-mono font-medium focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Mã vận đơn (Tracking Code) (*):</label>
+                <input type="text" id="ship-input-tracking" placeholder="VD: AHA-123456, GHN987654..." class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 font-mono font-bold placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú giao hàng:</label>
-                <input type="text" id="ship-input-note" placeholder="Tên tài xế, SĐT tài xế..." class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Ghi chú giao hàng:</label>
+                <input type="text" id="ship-input-note" placeholder="Tên tài xế, SĐT tài xế..." class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
             </div>
         </div>
 
-        <div class="flex items-center justify-end space-x-2 mt-4 pt-3 border-t border-[rgba(55,53,47,0.09)]">
-            <button onclick="closeHaravanShipModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Hủy</button>
-            <button id="btn-confirm-ship" onclick="executeHaravanShip()" class="px-3.5 py-1.5 rounded-md bg-[#9065B0] hover:bg-[#7D4F9D] text-white text-[12px] font-medium transition-colors">
-                🚚 Lưu Vận Đơn & Chuyển Đang Giao
+        <div class="flex items-center justify-end space-x-2 mt-5 pt-3.5 border-t border-slate-100">
+            <button onclick="closeHaravanShipModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all">Hủy</button>
+            <button id="btn-confirm-ship" onclick="executeHaravanShip()" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-sm">
+                Lưu Vận Đơn & Chuyển Đang Giao
             </button>
         </div>
     </div>
 </div>
 
 <!-- ======================================================================= -->
-<!-- Modal 8: Complete Order Modal (Chốt thực tế pmdonhang) -->
+<!-- Modal 8: Complete Order Modal (Option 3 Apple Retail) -->
 <!-- ======================================================================= -->
-<div id="haravan-complete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-[#37352F]/40 backdrop-blur-[2px] flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg max-w-md w-full p-5 border border-[rgba(55,53,47,0.12)] shadow-xl relative text-[#37352F]">
-        <div class="flex items-center justify-between pb-3 border-b border-[rgba(55,53,47,0.09)]">
-            <h3 class="font-semibold text-[13px] text-[#448361] flex items-center space-x-1.5">
-                <span>✅</span>
+<div id="haravan-complete-modal" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200/80 apple-shadow relative text-slate-900">
+        <div class="flex items-center justify-between pb-3.5 border-b border-slate-100">
+            <h3 class="font-extrabold text-sm text-emerald-800 flex items-center space-x-2">
                 <span>Xác Nhận Hoàn Thành Đơn Hàng</span>
             </h3>
-            <button onclick="closeHaravanCompleteModal()" class="w-6 h-6 rounded flex items-center justify-center text-[#9B9A97] hover:text-[#37352F] hover:bg-[rgba(55,53,47,0.08)] text-sm transition-colors">✕</button>
+            <button onclick="closeHaravanCompleteModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-sm transition-all">✕</button>
         </div>
-        <p class="text-[12px] text-[#787774] mt-2">
+        <p class="text-xs text-slate-500 mt-2.5 leading-relaxed">
             Chốt số tiền thực tế (sau cân/đo/soạn thực phẩm tươi sống) và lưu thông tin hoàn tất theo chuẩn pmdonhang.
         </p>
 
-        <div class="mt-3.5 space-y-3">
+        <div class="mt-4 space-y-3.5">
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Mã đơn Haravan:</label>
-                <div id="complete-modal-order-number" class="font-mono text-[12px] text-[#37352F] bg-[#F7F6F3] p-2 rounded-md border border-[rgba(55,53,47,0.09)] font-semibold">--</div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Mã đơn Haravan:</label>
+                <div id="complete-modal-order-number" class="font-mono text-xs text-slate-900 bg-slate-50 p-2.5 rounded-xl border border-slate-200 font-bold">--</div>
             </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[11px] font-semibold text-[#787774] mb-1">Tổng tiền thực tế (*):</label>
-                    <input type="number" id="complete-input-total" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] font-mono font-bold text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Tổng tiền thực tế (*):</label>
+                    <input type="number" id="complete-input-total" class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-[#787774] mb-1">Cước ship thực tế:</label>
-                    <input type="number" id="complete-input-shipping" value="0" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] font-mono text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Cước ship thực tế:</label>
+                    <input type="number" id="complete-input-shipping" value="0" class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs font-mono text-slate-900 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                 </div>
             </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-[11px] font-semibold text-[#787774] mb-1">Đơn vị vận chuyển:</label>
-                    <input type="text" id="complete-input-carrier" value="Nam An Market" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Đơn vị vận chuyển:</label>
+                    <input type="text" id="complete-input-carrier" value="Nam An Market" class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                 </div>
                 <div>
-                    <label class="block text-[11px] font-semibold text-[#787774] mb-1">Mã vận đơn:</label>
-                    <input type="text" id="complete-input-tracking" placeholder="Mã vận đơn..." class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] font-mono text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Mã vận đơn:</label>
+                    <input type="text" id="complete-input-tracking" placeholder="Mã vận đơn..." class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs font-mono text-slate-900 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
                 </div>
             </div>
 
             <div>
-                <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú hoàn thành:</label>
-                <input type="text" id="complete-input-note" placeholder="Ghi chú hoàn tất..." class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[12px] text-[#37352F] focus:outline-none focus:bg-white focus:border-[#2383E2]">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Ghi chú hoàn thành:</label>
+                <input type="text" id="complete-input-note" placeholder="Ghi chú hoàn tất..." class="w-full px-3 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none transition-all">
             </div>
         </div>
 
-        <div class="flex items-center justify-end space-x-2 mt-4 pt-3 border-t border-[rgba(55,53,47,0.09)]">
-            <button onclick="closeHaravanCompleteModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">Hủy</button>
-            <button id="btn-confirm-complete" onclick="executeHaravanComplete()" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors">
-                ✅ Hoàn Thành Đơn
+        <div class="flex items-center justify-end space-x-2 mt-5 pt-3.5 border-t border-slate-100">
+            <button onclick="closeHaravanCompleteModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-all">Hủy</button>
+            <button id="btn-confirm-complete" onclick="executeHaravanComplete()" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-all shadow-sm">
+                Hoàn Thành Đơn
             </button>
+        </div>
+    </div>
+</div>
         </div>
     </div>
 </div>
@@ -758,49 +748,49 @@
         return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString('vi-VN');
     }
 
-    // Channel Styling Helpers
+    // Channel Styling Helpers (Apple Retail & Merchant Pro: Clean Badges & Contrast)
     function getChannelBadge(code) {
         const c = (code || '').toUpperCase();
         if (c === 'SHOPEEFOOD') {
-            return `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#FAECE3] text-[#D9730D] inline-flex items-center space-x-1"><span>🛍️</span><span>ShopeeFood</span></span>`;
+            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">ShopeeFood</span>`;
         } else if (c === 'GRABMART') {
-            return `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#EDF3EC] text-[#448361] inline-flex items-center space-x-1"><span>🟢</span><span>GrabMart</span></span>`;
+            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">GrabMart</span>`;
         } else if (c === 'SHOPEEMART') {
-            return `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#FBF1F5] text-[#C14C8A] inline-flex items-center space-x-1"><span>🛒</span><span>ShopeeMart</span></span>`;
+            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-800 border border-pink-200">ShopeeMart</span>`;
         } else if (c === 'HARAVAN') {
-            return `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#E7F3F8] text-[#2F7EA6] inline-flex items-center space-x-1"><span>🌐</span><span>Haravan Omnichannel</span></span>`;
+            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan</span>`;
         }
-        return `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#F1F1EF] text-[#787774]">${c}</span>`;
+        return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">${c}</span>`;
     }
 
     // Status Badge Helpers (Platform Orders)
     function getStatusBadge(status) {
         const map = {
-            'PENDING': { label: 'Chờ Duyệt', class: 'bg-[#FBEDD6] text-[#CB912F]' },
-            'ACCEPTED': { label: 'Đã Nhận', class: 'bg-[#EDF3EC] text-[#448361]' },
-            'PREPARING': { label: 'Đang Soạn Hàng', class: 'bg-[#EDF3EC] text-[#448361]' },
-            'READY': { label: 'Sẵn Sàng Giao', class: 'bg-[#E7F3F8] text-[#2F7EA6]' },
-            'PICKED_UP': { label: 'Đang Vận Chuyển', class: 'bg-[#F4EFF7] text-[#9065B0]' },
-            'DELIVERED': { label: 'Giao Thành Công', class: 'bg-[#F1F1EF] text-[#787774]' },
-            'CANCELLED': { label: 'Đã Hủy', class: 'bg-[#FDEBEC] text-[#D44C47]' },
+            'PENDING': { label: 'Chờ Duyệt', class: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold' },
+            'ACCEPTED': { label: 'Đã Nhận', class: 'bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold' },
+            'PREPARING': { label: 'Đang Soạn Hàng', class: 'bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold' },
+            'READY': { label: 'Sẵn Sàng Giao', class: 'bg-blue-100 text-blue-900 border border-blue-200 font-bold' },
+            'PICKED_UP': { label: 'Đang Vận Chuyển', class: 'bg-purple-100 text-purple-900 border border-purple-200 font-bold' },
+            'DELIVERED': { label: 'Giao Thành Công', class: 'bg-slate-100 text-slate-800 font-bold border border-slate-200' },
+            'CANCELLED': { label: 'Đã Hủy', class: 'bg-rose-100 text-rose-900 border border-rose-200 font-bold' },
         };
-        const s = map[status] || { label: status, class: 'bg-[#F1F1EF] text-[#787774]' };
-        return `<span class="px-2 py-0.5 rounded text-[11px] font-medium ${s.class}">${s.label}</span>`;
+        const s = map[status] || { label: status, class: 'bg-slate-100 text-slate-800 font-bold' };
+        return `<span class="px-3 py-1 rounded-full text-xs ${s.class}">${s.label}</span>`;
     }
 
     // Status Badge Helpers (Haravan Omnichannel Orders - Follow 100% PMDONHANG)
     function getHaravanStatusBadge(status) {
         const map = {
-            'Đơn hàng mới': { label: 'Đơn Hàng Mới', class: 'bg-[#FBEDD6] text-[#CB912F]' },
-            'Đã phân tuyến': { label: 'Đã Phân Tuyến', class: 'bg-[#E7F3F8] text-[#2F7EA6]' },
-            'Yêu cầu phân tuyến lại': { label: '⚠️ Y/C Phân Tuyến Lại', class: 'bg-[#FAECE3] text-[#D9730D]' },
-            'Đã đóng gói': { label: 'Đã Đóng Gói', class: 'bg-[#EDF3EC] text-[#448361]' },
-            'Đã gửi vận đơn': { label: 'Đã Gửi Vận Đơn', class: 'bg-[#F4EFF7] text-[#9065B0]' },
-            'Hoàn thành': { label: 'Hoàn Thành', class: 'bg-[#F1F1EF] text-[#787774]' },
-            'Đã hủy': { label: 'Đã Hủy', class: 'bg-[#FDEBEC] text-[#D44C47]' },
+            'Đơn hàng mới': { label: 'Đơn Hàng Mới', class: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold' },
+            'Đã phân tuyến': { label: 'Đã Phân Tuyến', class: 'bg-blue-100 text-blue-900 border border-blue-200 font-bold' },
+            'Yêu cầu phân tuyến lại': { label: 'Y/C Phân Tuyến Lại', class: 'bg-orange-100 text-orange-900 border border-orange-300 font-bold' },
+            'Đã đóng gói': { label: 'Đã Đóng Gói', class: 'bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold' },
+            'Đã gửi vận đơn': { label: 'Đã Gửi Vận Đơn', class: 'bg-purple-100 text-purple-900 border border-purple-200 font-bold' },
+            'Hoàn thành': { label: 'Hoàn Thành', class: 'bg-slate-100 text-slate-800 font-bold border border-slate-200' },
+            'Đã hủy': { label: 'Đã Hủy', class: 'bg-rose-100 text-rose-900 border border-rose-200 font-bold' },
         };
-        const s = map[status] || { label: status || 'Chờ xử lý', class: 'bg-[#F1F1EF] text-[#787774]' };
-        return `<span class="px-2 py-0.5 rounded text-[11px] font-medium ${s.class}">${s.label}</span>`;
+        const s = map[status] || { label: status || 'Chờ xử lý', class: 'bg-slate-100 text-slate-800 font-bold' };
+        return `<span class="px-3 py-1 rounded-full text-xs ${s.class}">${s.label}</span>`;
     }
 
     // Dynamic Status Dropdown Switcher (Platform vs Haravan)
@@ -810,11 +800,11 @@
 
         if (isHaravan) {
             select.innerHTML = `
-                <option value="Chưa hoàn thành">⏳ Chưa hoàn thành (Đang xử lý)</option>
+                <option value="Chưa hoàn thành">Chưa hoàn thành (Đang xử lý)</option>
                 <option value="">Tất cả trạng thái (Haravan)</option>
                 <option value="Đơn hàng mới">Đơn hàng mới (Chờ phân tuyến)</option>
                 <option value="Đã phân tuyến">Đã phân tuyến</option>
-                <option value="Yêu cầu phân tuyến lại">⚠️ Yêu cầu phân tuyến lại</option>
+                <option value="Yêu cầu phân tuyến lại">Yêu cầu phân tuyến lại</option>
                 <option value="Đã đóng gói">Đã đóng gói</option>
                 <option value="Đã gửi vận đơn">Đã gửi vận đơn</option>
                 <option value="Hoàn thành">Hoàn thành</option>
@@ -822,7 +812,7 @@
             `;
         } else {
             select.innerHTML = `
-                <option value="INCOMPLETE">⏳ Chưa hoàn thành (Đang xử lý)</option>
+                <option value="INCOMPLETE">Chưa hoàn thành (Đang xử lý)</option>
                 <option value="">Tất cả trạng thái</option>
                 <option value="PENDING">Chờ duyệt (PENDING)</option>
                 <option value="ACCEPTED">Đã nhận (ACCEPTED)</option>
@@ -1155,7 +1145,7 @@
     }
 
     
-    // Render Orders Spreadsheet Table (Platform Orders: ShopeeFood, GrabMart, ShopeeMart)
+    // Render Orders Spreadsheet Table (Platform Orders: ShopeeFood, GrabMart, ShopeeMart - Option 3 Apple Retail)
     function renderOrdersTable(orders) {
         let rowsHtml = '';
         orders.forEach(o => {
@@ -1166,109 +1156,107 @@
             const statusBadge = getStatusBadge(o.status);
             const timeAgo = formatRelativeTime(o.created_at || o.order_time);
             const fullDate = o.created_at || o.order_time ? new Date(o.created_at || o.order_time).toLocaleString('vi-VN') : '';
-            const storeLabel = o.store_name || (o.store_code ? `Chi nhánh ${o.store_code}` : 'Nam An Market');
+            const storeLabel = o.store_name || (o.store_code ? `CN ${o.store_code}` : 'Nam An Market');
 
             // Items preview (show first 3 items with badge)
             const items = o.items || [];
             let itemsSnippet = '';
             items.slice(0, 3).forEach(it => {
                 itemsSnippet += `
-                    <div class="flex items-start text-[11px] py-0.5 leading-snug">
-                        <span class="px-1 py-0.2 rounded bg-[rgba(55,53,47,0.08)] font-mono font-semibold text-[#37352F] mr-1.5 shrink-0">${it.quantity}x</span>
-                        <span class="text-[#37352F] truncate" title="${escapeHtml(it.item_name)}">${escapeHtml(it.item_name)}</span>
+                    <div class="flex items-start text-xs font-medium py-0.5">
+                        <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
+                        <span class="text-slate-800 truncate" title="${escapeHtml(it.item_name)}">${escapeHtml(it.item_name)}</span>
                     </div>
                 `;
             });
             if (items.length > 3) {
-                itemsSnippet += `<div class="text-[10px] text-[#787774] italic font-medium mt-0.5">+ ${items.length - 3} món khác...</div>`;
+                itemsSnippet += `<div class="text-[11px] text-slate-400 font-medium mt-0.5">+ ${items.length - 3} món khác...</div>`;
             }
 
             // Customer & Delivery note
-            const custName = o.customer_name || 'Khách vãng lai';
+            const custName = o.customer_name || 'Khách Vãng Lai';
             const custPhone = o.customer_phone || '--';
             const deliveryAddress = o.delivery_address || 'Nhận tại quầy / Không có địa chỉ';
 
             let deliveryNoteHtml = '';
             if (o.notes || o.delivery_notes) {
                 deliveryNoteHtml = `
-                    <div class="mt-1 px-1.5 py-0.5 rounded bg-[#FBEDD6]/80 text-[#CB912F] text-[10px] font-medium flex items-center gap-1 border border-[#F8E5C4]">
-                        <span>💬</span><span class="truncate">${escapeHtml(o.notes || o.delivery_notes)}</span>
+                    <div class="mt-1.5 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-900 font-medium text-[11px] border border-amber-200">
+                        <span class="truncate">Ghi chú: ${escapeHtml(o.notes || o.delivery_notes)}</span>
                     </div>
                 `;
             }
 
             // Action Buttons
             let actionsHtml = `
-                <div class="flex items-center justify-end flex-wrap gap-1">
+                <div class="flex items-center justify-end flex-wrap gap-1.5">
                     ${isPending ? `
-                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2 py-1 rounded border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors">Hủy</button>
-                        <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
-                            <span>✓</span><span>Nhận</span>
+                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">Hủy</button>
+                        <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Xác Nhận
                         </button>
                     ` : ''}
 
                     ${isAccepted ? `
-                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2 py-1 rounded border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors">Hủy</button>
-                        <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
-                            <span>📦</span><span>Báo Xong</span>
+                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">Hủy</button>
+                        <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Báo Xong
                         </button>
                     ` : ''}
 
                     ${isReady ? `
-                        <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
-                            <span>🛵</span><span>Giao Xế</span>
+                        <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Giao Xế
                         </button>
                     ` : ''}
 
                     ${o.channel_code === 'SHOPEEMART' ? `
-                        <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-2 py-1 rounded bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[11px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors" title="In Vận Đơn AWB Shopee">
-                            <span>📄 AWB</span>
+                        <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-xs font-bold transition-all" title="In Vận Đơn AWB Shopee">
+                            AWB
                         </button>
                     ` : ''}
 
-                    <button onclick="openDetailsModal('${o.id}')" class="px-2 py-1 rounded border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[11px] font-medium text-[#37352F] transition-colors" title="Xem chi tiết đơn hàng & lịch sử">
-                        <span>👁️ Chi tiết</span>
+                    <button onclick="openDetailsModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all" title="Xem chi tiết đơn hàng & lịch sử">
+                        Chi Tiết
                     </button>
                 </div>
             `;
 
             rowsHtml += `
-                <tr class="hover:bg-[#FAF9F6] transition-colors ${isPending ? 'bg-[#FFFDF9] border-l-4 border-l-[#CB912F]' : ''}">
-                    <td class="py-2.5 px-3">
-                        <div class="flex items-center gap-1.5">
-                            <span class="font-mono font-bold text-[#37352F] text-[12px]">${o.order_code}</span>
+                <tr class="transition-colors ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/80'}">
+                    <td class="py-4 px-5">
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono font-bold text-slate-900 text-sm">${o.order_code}</span>
                             ${channelBadge}
                         </div>
-                        <div class="text-[11px] text-[#787774] mt-0.5 flex items-center gap-1" title="${fullDate}">
-                            <span>🕒</span><span>${timeAgo}</span>
-                            <span class="text-[rgba(55,53,47,0.2)]">·</span>
-                            <span class="font-mono text-[10px] text-[#9B9A97]">#${o.display_order_id || o.channel_order_id}</span>
+                        <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                            ${timeAgo} · #${o.display_order_id || o.channel_order_id}
                         </div>
                     </td>
-                    <td class="py-2.5 px-3 whitespace-nowrap">
-                        <span class="px-2 py-0.5 rounded bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium border border-[rgba(55,53,47,0.06)]">
-                            📍 ${storeLabel}
+                    <td class="py-4 px-5 whitespace-nowrap">
+                        <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">
+                            ${storeLabel}
                         </span>
                     </td>
-                    <td class="py-2.5 px-3 max-w-[240px]">
+                    <td class="py-4 px-5 max-w-[240px]">
                         <div class="flex items-center justify-between">
-                            <span class="font-medium text-[#37352F] text-[12px] truncate">${custName}</span>
-                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-[#2F7EA6] font-medium hover:underline ml-1 shrink-0">📞 ${custPhone}</a>` : ''}
+                            <span class="font-bold text-slate-900 truncate">${custName}</span>
+                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline ml-1 shrink-0">${custPhone}</a>` : ''}
                         </div>
-                        <div class="text-[11px] text-[#787774] truncate mt-0.5" title="${escapeHtml(deliveryAddress)}">${escapeHtml(deliveryAddress)}</div>
+                        <div class="text-[11px] text-slate-600 mt-0.5 truncate" title="${escapeHtml(deliveryAddress)}">${escapeHtml(deliveryAddress)}</div>
                         ${deliveryNoteHtml}
                     </td>
-                    <td class="py-2.5 px-3 max-w-[280px]">
+                    <td class="py-4 px-5 max-w-[280px]">
                         ${itemsSnippet}
                     </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div class="font-mono font-bold text-[#37352F] text-[13px]">${formatVND(o.total_amount)}</div>
-                        <div class="text-[10px] text-[#9B9A97]">${items.length} món</div>
+                    <td class="py-4 px-5 text-right whitespace-nowrap">
+                        <div class="font-mono font-black text-sm text-slate-900">${formatVND(o.total_amount)}</div>
+                        <div class="text-[10px] text-slate-500 font-medium">${items.length} món</div>
                     </td>
-                    <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                    <td class="py-4 px-5 text-center whitespace-nowrap">
                         ${statusBadge}
                     </td>
-                    <td class="py-2.5 px-3 text-right">
+                    <td class="py-4 px-5 text-right whitespace-nowrap">
                         ${actionsHtml}
                     </td>
                 </tr>
@@ -1276,28 +1264,30 @@
         });
 
         return `
-            <div class="overflow-x-auto bg-white rounded-md border border-[rgba(55,53,47,0.09)]">
-                <table class="w-full text-left border-collapse orders-table">
-                    <thead class="bg-[#F7F6F3] text-[11px] font-semibold text-[#787774] uppercase tracking-wider border-b border-[rgba(55,53,47,0.09)]">
-                        <tr>
-                            <th class="py-2.5 px-3">Mã Đơn & Kênh</th>
-                            <th class="py-2.5 px-3">Chi Nhánh</th>
-                            <th class="py-2.5 px-3">Khách Hàng & Địa Chỉ</th>
-                            <th class="py-2.5 px-3">Món & SL</th>
-                            <th class="py-2.5 px-3 text-right">Tổng Tiền</th>
-                            <th class="py-2.5 px-3 text-center">Trạng Thái</th>
-                            <th class="py-2.5 px-3 text-right">Thao Tác</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-[rgba(55,53,47,0.06)] text-[#37352F]">
-                        ${rowsHtml}
-                    </tbody>
-                </table>
+            <div class="bg-white rounded-3xl border border-slate-200/80 apple-shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse orders-table">
+                        <thead class="bg-slate-50/75 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="py-4 px-5">MÃ ĐƠN & KÊNH</th>
+                                <th class="py-4 px-5">CHI NHÁNH</th>
+                                <th class="py-4 px-5">KHÁCH HÀNG & GIAO HÀNG</th>
+                                <th class="py-4 px-5">MÓN & SỐ LƯỢNG</th>
+                                <th class="py-4 px-5 text-right">TỔNG TIỀN</th>
+                                <th class="py-4 px-5 text-center">TRẠNG THÁI</th>
+                                <th class="py-4 px-5 text-right">THAO TÁC</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-800">
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
     }
 
-    // Render Haravan Orders Spreadsheet Table (Omnichannel Orders)
+    // Render Haravan Orders Spreadsheet Table (Omnichannel Orders - Option 3 Apple Retail)
     function renderHaravanOrdersTable(orders) {
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
@@ -1310,7 +1300,7 @@
             const assignedStore = internal.assigned_store;
             const isUnassigned = !assignedStore;
 
-            const channelBadge = `<span class="px-1.5 py-0.2 rounded text-[10px] font-medium bg-[#E7F3F8] text-[#2F7EA6]">🌐 Haravan (${(o.source || 'Web').toUpperCase()})</span>`;
+            const channelBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan (${(o.source || 'Web').toUpperCase()})</span>`;
             const statusBadge = getHaravanStatusBadge(procStatus);
             const timeAgo = formatRelativeTime(o.created_at);
             const fullDate = o.created_at ? new Date(o.created_at).toLocaleString('vi-VN') : '';
@@ -1318,9 +1308,9 @@
             // Store badge
             let storeBadge = '';
             if (isUnassigned) {
-                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#FBEDD6] text-[#CB912F] font-semibold text-[11px] border border-[#E8CDA0]">⚠️ Chưa Phân Tuyến</span>`;
+                storeBadge = `<span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-extrabold text-[11px] inline-flex items-center gap-1.5 border border-amber-300"><span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>Chưa Phân Tuyến</span>`;
             } else {
-                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] font-medium text-[11px]">📍 CN ${assignedStore}</span>`;
+                storeBadge = `<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">CN ${assignedStore}</span>`;
             }
 
             // Customer & Delivery
@@ -1335,8 +1325,8 @@
             let noteHtml = '';
             if (o.note) {
                 noteHtml = `
-                    <div class="mt-1 px-1.5 py-0.5 rounded bg-[#FBEDD6]/80 text-[#CB912F] text-[10px] font-medium flex items-center gap-1 border border-[#F8E5C4]">
-                        <span>💬</span><span class="truncate">${escapeHtml(o.note)}</span>
+                    <div class="mt-1.5 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-900 font-medium text-[11px] border border-amber-200">
+                        <span class="truncate">Ghi chú: ${escapeHtml(o.note)}</span>
                     </div>
                 `;
             }
@@ -1346,99 +1336,97 @@
             let itemsSnippet = '';
             lineItems.slice(0, 3).forEach(it => {
                 itemsSnippet += `
-                    <div class="flex items-start text-[11px] py-0.5 leading-snug">
-                        <span class="px-1 py-0.2 rounded bg-[rgba(55,53,47,0.08)] font-mono font-semibold text-[#37352F] mr-1.5 shrink-0">${it.quantity}x</span>
-                        <span class="text-[#37352F] truncate" title="${escapeHtml(it.title || it.name)}">${escapeHtml(it.title || it.name)}</span>
-                        ${it.sku ? `<span class="ml-1 text-[9px] font-mono text-[#787774] bg-[#F7F6F3] px-1 py-0.2 rounded border border-[rgba(55,53,47,0.06)] shrink-0">${it.sku}</span>` : ''}
+                    <div class="flex items-start text-xs font-medium py-0.5">
+                        <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
+                        <span class="text-slate-800 truncate" title="${escapeHtml(it.title || it.name)}">${escapeHtml(it.title || it.name)}</span>
+                        ${it.sku ? `<span class="ml-1 text-[9px] font-mono text-slate-500 bg-slate-100 px-1 py-0.2 rounded border border-slate-200 shrink-0">${it.sku}</span>` : ''}
                     </div>
                 `;
             });
             if (lineItems.length > 3) {
-                itemsSnippet += `<div class="text-[10px] text-[#787774] italic font-medium mt-0.5">+ ${lineItems.length - 3} món khác...</div>`;
+                itemsSnippet += `<div class="text-[11px] text-slate-400 font-medium mt-0.5">+ ${lineItems.length - 3} món khác...</div>`;
             }
 
             const totalAmount = o.total_price || 0;
 
             // Action Buttons
             let actionsHtml = `
-                <div class="flex items-center justify-end flex-wrap gap-1">
+                <div class="flex items-center justify-end flex-wrap gap-1.5">
                     ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-xs">
-                            <span>⚡</span><span>Phân Tuyến</span>
+                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Phân Tuyến
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2 py-1 rounded border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[11px] font-medium transition-colors" title="Đổi chi nhánh thực hiện đơn">
+                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all" title="Đổi chi nhánh thực hiện đơn">
                             Đổi CN
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-2 py-1 rounded border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
+                        <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
                             Y/C Đổi
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã phân tuyến' ? `
-                        <button onclick="updateHaravanProcessingStatus('${o.id}', 'Đã đóng gói')" class="px-2.5 py-1 rounded bg-[#EDF3EC] hover:bg-[#E2EDE1] text-[#448361] border border-[#CDE3CD] text-[11px] font-medium transition-colors">
-                            📦 Đóng Gói
+                        <button onclick="updateHaravanProcessingStatus('${o.id}', 'Đã đóng gói')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Đóng Gói
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã đóng gói' ? `
-                        <button onclick="openHaravanFulfillmentModal('${o.id}')" class="px-2.5 py-1 rounded bg-[#F4EFF7] hover:bg-[#EDE5F2] text-[#9065B0] border border-[#E0D2E8] text-[11px] font-medium transition-colors">
-                            🚚 Gửi VĐ
+                        <button onclick="openHaravanFulfillmentModal('${o.id}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Gửi VĐ
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
-                        <button onclick="openHaravanCompleteModal('${o.id}')" class="px-2.5 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors">
-                            ✅ Hoàn Tất
+                        <button onclick="openHaravanCompleteModal('${o.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                            Hoàn Tất
                         </button>
                     ` : ''}
 
-                    <button onclick="openHaravanDetailsModal('${o.id}')" class="px-2 py-1 rounded border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[11px] font-medium text-[#37352F] transition-colors" title="Xem chi tiết đơn & lịch sử phân tuyến">
-                        <span>👁️ Chi tiết</span>
+                    <button onclick="openHaravanDetailsModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all" title="Xem chi tiết đơn & lịch sử phân tuyến">
+                        Chi Tiết
                     </button>
                 </div>
             `;
 
             rowsHtml += `
-                <tr class="hover:bg-[#FAF9F6] transition-colors ${isUnassigned ? 'bg-[#FFFDF9] border-l-4 border-l-[#CB912F]' : ''}">
-                    <td class="py-2.5 px-3">
-                        <div class="flex items-center gap-1.5">
-                            <span class="font-mono font-bold text-[#37352F] text-[12px]">${o.order_number || ('#' + o.id)}</span>
+                <tr class="transition-colors ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/80'}">
+                    <td class="py-4 px-5">
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono font-bold text-slate-900 text-sm">${o.order_number || ('#' + o.id)}</span>
                             ${channelBadge}
                         </div>
-                        <div class="text-[11px] text-[#787774] mt-0.5 flex items-center gap-1" title="${fullDate}">
-                            <span>🕒</span><span>${timeAgo}</span>
-                            <span class="text-[rgba(55,53,47,0.2)]">·</span>
-                            <span class="font-mono text-[10px] text-[#9B9A97]">#${o.id}</span>
+                        <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                            ${timeAgo} · #${o.id}
                         </div>
                     </td>
-                    <td class="py-2.5 px-3 whitespace-nowrap">
+                    <td class="py-4 px-5 whitespace-nowrap">
                         ${storeBadge}
                     </td>
-                    <td class="py-2.5 px-3 max-w-[240px]">
+                    <td class="py-4 px-5 max-w-[240px]">
                         <div class="flex items-center justify-between">
-                            <span class="font-medium text-[#37352F] text-[12px] truncate">${custName}</span>
-                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-[#2F7EA6] font-medium hover:underline ml-1 shrink-0">📞 ${custPhone}</a>` : ''}
+                            <span class="font-bold text-slate-900 truncate">${custName}</span>
+                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline ml-1 shrink-0">${custPhone}</a>` : ''}
                         </div>
-                        <div class="text-[11px] text-[#787774] truncate mt-0.5" title="${escapeHtml(deliveryAddr)}">${escapeHtml(deliveryAddr)}</div>
+                        <div class="text-[11px] text-slate-600 mt-0.5 truncate" title="${escapeHtml(deliveryAddr)}">${escapeHtml(deliveryAddr)}</div>
                         ${noteHtml}
                     </td>
-                    <td class="py-2.5 px-3 max-w-[280px]">
+                    <td class="py-4 px-5 max-w-[280px]">
                         ${itemsSnippet}
                     </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
-                        <div class="font-mono font-bold text-[#37352F] text-[13px]">${formatVND(totalAmount)}</div>
-                        <div class="text-[10px] text-[#9B9A97]">${lineItems.length} món</div>
+                    <td class="py-4 px-5 text-right whitespace-nowrap">
+                        <div class="font-mono font-black text-sm text-slate-900">${formatVND(totalAmount)}</div>
+                        <div class="text-[10px] text-slate-500 font-medium">${lineItems.length} món</div>
                     </td>
-                    <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                    <td class="py-4 px-5 text-center whitespace-nowrap">
                         ${statusBadge}
                     </td>
-                    <td class="py-2.5 px-3 text-right">
+                    <td class="py-4 px-5 text-right whitespace-nowrap">
                         ${actionsHtml}
                     </td>
                 </tr>
@@ -1446,39 +1434,41 @@
         });
 
         return `
-            <div class="overflow-x-auto bg-white rounded-md border border-[rgba(55,53,47,0.09)]">
-                <table class="w-full text-left border-collapse orders-table">
-                    <thead class="bg-[#F7F6F3] text-[11px] font-semibold text-[#787774] uppercase tracking-wider border-b border-[rgba(55,53,47,0.09)]">
-                        <tr>
-                            <th class="py-2.5 px-3">Mã Đơn & Kênh</th>
-                            <th class="py-2.5 px-3">Chi Nhánh</th>
-                            <th class="py-2.5 px-3">Khách Hàng & Địa Chỉ</th>
-                            <th class="py-2.5 px-3">Danh Sách Món</th>
-                            <th class="py-2.5 px-3 text-right">Tổng Tiền</th>
-                            <th class="py-2.5 px-3 text-center">Trạng Thái</th>
-                            <th class="py-2.5 px-3 text-right">Thao Tác Quản Trị</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-[rgba(55,53,47,0.06)] text-[#37352F]">
-                        ${rowsHtml}
-                    </tbody>
-                </table>
+            <div class="bg-white rounded-3xl border border-slate-200/80 apple-shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse orders-table">
+                        <thead class="bg-slate-50/75 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <tr>
+                                <th class="py-4 px-5">MÃ ĐƠN & KÊNH</th>
+                                <th class="py-4 px-5">CHI NHÁNH</th>
+                                <th class="py-4 px-5">KHÁCH HÀNG & GIAO HÀNG</th>
+                                <th class="py-4 px-5">MÓN & SỐ LƯỢNG</th>
+                                <th class="py-4 px-5 text-right">TỔNG TIỀN</th>
+                                <th class="py-4 px-5 text-center">TRẠNG THÁI</th>
+                                <th class="py-4 px-5 text-right">THAO TÁC</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-slate-800">
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
     }
 
-    // Render Orders Feed (Supports Table & Card Views)
+    // Render Orders Feed (Supports Table & Card Views - Option 3 Apple Retail)
     function renderOrders(orders) {
         currentOrdersCache = orders;
         const container = document.getElementById('orders-container');
         if (!orders || orders.length === 0) {
             container.innerHTML = `
-                <div class="bg-white rounded-md p-10 text-center text-[#37352F] border border-[rgba(55,53,47,0.09)]">
-                    <div class="w-12 h-12 rounded-md bg-[#F7F6F3] text-2xl mx-auto flex items-center justify-center mb-2.5">
-                        🛵
+                <div class="bg-white rounded-3xl p-12 text-center text-slate-800 border border-slate-200/80 apple-shadow">
+                    <div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
                     </div>
-                    <h3 class="font-semibold text-sm text-[#37352F]">Hiện không có đơn hàng nào</h3>
-                    <p class="text-[12px] text-[#787774] mt-1">Đơn hàng mới từ ShopeeFood, GrabMart, ShopeeMart sẽ tự động xuất hiện tại đây ngay khi có khách đặt.</p>
+                    <h3 class="font-extrabold text-base text-slate-900">Hiện không có đơn hàng nào</h3>
+                    <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Đơn hàng mới từ ShopeeFood, GrabMart, ShopeeMart sẽ tự động xuất hiện tại đây ngay khi có khách đặt.</p>
                 </div>
             `;
             return;
@@ -1505,13 +1495,13 @@
             let itemsHtml = '';
             (o.items || []).forEach(item => {
                 itemsHtml += `
-                    <div class="flex items-start justify-between py-1 border-b border-[rgba(55,53,47,0.06)] text-[12px]">
+                    <div class="flex items-start justify-between py-1.5 border-b border-slate-100 text-xs">
                         <div class="pr-2">
-                            <span class="font-semibold text-[#37352F] mr-1.5">${item.quantity}x</span>
-                            <span class="text-[#37352F]">${item.item_name}</span>
-                            ${item.notes ? `<p class="text-[11px] text-[#CB912F] italic mt-0.5">Ghi chú: ${item.notes}</p>` : ''}
+                            <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5">${item.quantity}x</span>
+                            <span class="text-slate-800 font-medium">${item.item_name}</span>
+                            ${item.notes ? `<p class="text-[11px] text-amber-700 font-medium mt-0.5">Ghi chú: ${item.notes}</p>` : ''}
                         </div>
-                        <span class="font-mono text-[#787774] shrink-0 font-medium">${formatVND(item.total_price)}</span>
+                        <span class="font-mono text-slate-700 shrink-0 font-bold">${formatVND(item.total_price)}</span>
                     </div>
                 `;
             });
@@ -1521,54 +1511,50 @@
             if (o.delivery_address && o.delivery_address.includes('Ghi chú giao:')) {
                 const parts = o.delivery_address.split('Ghi chú giao:');
                 deliveryNoteHtml = `
-                    <div class="mt-2 p-2 rounded-md bg-[#FBEDD6]/60 text-[#CB912F] text-[12px] flex items-center space-x-1.5 border border-[#F8E5C4]">
-                        <span>💬</span>
-                        <span class="font-medium">Ghi chú giao hàng: ${parts[1].replace(')', '')}</span>
+                    <div class="mt-2 p-2.5 rounded-xl bg-amber-50 text-amber-900 text-xs flex items-center space-x-1.5 border border-amber-200">
+                        <span class="font-medium">Ghi chú giao: ${parts[1].replace(')', '')}</span>
                     </div>
                 `;
             }
 
-            // Card HTML
+            // Card HTML (Option 3 Apple Card)
             html += `
-                <div class="bg-white rounded-md p-4 border ${isPending ? 'border-[#E99738] bg-[#FDFCFB]' : 'border-[rgba(55,53,47,0.09)]'} transition-all hover:border-[rgba(55,53,47,0.2)]">
-                    <!-- Top Row: Channel, Internal & External Codes, Status, Time -->
-                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[rgba(55,53,47,0.09)]">
+                <div class="bg-white rounded-2xl p-5 border ${isPending ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200/80'} apple-shadow apple-card">
+                    <!-- Top Row: Channel, Codes, Status, Time -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <span class="text-[13px] font-semibold text-[#37352F] font-mono">${o.order_code}</span>
-                            <span class="px-1.5 py-0.2 rounded bg-[#F7F6F3] text-[11px] font-mono text-[#787774] font-medium border border-[rgba(55,53,47,0.06)]">#${o.display_order_id || o.channel_order_id}</span>
-                            <span class="text-[12px] text-[#787774]">• ${storeLabel}</span>
+                            <span class="text-sm font-extrabold text-slate-900 font-mono">${o.order_code}</span>
+                            <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.display_order_id || o.channel_order_id}</span>
+                            <span class="text-xs text-slate-500 font-medium">• ${storeLabel}</span>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <span class="text-[11px] text-[#787774] font-medium">${timeAgo}</span>
+                            <span class="text-xs text-slate-400 font-medium">${timeAgo}</span>
                             ${statusBadge}
                         </div>
                     </div>
 
                     <!-- Middle Grid: Customer & Delivery Info + Items List -->
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 my-3.5">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 my-4">
                         <!-- Left: Customer & Driver Info (5 cols) -->
                         <div class="lg:col-span-5 space-y-2.5">
-                            <div class="p-3 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.06)] space-y-1.5">
-                                <div class="text-[10px] font-semibold text-[#787774] uppercase tracking-wider">Thông Tin Khách Hàng</div>
+                            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
+                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thông Tin Khách Hàng</div>
                                 <div class="flex items-center justify-between">
-                                    <span class="text-[12px] font-semibold text-[#37352F]">${o.customer_name || 'Khách Vãng Lai'}</span>
-                                    ${o.customer_phone ? `<a href="tel:${o.customer_phone}" class="text-[12px] text-[#2F7EA6] font-medium hover:underline">📞 ${o.customer_phone}</a>` : ''}
+                                    <span class="text-xs font-bold text-slate-900">${o.customer_name || 'Khách Vãng Lai'}</span>
+                                    ${o.customer_phone ? `<a href="tel:${o.customer_phone}" class="text-xs text-emerald-700 font-bold hover:underline">${o.customer_phone}</a>` : ''}
                                 </div>
-                                <div class="text-[12px] text-[#787774] leading-relaxed">${o.delivery_address || 'Nhận tại quầy / Không rõ địa chỉ'}</div>
+                                <div class="text-xs text-slate-600 leading-relaxed">${o.delivery_address || 'Nhận tại quầy / Không rõ địa chỉ'}</div>
                                 ${deliveryNoteHtml}
                             </div>
 
                             ${o.driver_name ? `
-                                <div class="p-2.5 rounded-md bg-[#E7F3F8]/50 text-[12px] text-[#2F7EA6] border border-[#BDE0F0] flex items-center justify-between">
-                                    <div class="flex items-center space-x-1.5">
-                                        <span>🛵</span>
-                                        <div>
-                                            <span class="font-semibold">${o.driver_name}</span>
-                                            ${o.driver_license_plate ? `<span class="text-[#787774] ml-1">(${o.driver_license_plate})</span>` : ''}
-                                        </div>
+                                <div class="p-3 rounded-xl bg-blue-50 text-xs text-blue-900 border border-blue-200 flex items-center justify-between">
+                                    <div>
+                                        <span class="font-bold">${o.driver_name}</span>
+                                        ${o.driver_license_plate ? `<span class="text-blue-600 ml-1">(${o.driver_license_plate})</span>` : ''}
                                     </div>
-                                    ${o.driver_phone ? `<a href="tel:${o.driver_phone}" class="font-medium text-[#2F7EA6] hover:underline">📞 Gọi xế</a>` : ''}
+                                    ${o.driver_phone ? `<a href="tel:${o.driver_phone}" class="font-bold text-blue-700 hover:underline">Gọi xế</a>` : ''}
                                 </div>
                             ` : ''}
                         </div>
@@ -1580,30 +1566,29 @@
                             </div>
 
                             <!-- Financial Summary -->
-                            <div class="mt-3 pt-2.5 border-t border-[rgba(55,53,47,0.09)] flex items-baseline justify-between">
-                                <div class="text-[11px] text-[#787774]">
+                            <div class="mt-3 pt-3 border-t border-slate-100 flex items-baseline justify-between">
+                                <div class="text-xs text-slate-500">
                                     <span>Tạm tính: ${formatVND(o.subtotal_amount)}</span>
-                                    ${o.discount_amount > 0 ? `<span class="ml-2 text-[#D44C47]">-KM: ${formatVND(o.discount_amount)}</span>` : ''}
-                                    ${o.delivery_fee > 0 ? `<span class="ml-2">+Ship: ${formatVND(o.delivery_fee)}</span>` : ''}
+                                    ${o.discount_amount > 0 ? `<span class="ml-2 text-rose-600 font-semibold">-KM: ${formatVND(o.discount_amount)}</span>` : ''}
+                                    ${o.delivery_fee > 0 ? `<span class="ml-2 text-slate-600">+Ship: ${formatVND(o.delivery_fee)}</span>` : ''}
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-[12px] text-[#787774] mr-1">Tổng cộng:</span>
-                                    <span class="text-base font-bold font-mono text-[#37352F]">${formatVND(o.total_amount)}</span>
+                                    <span class="text-xs text-slate-500 mr-1.5 font-medium">Tổng cộng:</span>
+                                    <span class="text-lg font-black font-mono text-slate-900">${formatVND(o.total_amount)}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Bottom Row: 1-Click Action Buttons -->
-                    <div class="pt-3 border-t border-[rgba(55,53,47,0.09)] flex flex-wrap items-center justify-between gap-2.5">
-                        <div class="flex items-center space-x-1.5">
+                    <!-- Bottom Row: Action Buttons -->
+                    <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
+                        <div class="flex items-center space-x-2">
                             ${o.channel_code === 'SHOPEEMART' ? `
-                                <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
-                                    <span>📄</span>
+                                <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-xs font-bold text-pink-700 border border-pink-200 transition-all flex items-center space-x-1">
                                     <span>Vận Đơn AWB</span>
                                 </button>
                             ` : ''}
-                            <button onclick="openDetailsModal('${o.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors">
+                            <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
                                 Chi tiết & Lịch sử
                             </button>
                         </div>
@@ -1611,28 +1596,25 @@
                         <!-- Status Transition Action Buttons -->
                         <div class="flex items-center space-x-2">
                             ${isPending ? `
-                                <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                                <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
-                                <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1">
-                                    <span>✓</span>
+                                <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Xác Nhận Đơn</span>
                                 </button>
                             ` : ''}
 
                             ${isAccepted ? `
-                                <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                                <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
-                                <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Món ăn đã đóng gói xong')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1">
-                                    <span>📦</span>
+                                <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Món ăn đã đóng gói xong')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Báo Sẵn Sàng</span>
                                 </button>
                             ` : ''}
 
                             ${isReady ? `
-                                <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Tài xế đã nhận hàng tại quầy')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1">
-                                    <span>🛵</span>
+                                <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Tài xế đã nhận hàng tại quầy')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Giao Cho Tài Xế</span>
                                 </button>
                             ` : ''}
@@ -1645,23 +1627,22 @@
         container.innerHTML = html;
     }
 
-    // Render Haravan Omnichannel Order Cards (Follow 100% PMDONHANG)
+    // Render Haravan Omnichannel Order Cards (Option 3 Apple Retail - Follow 100% PMDONHANG)
     function renderHaravanOrders(orders) {
         currentOrdersCache = orders;
         const container = document.getElementById('orders-container');
         if (!orders || orders.length === 0) {
             const isIncompleteFilter = currentFilter.status === 'Chưa hoàn thành';
             container.innerHTML = `
-                <div class="bg-white rounded-md p-10 text-center text-[#37352F] border border-[rgba(55,53,47,0.09)]">
-                    <div class="w-12 h-12 rounded-md bg-[#F7F6F3] text-2xl mx-auto flex items-center justify-center mb-2.5">
-                        ${isIncompleteFilter ? '✅' : '🌐'}
+                <div class="bg-white rounded-3xl p-12 text-center text-slate-800 border border-slate-200/80 apple-shadow">
+                    <div class="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                     </div>
-                    <h3 class="font-semibold text-sm text-[#37352F]">${isIncompleteFilter ? 'Chi nhánh hiện đã xử lý xong các đơn chờ!' : 'Hiện không có đơn hàng Haravan nào khớp bộ lọc'}</h3>
-                    <p class="text-[12px] text-[#787774] mt-1">${isIncompleteFilter ? 'Hiện không có đơn hàng nào đang chờ đóng gói hoặc giao hàng tại chi nhánh. Bấm bên dưới để xem toàn bộ lịch sử đơn hàng.' : 'Đơn hàng mới từ Website namanmarket.com, Shopee/Lazada qua Haravan sẽ xuất hiện tại đây.'}</p>
+                    <h3 class="font-extrabold text-base text-slate-900">${isIncompleteFilter ? 'Chi nhánh hiện đã xử lý xong các đơn chờ!' : 'Hiện không có đơn hàng Haravan nào khớp bộ lọc'}</h3>
+                    <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">${isIncompleteFilter ? 'Hiện không có đơn hàng nào đang chờ đóng gói hoặc giao hàng tại chi nhánh. Bấm bên dưới để xem toàn bộ lịch sử đơn hàng.' : 'Đơn hàng mới từ Website namanmarket.com, Shopee/Lazada qua Haravan sẽ xuất hiện tại đây.'}</p>
                     ${isIncompleteFilter ? `
-                        <button onclick="setChannelFilter('HARAVAN')" class="mt-3.5 px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors inline-flex items-center space-x-1.5">
-                            <span>📋</span>
-                            <span>Xem Toàn Bộ Lịch Sử Đơn Hàng</span>
+                        <button onclick="setChannelFilter('HARAVAN')" class="mt-4 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm">
+                            Xem Toàn Bộ Lịch Sử Đơn Hàng
                         </button>
                     ` : ''}
                 </div>
@@ -1685,16 +1666,16 @@
             const assignedStore = internal.assigned_store;
             const isUnassigned = !assignedStore;
 
-            const channelBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#E7F3F8] text-[#2F7EA6] inline-flex items-center space-x-1"><span>🌐</span><span>Haravan (${(o.source || 'Web').toUpperCase()})</span></span>`;
+            const channelBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan (${(o.source || 'Web').toUpperCase()})</span>`;
             const statusBadge = getHaravanStatusBadge(procStatus);
             const timeAgo = formatRelativeTime(o.created_at);
 
             // Store Label
             let storeBadge = '';
             if (isUnassigned) {
-                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#FBEDD6] text-[#CB912F] font-semibold text-[11px] border border-[#E8CDA0]">⚠️ CHƯA PHÂN TUYẾN</span>`;
+                storeBadge = `<span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-extrabold text-[11px] inline-flex items-center gap-1.5 border border-amber-300"><span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>Chưa Phân Tuyến</span>`;
             } else {
-                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] font-medium text-[11px]">📍 Chi nhánh ${assignedStore}</span>`;
+                storeBadge = `<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">CN ${assignedStore}</span>`;
             }
 
             // Customer info
@@ -1711,13 +1692,13 @@
             (o.line_items || []).forEach(item => {
                 const itemTotal = (item.price || 0) * (item.quantity || 1);
                 itemsHtml += `
-                    <div class="flex items-start justify-between py-1 border-b border-[rgba(55,53,47,0.06)] text-[12px]">
+                    <div class="flex items-start justify-between py-1.5 border-b border-slate-100 text-xs">
                         <div class="pr-2">
-                            <span class="font-semibold text-[#37352F] mr-1.5">${item.quantity}x</span>
-                            <span class="text-[#37352F]">${item.title || item.name}</span>
-                            ${item.sku ? `<span class="ml-1 text-[10px] font-mono text-[#787774] bg-[#F7F6F3] px-1 py-0.2 rounded border border-[rgba(55,53,47,0.06)]">SKU: ${item.sku}</span>` : ''}
+                            <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5">${item.quantity}x</span>
+                            <span class="text-slate-800 font-medium">${item.title || item.name}</span>
+                            ${item.sku ? `<span class="ml-1 text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">SKU: ${item.sku}</span>` : ''}
                         </div>
-                        <span class="font-mono text-[#787774] shrink-0 font-medium">${formatVND(itemTotal)}</span>
+                        <span class="font-mono text-slate-700 shrink-0 font-bold">${formatVND(itemTotal)}</span>
                     </div>
                 `;
             });
@@ -1726,8 +1707,7 @@
             let noteHtml = '';
             if (o.note) {
                 noteHtml = `
-                    <div class="mt-2 p-2 rounded-md bg-[#FBEDD6]/60 text-[#CB912F] text-[12px] flex items-center space-x-1.5 border border-[#F8E5C4]">
-                        <span>💬</span>
+                    <div class="mt-2 p-2.5 rounded-xl bg-amber-50 text-amber-900 text-xs flex items-center space-x-1.5 border border-amber-200">
                         <span class="font-medium">Ghi chú khách: ${o.note}</span>
                     </div>
                 `;
@@ -1737,29 +1717,29 @@
             let internalInfoHtml = '';
             if (internal.assignment_reason) {
                 internalInfoHtml += `
-                    <div class="p-2.5 rounded-md bg-[#E7F3F8]/50 text-[12px] text-[#2F7EA6] space-y-0.5 border border-[#BDE0F0]">
-                        <div class="font-semibold flex items-center space-x-1">
-                            <span>📌</span><span>Phân tuyến: <strong>${internal.assignment_reason}</strong></span>
+                    <div class="p-3 rounded-xl bg-blue-50 text-xs text-blue-900 space-y-0.5 border border-blue-200">
+                        <div class="font-bold flex items-center space-x-1">
+                            <span>Phân tuyến: <strong>${internal.assignment_reason}</strong></span>
                         </div>
-                        ${internal.assignment_note ? `<div class="text-[11px] text-[#787774] pl-4">${internal.assignment_note}</div>` : ''}
+                        ${internal.assignment_note ? `<div class="text-[11px] text-slate-600 pl-2 mt-0.5">${internal.assignment_note}</div>` : ''}
                     </div>
                 `;
             }
             if (internal.reassignment_reason) {
                 internalInfoHtml += `
-                    <div class="p-2.5 rounded-md bg-[#FDEBEC] text-[12px] text-[#D44C47] space-y-0.5 border border-[#F5B5B3]">
-                        <div class="font-semibold flex items-center space-x-1">
-                            <span>⚠️</span><span>Lý do y/c phân tuyến lại: <strong>${internal.reassignment_reason}</strong></span>
+                    <div class="p-3 rounded-xl bg-rose-50 text-xs text-rose-900 space-y-0.5 border border-rose-200">
+                        <div class="font-bold flex items-center space-x-1">
+                            <span>Lý do y/c phân tuyến lại: <strong>${internal.reassignment_reason}</strong></span>
                         </div>
-                        ${internal.reassignment_note ? `<div class="text-[11px] text-[#787774] pl-4">${internal.reassignment_note}</div>` : ''}
+                        ${internal.reassignment_note ? `<div class="text-[11px] text-slate-600 pl-2 mt-0.5">${internal.reassignment_note}</div>` : ''}
                     </div>
                 `;
             }
             if (internal.tracking_code) {
                 internalInfoHtml += `
-                    <div class="p-2.5 rounded-md bg-[#F4EFF7] text-[12px] text-[#9065B0] space-y-0.5 border border-[#E0D2E8]">
-                        <div class="font-semibold flex items-center space-x-1">
-                            <span>🚚</span><span>Vận đơn: <strong>${internal.tracking_code}</strong> (${internal.carrier || 'Nam An Market'})</span>
+                    <div class="p-3 rounded-xl bg-purple-50 text-xs text-purple-900 space-y-0.5 border border-purple-200">
+                        <div class="font-bold flex items-center space-x-1">
+                            <span>Vận đơn: <strong>${internal.tracking_code}</strong> (${internal.carrier || 'Nam An Market'})</span>
                         </div>
                     </div>
                 `;
@@ -1771,34 +1751,34 @@
             const shipping = (o.shipping_lines && o.shipping_lines[0] && o.shipping_lines[0].price) || 0;
             const totalAmount = o.total_price || 0;
 
-            // Card HTML
+            // Card HTML (Option 3 Apple Card)
             html += `
-                <div class="bg-white rounded-md p-4 border ${isUnassigned ? 'border-[#E99738] bg-[#FDFCFB]' : 'border-[rgba(55,53,47,0.09)]'} transition-all hover:border-[rgba(55,53,47,0.2)]">
+                <div class="bg-white rounded-2xl p-5 border ${isUnassigned ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-200/80'} apple-shadow apple-card">
                     <!-- Top Row -->
-                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[rgba(55,53,47,0.09)]">
+                    <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <span class="text-[13px] font-semibold text-[#37352F] font-mono">${o.order_number || ('#' + o.id)}</span>
-                            <span class="px-1.5 py-0.2 rounded bg-[#F7F6F3] text-[11px] font-mono text-[#787774] font-medium border border-[rgba(55,53,47,0.06)]">#${o.id}</span>
+                            <span class="text-sm font-extrabold text-slate-900 font-mono">${o.order_number || ('#' + o.id)}</span>
+                            <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.id}</span>
                             ${storeBadge}
                         </div>
                         <div class="flex items-center space-x-2">
-                            <span class="text-[11px] text-[#787774] font-medium">${timeAgo}</span>
+                            <span class="text-xs text-slate-400 font-medium">${timeAgo}</span>
                             ${statusBadge}
                         </div>
                     </div>
 
                     <!-- Middle Grid: Customer + Items -->
-                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 my-3.5">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 my-4">
                         <!-- Left: Customer & Dispatch Details -->
                         <div class="lg:col-span-5 space-y-2.5">
-                            <div class="p-3 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.06)] space-y-1.5">
-                                <div class="text-[10px] font-semibold text-[#787774] uppercase tracking-wider">Thông Tin Khách Hàng</div>
+                            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
+                                <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thông Tin Khách Hàng</div>
                                 <div class="flex items-center justify-between">
-                                    <span class="text-[12px] font-semibold text-[#37352F]">${custName}</span>
-                                    ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[12px] text-[#2F7EA6] font-medium hover:underline">📞 ${custPhone}</a>` : ''}
+                                    <span class="text-xs font-bold text-slate-900">${custName}</span>
+                                    ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-xs text-emerald-700 font-bold hover:underline">${custPhone}</a>` : ''}
                                 </div>
-                                <div class="text-[12px] text-[#787774] leading-relaxed">${deliveryAddr}</div>
+                                <div class="text-xs text-slate-600 leading-relaxed">${deliveryAddr}</div>
                                 ${noteHtml}
                             </div>
                             ${internalInfoHtml}
@@ -1811,24 +1791,24 @@
                             </div>
 
                             <!-- Financial Summary -->
-                            <div class="mt-3 pt-2.5 border-t border-[rgba(55,53,47,0.09)] flex items-baseline justify-between">
-                                <div class="text-[11px] text-[#787774]">
+                            <div class="mt-3 pt-3 border-t border-slate-100 flex items-baseline justify-between">
+                                <div class="text-xs text-slate-500">
                                     <span>Tạm tính: ${formatVND(subtotal)}</span>
-                                    ${discount > 0 ? `<span class="ml-2 text-[#D44C47]">-KM: ${formatVND(discount)}</span>` : ''}
-                                    ${shipping > 0 ? `<span class="ml-2">+Ship: ${formatVND(shipping)}</span>` : ''}
+                                    ${discount > 0 ? `<span class="ml-2 text-rose-600 font-semibold">-KM: ${formatVND(discount)}</span>` : ''}
+                                    ${shipping > 0 ? `<span class="ml-2 text-slate-600">+Ship: ${formatVND(shipping)}</span>` : ''}
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-[12px] text-[#787774] mr-1">Tổng tiền:</span>
-                                    <span class="text-base font-bold font-mono text-[#37352F]">${formatVND(totalAmount)}</span>
+                                    <span class="text-xs text-slate-500 mr-1.5 font-medium">Tổng tiền:</span>
+                                    <span class="text-lg font-black font-mono text-slate-900">${formatVND(totalAmount)}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Bottom Row: Action Buttons Follow PMDONHANG -->
-                    <div class="pt-3 border-t border-[rgba(55,53,47,0.09)] flex flex-wrap items-center justify-between gap-2.5">
-                        <div class="flex items-center space-x-1.5">
-                            <button onclick="openDetailsModal('${o.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors">
+                    <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
+                        <div class="flex items-center space-x-2">
+                            <button onclick="openHaravanDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
                                 Chi tiết & Lịch sử
                             </button>
                         </div>
@@ -1836,47 +1816,43 @@
                         <!-- Status Action Buttons -->
                         <div class="flex flex-wrap items-center gap-2">
                             ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                                    <span>⚡</span>
+                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Phân Tuyến Cửa Hàng</span>
                                 </button>
                             ` : ''}
 
                             ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[12px] font-medium transition-colors">
+                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all">
                                     Đổi Chi Nhánh
                                 </button>
                             ` : ''}
 
                             ${!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-2.5 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
-                                    ⚠️ Thiếu Hàng / Trả Đơn
+                                <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                                    Thiếu Hàng / Trả Đơn
                                 </button>
                             ` : ''}
 
                             ${procStatus === 'Đã phân tuyến' ? `
-                                <button onclick="executeHaravanPack('${o.id}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                                    <span>📦</span>
+                                <button onclick="executeHaravanPack('${o.id}')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Đã Đóng Gói Xong</span>
                                 </button>
                             ` : ''}
 
                             ${procStatus === 'Đã đóng gói' ? `
-                                <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                                    <span>🚚</span>
+                                <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Gửi Vận Đơn</span>
                                 </button>
                             ` : ''}
 
                             ${(procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
-                                <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5">
-                                    <span>✅</span>
+                                <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Hoàn Tất Đơn</span>
                                 </button>
                             ` : ''}
 
                             ${procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanCancelModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                                <button onclick="openHaravanCancelModal('${o.id}', '${o.order_number || o.id}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
                             ` : ''}

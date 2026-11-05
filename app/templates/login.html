@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi" class="h-full">
+<html lang="vi" class="h-full bg-slate-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +7,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -15,93 +15,130 @@
             theme: {
                 extend: {
                     colors: {
-                        notion: {
-                            text: '#37352F',
-                            muted: '#787774',
-                            border: '#E9E9E7',
-                            bg: '#FFFFFF',
-                            hover: '#F7F6F3',
-                            sidebar: '#F7F6F3',
-                            dark: '#2F3437',
+                        brand: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
                         }
                     },
                     fontFamily: {
-                        sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'sans-serif'],
+                        sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
                         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
                     },
                     boxShadow: {
-                        '2xs': '0 1px 2px rgba(55, 53, 47, 0.08)',
+                        'apple-card': '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04)',
+                        'apple-dropdown': '0 20px 40px -15px rgba(15, 23, 42, 0.12), 0 0 1px 1px rgba(15, 23, 42, 0.05)',
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="min-h-full flex items-center justify-center bg-[#FAFAFA] text-[#37352F] px-4 py-12 font-sans antialiased">
+<body class="min-h-full flex items-center justify-center bg-slate-50 text-slate-900 px-4 py-12 font-sans antialiased">
 
-    <div class="max-w-sm w-full space-y-6">
+    <div class="max-w-md w-full space-y-6">
         <!-- Logo & Header -->
         <div class="text-center">
-            <div class="inline-flex w-12 h-12 rounded-lg bg-[#F7F6F3] border border-[#E9E9E7] items-center justify-center text-xl shadow-2xs mb-3">
-                🏬
+            <div class="inline-flex w-14 h-14 rounded-2xl bg-white border border-slate-200/80 items-center justify-center shadow-apple-card mb-4 text-emerald-600">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
             </div>
-            <h1 class="text-xl font-bold text-[#37352F] tracking-tight">Nam An Market</h1>
-            <p class="text-xs text-[#787774] mt-1">Cổng Quản Trị & Điều Phối Đa Kênh (NAM-UMP)</p>
-            <div class="inline-flex items-center space-x-1.5 mt-2.5 px-2 py-0.5 bg-[#F1F1EF] text-[#787774] text-[11px] font-medium rounded border border-[#E9E9E7]">
-                <span class="w-1.5 h-1.5 rounded-full bg-[#0F7B6C]"></span>
+            <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">Nam An Market</h1>
+            <p class="text-sm font-medium text-slate-500 mt-1">Cổng Quản Trị & Điều Phối Đa Kênh (NAM-UMP)</p>
+            <div class="inline-flex items-center space-x-2 mt-3 px-3 py-1 bg-white text-slate-600 text-xs font-semibold rounded-full border border-slate-200 shadow-xs">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span>Bảo mật JWT • Cổng chuẩn 3002</span>
             </div>
         </div>
 
         <!-- Login Card -->
-        <div class="bg-white rounded-lg border border-[#E9E9E7] p-6 shadow-2xs space-y-4">
-            <div class="border-b border-[#E9E9E7] pb-2">
-                <h2 class="text-sm font-semibold text-[#37352F]">Đăng nhập Quản Trị</h2>
-                <p class="text-xs text-[#787774] mt-0.5">Nhập thông tin tài khoản nhân sự được cấp</p>
+        <div class="bg-white rounded-3xl border border-slate-200/80 p-8 shadow-apple-dropdown space-y-5">
+            <div class="border-b border-slate-100 pb-3">
+                <h2 class="text-base font-bold text-slate-900">Đăng nhập Quản Trị</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Nhập thông tin tài khoản nhân sự được cấp</p>
             </div>
 
-            <div id="error-alert" class="hidden p-3 rounded border border-[#FFE2DD] bg-[#FFE2DD]/30 text-[#D44C47] text-xs font-medium"></div>
+            <div id="error-alert" class="hidden p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-semibold"></div>
 
-            <form id="login-form" class="space-y-3.5" onsubmit="handleLogin(event)">
+            <form id="login-form" class="space-y-4" onsubmit="handleLogin(event)">
                 <div>
-                    <label for="username" class="block text-[11px] font-medium text-[#787774] uppercase tracking-wider mb-1">Tài khoản / Mã NV / Email</label>
+                    <label for="username" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tài khoản / Mã NV / Email</label>
                     <input id="username" name="username" type="text" required autofocus
-                           class="w-full px-2.5 py-1.5 rounded border border-[#E9E9E7] bg-white text-xs text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:border-[#2F3437] transition-colors"
-                           placeholder="Nhập username, mã nhân viên hoặc email nội bộ">
+                           class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
+                           placeholder="Nhập username, mã nhân viên hoặc email">
                 </div>
 
                 <div>
-                    <label for="password" class="block text-[11px] font-medium text-[#787774] uppercase tracking-wider mb-1">Mật khẩu</label>
+                    <label for="password" class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mật khẩu</label>
                     <input id="password" name="password" type="password" required
-                           class="w-full px-2.5 py-1.5 rounded border border-[#E9E9E7] bg-white text-xs text-[#37352F] placeholder-[#9B9A97] focus:outline-none focus:border-[#2F3437] transition-colors"
+                           class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 transition-all"
                            placeholder="••••••••">
                 </div>
 
-                <div class="flex items-center justify-between text-[11px] text-[#787774]">
-                    <span>Phân quyền theo chi nhánh</span>
+                <div class="flex items-center justify-between text-xs text-slate-500 font-medium pt-1">
+                    <span>Phân quyền chi nhánh</span>
                     <span>Khóa sau 5 lần sai</span>
                 </div>
 
                 <button type="submit" id="submit-btn"
-                        class="w-full py-2 px-3 rounded bg-[#2F3437] hover:bg-[#474C50] text-white text-xs font-medium shadow-2xs transition-colors flex items-center justify-center space-x-2">
+                        class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2">
                     <span id="btn-text">Đăng Nhập Vào Hệ Thống</span>
-                    <svg id="btn-spinner" class="hidden animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                    <svg id="btn-spinner" class="hidden animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
                     </svg>
                 </button>
             </form>
 
+            <!-- Quick Demo Account Selector (Testing & Evaluation Helper) -->
+            <div class="pt-3 border-t border-slate-100">
+                <details class="group text-xs">
+                    <summary class="cursor-pointer text-slate-500 hover:text-slate-800 font-semibold flex items-center justify-between select-none py-1.5 transition-colors">
+                        <span class="flex items-center space-x-2">
+                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                            <span>Tài khoản dùng thử phân quyền</span>
+                        </span>
+                        <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </summary>
+                    <div class="mt-2.5 p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                        <p class="text-[11px] text-slate-500 leading-relaxed font-medium">
+                            Chọn tài khoản để tự động điền form:
+                        </p>
+                        <div class="space-y-1.5">
+                            <button type="button" onclick="selectDemoAccount('admin', 'phhthtnkhk')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                                <div class="font-bold text-rose-600 text-xs">Super Admin</div>
+                                <div class="text-[11px] text-slate-500 font-mono">admin (Toàn chuỗi)</div>
+                            </button>
+                            <button type="button" onclick="selectDemoAccount('manager_10001', 'NamAn@2026')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                                <div class="font-bold text-blue-600 text-xs">CHT Thảo Điền</div>
+                                <div class="text-[11px] text-slate-500 font-mono">manager_10001</div>
+                            </button>
+                            <button type="button" onclick="selectDemoAccount('staff_10001', 'NamAn@2026')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                                <div class="font-bold text-emerald-600 text-xs">NV Thảo Điền</div>
+                                <div class="text-[11px] text-slate-500 font-mono">staff_10001</div>
+                            </button>
+                            <button type="button" onclick="selectDemoAccount('manager_10004', 'NamAn@2026')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                                <div class="font-bold text-purple-600 text-xs">CHT Phú Mỹ Hưng</div>
+                                <div class="text-[11px] text-slate-500 font-mono">manager_10004</div>
+                            </button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
             <!-- Internal SSO Notice -->
-            <div class="pt-2 border-t border-[#E9E9E7]/60 text-[11px] text-[#787774] flex items-center justify-between">
-                <span class="flex items-center space-x-1.5">
-                    <span>🔐</span>
+            <div class="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                <span class="flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
                     <span>Xác thực tập trung qua hệ thống nội bộ Nam An (SSO)</span>
                 </span>
             </div>
         </div>
 
-        <p class="text-center text-[11px] text-[#9B9A97]">
+        <p class="text-center text-xs font-medium text-slate-400">
             © 2026 Nam An Market Inc. Kiến trúc đa kênh độc lập ShopeeFood • GrabMart • ShopeeMart.
         </p>
     </div>

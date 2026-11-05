@@ -35,9 +35,21 @@ async def get_order_summary(
     has_global_access = (
         current_user.is_superuser
         or current_user.role == UserRole.SUPER_ADMIN.value
-        or current_user.store_id is None
+        or (current_user.store_id is None and current_user.role != UserRole.STAFF.value)
     )
     if not has_global_access:
+        if not current_user.store_id and current_user.role == UserRole.STAFF.value:
+            return APIResponse.ok(
+                data=OrderSummaryResponse(
+                    pending_count=0,
+                    preparing_count=0,
+                    ready_count=0,
+                    delivering_count=0,
+                    delivered_today_count=0,
+                    cancelled_today_count=0,
+                    revenue_today=0.0,
+                )
+            )
         effective_store_id = current_user.store_id
     elif store_code and not effective_store_id:
         from app.models.store import Store
@@ -75,9 +87,21 @@ async def list_orders(
     has_global_access = (
         current_user.is_superuser
         or current_user.role == UserRole.SUPER_ADMIN.value
-        or current_user.store_id is None
+        or (current_user.store_id is None and current_user.role != UserRole.STAFF.value)
     )
     if not has_global_access:
+        if not current_user.store_id and current_user.role == UserRole.STAFF.value:
+            return APIResponse.ok(
+                data=PaginatedResponse(
+                    items=[],
+                    meta=PaginationMeta(
+                        page=page,
+                        page_size=page_size,
+                        total_items=0,
+                        total_pages=0,
+                    ),
+                )
+            )
         effective_store_id = current_user.store_id
         effective_store_code = None  # Không cho phép ghi đè chi nhánh khác
 

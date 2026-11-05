@@ -132,3 +132,47 @@ async def admin_login_page(request: Request):
             "app_version": settings.APP_VERSION,
         }
     )
+
+
+# ==============================================================================
+# Design Review & Mockup Preview Routes
+# ==============================================================================
+@web_router.get("/preview", response_class=HTMLResponse)
+async def preview_index_page(request: Request):
+    """Serve Design Options Comparison & Interactive Review Hub."""
+    return templates.TemplateResponse(
+        request=request,
+        name="mockups/index.html",
+        context={"request": request}
+    )
+
+
+@web_router.get("/preview/option1", response_class=HTMLResponse)
+async def preview_option1_page(request: Request):
+    """Serve Option 1: Modern SaaS (Linear & Vercel Ops) Mockup."""
+    return templates.TemplateResponse(
+        request=request,
+        name="mockups/option1_modern_saas.html",
+        context={"request": request}
+    )
+
+
+@web_router.get("/preview/option2", response_class=HTMLResponse)
+async def preview_option2_page(request: Request):
+    """Serve Option 2: Industrial Logistics & Warehouse Ops Mockup."""
+    return templates.TemplateResponse(
+        request=request,
+        name="mockups/option2_industrial_ops.html",
+        context={"request": request}
+    )
+
+
+@web_router.get("/preview/option3", response_class=HTMLResponse)
+async def preview_option3_page(request: Request):
+    """Serve Option 3: Apple Retail & Merchant Pro Mockup."""
+    return templates.TemplateResponse(
+        request=request,
+        name="mockups/option3_apple_retail.html",
+        context={"request": request}
+    )
+
