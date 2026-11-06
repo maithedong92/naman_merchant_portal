@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_super_admin
+from app.api.deps import get_current_user, require_store_manager, require_super_admin
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.responses import APIResponse
@@ -18,6 +18,8 @@ from app.schemas.channel import (
 )
 from app.services.channel_registry import channel_registry
 from app.services.channel_service import channel_service
+from app.services.poppies_channels import get_channel_family_codes, normalize_channel_code
+from app.services.poppies_service import poppies_service
 
 router = APIRouter(prefix="/channels", tags=["Sales Channels"])
 
@@ -44,6 +46,79 @@ async def list_channels(
 
     enriched = [_format_channel_response(c) for c in channels]
     return APIResponse.ok(data=enriched)
+
+
+@router.get("/registered-adapters", response_model=APIResponse[List[str]])
+async def get_registered_adapters(
+    current_user: User = Depends(get_current_user)
+):
+    """Returns list of active channel adapters loaded in current memory registry."""
+    return APIResponse.ok(
+        data=channel_registry.list_channels(),
+        message="Danh sách các adapter đã được nạp vào Registry"
+    )
+
+
+@router.get("/poppies-matching", response_model=APIResponse[Dict[str, Any]])
+async def get_poppies_channel_matching(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Đối soát trực tiếp 14+ kênh bán hàng Canonical từ Poppies ERP với bảng `channels`,
+    `store_channel_mappings`, `ChannelRegistry` và trạng thái giá/cấm bán tại NAM-UMP.
+    """
+    report = await poppies_service.get_poppies_channel_matching_report(db=db)
+    return APIResponse.ok(
+        data=report,
+        message="Đã tải báo cáo đối soát & matching kênh Poppies ERP.",
+    )
+
+
+@router.post("/sync-poppies", response_model=APIResponse[Dict[str, Any]])
+async def sync_and_match_channels_from_poppies(
+    branch_code: str = Query("10001", description="Mã chi nhánh đối chiếu giá bán"),
+    sync_pricing: bool = Query(
+        False,
+        description="Đồng bộ kèm Pricing & Exclusions Snapshot cho các sàn S2S (GRAB, SHOPEEFOOD, SHOPEEMART)",
+    ),
+    sync_catalog: bool = Query(
+        False,
+        description="Đồng bộ kèm toàn bộ Master SKU & tồn kho CTTK từ Poppies ERP",
+    ),
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Đồng bộ danh sách kênh chuẩn Canonical từ Poppies ERP (`GET /api/v1/pos/pricing/channels`),
+    tự động gộp các mã kênh legacy trùng lặp (ví dụ `GRABMART` -> `GRAB`, `POS_OFFLINE` -> `STORE`)
+    mà không mất liên kết cửa hàng hay lịch sử đơn hàng, đồng thời khớp nối Adapter & 4 chi nhánh.
+    """
+    if sync_catalog or sync_pricing:
+        full_res = await poppies_service.sync_and_match_all_from_poppies(
+            db=db,
+            branch_code=branch_code,
+            sync_master_skus=sync_catalog,
+            sync_stock=sync_catalog,
+            pricing_channels=["GRAB", "SHOPEEFOOD", "SHOPEEMART"] if sync_pricing else [],
+        )
+        return APIResponse.ok(
+            data=full_res,
+            message=(
+                f"Đã đồng bộ & matching thành công {full_res['channel_reconciliation']['total_poppies_channels']} "
+                "kênh chuẩn từ Poppies ERP!"
+            ),
+        )
+
+    rec_res = await poppies_service.reconcile_channels_from_poppies(
+        db=db, sync_store_outlets=True
+    )
+    return APIResponse.ok(
+        data=rec_res,
+        message=(
+            f"Đã đồng bộ & matching chính xác {rec_res['total_poppies_channels']} kênh bán hàng từ Poppies ERP!"
+        ),
+    )
 
 
 @router.get("/{channel_code}", response_model=APIResponse[ChannelResponse])
@@ -89,7 +164,7 @@ async def create_channel(
     db: AsyncSession = Depends(get_db)
 ):
     """Register a new channel (e.g. SHOPEEFOOD, GRABMART)."""
-    code_upper = payload.code.upper()
+    code_upper = normalize_channel_code(payload.code)
     existing = await channel_service.get_channel_by_code(code_upper, db)
 
     if existing:
@@ -110,17 +185,6 @@ async def create_channel(
     return APIResponse.ok(
         data=_format_channel_response(channel),
         message="Đăng ký kênh bán hàng thành công"
-    )
-
-
-@router.get("/registered-adapters", response_model=APIResponse[List[str]])
-async def get_registered_adapters(
-    current_user: User = Depends(get_current_user)
-):
-    """Returns list of active channel adapters loaded in current memory registry."""
-    return APIResponse.ok(
-        data=channel_registry.list_channels(),
-        message="Danh sách các adapter đã được nạp vào Registry"
     )
 
 
@@ -146,11 +210,11 @@ async def sync_channel_menu(
         select(StoreChannelMapping)
         .join(Channel)
         .where(
-            Channel.code == code_upper,
+            Channel.code.in_(get_channel_family_codes(code_upper)),
             StoreChannelMapping.store_id == effective_store_id,
         )
     )
-    mapping_obj = (await db.execute(mapping_stmt)).scalar_one_or_none()
+    mapping_obj = (await db.execute(mapping_stmt)).scalars().first()
     partner_store_id = (
         mapping_obj.partner_store_id
         if (mapping_obj and mapping_obj.partner_store_id)

@@ -13,6 +13,10 @@ from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
 from app.schemas.order import OrderFilterParams, OrderStatusUpdateSchema
 from app.services.channel_registry import channel_registry
+from app.services.poppies_channels import (
+    get_channel_family_codes,
+    resolve_channel_from_db_result,
+)
 
 logger = logging.getLogger("naman_portal.order_service")
 
@@ -64,10 +68,12 @@ class OrderService:
         Create a new Unified Order from incoming webhook or return existing (Idempotency).
         Returns: (order, created)
         """
-        # 1. Resolve Channel
-        channel_stmt = select(Channel).where(Channel.code == channel_code.upper())
+        # 1. Resolve Channel (Canonical + Legacy Alias aware)
+        channel_stmt = select(Channel).where(
+            Channel.code.in_(get_channel_family_codes(channel_code))
+        )
         channel_res = await db.execute(channel_stmt)
-        channel = channel_res.scalar_one_or_none()
+        channel = await resolve_channel_from_db_result(channel_res, channel_code)
         if not channel:
             raise NotFoundError("Channel", channel_code)
 

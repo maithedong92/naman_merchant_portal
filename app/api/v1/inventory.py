@@ -262,3 +262,31 @@ async def sync_poppies_stock_realtime(
         message=f"Đã cập nhật tồn kho tức thời cho {result.get('inventories_updated', 0)} bản ghi tồn kho."
     )
 
+
+@router.post(
+    "/poppies/sync-and-match",
+    summary="Đồng bộ toàn diện & Matching chính xác Kênh, Hàng hóa, Giá & Cấm bán từ Poppies ERP",
+    description=(
+        "Thực thi pipeline 4 bước: (1) Đồng bộ & chuẩn hóa 14+ kênh Canonical Poppies + gộp alias cũ, "
+        "(2) Khớp nối 100% Master SKU & Barcode, (3) Đồng bộ tồn kho CTTK 4 chi nhánh, "
+        "(4) Kéo bảng giá riêng & danh sách cấm bán (exclusions) cho các sàn S2S."
+    ),
+)
+async def sync_and_match_poppies_all(
+    branch_code: str = Query("10001", description="Mã chi nhánh đối chiếu giá bán"),
+    sync_master_skus: bool = Query(True, description="Đồng bộ danh mục SKU & giá gốc STORE"),
+    sync_stock: bool = Query(True, description="Đồng bộ tồn kho CTTK đa chi nhánh"),
+    current_user: User = Depends(require_store_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await poppies_service.sync_and_match_all_from_poppies(
+        db=db,
+        branch_code=branch_code,
+        sync_master_skus=sync_master_skus,
+        sync_stock=sync_stock,
+    )
+    return APIResponse.ok(
+        data=result,
+        message="Đã đồng bộ & matching thành công toàn bộ Kênh bán, Hàng hóa, Giá & Tồn kho từ Poppies ERP!",
+    )
+

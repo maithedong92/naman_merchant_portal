@@ -18,6 +18,10 @@ from app.schemas.sync import SyncResult
 from app.services.channel_service import channel_service
 from app.services.error_service import error_service
 from app.services.order_service import OrderService
+from app.services.poppies_channel_push import (
+    apply_channel_governance_to_stock_items,
+    load_channel_governance_for_products,
+)
 from app.modules.shopeefood.service import shopeefood_client
 
 logger = logging.getLogger("naman_portal.modules.shopeefood.adapter")
@@ -71,6 +75,12 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
         res = await db.execute(query)
         rows = res.all()
 
+        is_ch_active, has_partner_pricing, map_by_pid = await load_channel_governance_for_products(
+            db=db,
+            raw_channel_code="SHOPEEFOOD",
+            product_ids=[str(r[0].id) for r in rows] if rows else None,
+        )
+
         # Group items into categories
         category_map: Dict[str, Dict[str, Any]] = {}
         for product, inv in rows:
@@ -87,16 +97,30 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                     "items": [],
                 }
 
+            ch_map = map_by_pid.get(str(product.id))
+            is_enabled_on_channel = bool(
+                is_ch_active and (ch_map.is_enabled if ch_map is not None else True)
+            )
             is_available = (
                 "AVAILABLE"
-                if (inv and not inv.is_out_of_stock and inv.available_stock > 0)
+                if (
+                    is_enabled_on_channel
+                    and inv
+                    and not inv.is_out_of_stock
+                    and inv.available_stock > 0
+                )
                 else "UNAVAILABLE"
+            )
+            item_price = (
+                float(ch_map.custom_price)
+                if (has_partner_pricing and ch_map is not None and ch_map.custom_price is not None)
+                else float(product.base_price)
             )
 
             category_map[cate_id]["items"].append({
                 "id": str(product.sku),
                 "name": product.name,
-                "price": float(product.base_price),
+                "price": item_price,
                 "description": product.description or "",
                 "availableStatus": is_available,
                 "photos": [product.image_url] if product.image_url else [],
@@ -218,8 +242,11 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             )
 
         try:
+            governed_items = await apply_channel_governance_to_stock_items(
+                db=db, raw_channel_code="SHOPEEFOOD", stock_items=stock_items
+            )
             dishes = []
-            for item in stock_items:
+            for item in governed_items:
                 is_out = item.get("is_out_of_stock", False)
                 dishes.append({
                     "partner_dish_id": str(item.get("sku") or item.get("product_id")),

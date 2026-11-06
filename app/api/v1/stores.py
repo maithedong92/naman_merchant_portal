@@ -20,6 +20,10 @@ from app.schemas.store import (
     StoreResponse,
     StoreUpdate,
 )
+from app.services.poppies_channels import (
+    get_channel_family_codes,
+    resolve_channel_from_db_result,
+)
 
 router = APIRouter(prefix="/stores", tags=["Stores & Outlets"])
 
@@ -168,8 +172,11 @@ async def update_or_create_store_channel_mapping(
     if not store:
         raise NotFoundError("Store", store_id)
 
-    channel_stmt = select(Channel).where((Channel.id == channel_id) | (Channel.code == channel_id.upper()))
-    channel = (await db.execute(channel_stmt)).scalar_one_or_none()
+    channel_stmt = select(Channel).where(
+        (Channel.id == channel_id)
+        | (Channel.code.in_(get_channel_family_codes(channel_id)))
+    )
+    channel = await resolve_channel_from_db_result(await db.execute(channel_stmt), channel_id)
     if not channel:
         raise NotFoundError("Channel", channel_id)
 
@@ -216,8 +223,11 @@ async def delete_store_channel_mapping(
     if not store:
         raise NotFoundError("Store", store_id)
 
-    channel_stmt = select(Channel).where((Channel.id == channel_id) | (Channel.code == channel_id.upper()))
-    channel = (await db.execute(channel_stmt)).scalar_one_or_none()
+    channel_stmt = select(Channel).where(
+        (Channel.id == channel_id)
+        | (Channel.code.in_(get_channel_family_codes(channel_id)))
+    )
+    channel = await resolve_channel_from_db_result(await db.execute(channel_stmt), channel_id)
     if not channel:
         raise NotFoundError("Channel", channel_id)
 

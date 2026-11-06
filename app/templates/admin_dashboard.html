@@ -116,15 +116,25 @@
 
     <!-- Sales Channels Integration Matrix & Granular Feature Toggles -->
     <div>
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
             <div>
                 <h2 class="text-sm font-semibold text-[#37352F]">Ma Trận Kênh Bán Hàng & Bảng Điều Khiển Tính Năng</h2>
-                <p class="text-xs text-[#787774]">Bật/tắt linh hoạt từng tính năng (nhận đơn, tự động duyệt, tồn kho, thực đơn) theo thời gian thực.</p>
+                <p class="text-xs text-[#787774]">Bật/tắt linh hoạt từng tính năng (nhận đơn, tự động duyệt, tồn kho, thực đơn) và đồng bộ chuẩn Canonical từ Poppies ERP.</p>
             </div>
-            <button onclick="loadChannelFeatureFlags()" class="px-2.5 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors inline-flex items-center space-x-1 shadow-2xs">
-                <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>Làm mới</span>
-            </button>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <button id="btn-sync-poppies-channels" onclick="triggerPoppiesChannelSync(false)" class="px-3 py-1.5 rounded text-xs font-medium bg-[#0F7B6C] text-white hover:bg-[#0B6256] transition-colors inline-flex items-center space-x-1.5 shadow-2xs" title="Kéo danh sách 14+ kênh bán hàng từ Poppies ERP, chuẩn hóa alias cũ và khớp 4 chi nhánh">
+                    <svg id="poppies-ch-spinner" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Đồng Bộ & Matching Kênh Poppies</span>
+                </button>
+                <button id="btn-sync-poppies-pricing" onclick="triggerPoppiesChannelSync(true)" class="px-3 py-1.5 rounded text-xs font-medium bg-[#2F3437] text-white hover:bg-[#474C50] transition-colors inline-flex items-center space-x-1.5 shadow-2xs" title="Đồng bộ kênh kèm bảng giá riêng & danh sách cấm bán trên GrabMart, ShopeeFood, ShopeeMart">
+                    <span>⚡</span>
+                    <span>Đồng Bộ Kênh + Giá Sàn</span>
+                </button>
+                <button onclick="loadChannelFeatureFlags(); loadPoppiesMatchingTable();" class="px-2.5 py-1.5 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors inline-flex items-center space-x-1 shadow-2xs">
+                    <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Làm mới</span>
+                </button>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -405,12 +415,54 @@
                 <!-- Card Footer -->
                 <div class="mt-3 pt-3 border-t border-[#E9E9E7]/60 flex items-center justify-between text-xs">
                     <span class="text-[#9B9A97] font-mono text-[11px]">Port 3002 • Adapter</span>
-                    <button onclick="showToast('ShopeeMart đang cập nhật cơ chế đồng bộ theo lô.', 'info')" class="text-xs font-medium text-[#2F3437] hover:underline transition-colors">
+                    <button onclick="triggerSync('SHOPEEMART')" class="text-xs font-medium text-[#2F3437] hover:underline transition-colors">
                         Đồng bộ Danh mục &rarr;
                     </button>
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- Poppies ERP Canonical Channel Matching Matrix -->
+    <div class="bg-white rounded-lg border border-[#E9E9E7] p-4 shadow-2xs">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#E9E9E7] gap-3">
+            <div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="text-sm font-semibold text-[#37352F]">Bảng Đối Soát & Matching Kênh Chuẩn Poppies ERP</h3>
+                    <span id="poppies-match-source-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#F1F1EF] text-[#787774]">Đang kiểm tra...</span>
+                    <span id="poppies-match-summary-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#DBEDDB] text-[#28456C]">-- / -- Kênh</span>
+                </div>
+                <p class="text-xs text-[#787774] mt-0.5">
+                    Đối chiếu trực tiếp danh mục kênh từ <code>Poppies ERP (/api/v1/pos/pricing/channels)</code> với mã kế toán Arito, cơ chế kế thừa giá và Adapter tại NAM-UMP.
+                </p>
+            </div>
+            <button onclick="triggerPoppiesChannelSync(false)" class="px-3 py-1.5 rounded text-xs font-medium text-[#0F7B6C] bg-[#DBEDDB]/50 border border-[#DBEDDB] hover:bg-[#DBEDDB] transition-colors inline-flex items-center space-x-1.5 self-start sm:self-auto shrink-0">
+                <span>🔄</span>
+                <span>Chuẩn Hóa & Khớp Ngay</span>
+            </button>
+        </div>
+
+        <div class="overflow-x-auto mt-3">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-[11px] font-medium text-[#787774] border-b border-[#E9E9E7]">
+                        <th class="py-2.5 px-3">Mã Chuẩn Poppies & Tên Kênh</th>
+                        <th class="py-2.5 px-3">Mã Arito</th>
+                        <th class="py-2.5 px-3">Chính Sách Giá</th>
+                        <th class="py-2.5 px-3">Khớp Nối Phân Hệ UMP</th>
+                        <th class="py-2.5 px-3 text-center">Trạng Thái Matching</th>
+                        <th class="py-2.5 px-3 text-right">Đồng Bộ Giá/Cấm Bán</th>
+                    </tr>
+                </thead>
+                <tbody id="poppies-matching-tbody" class="divide-y divide-[#E9E9E7]/60">
+                    <tr>
+                        <td colspan="6" class="py-6 text-center text-[#787774]">
+                            Đang tải dữ liệu đối soát kênh từ Poppies ERP...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -510,9 +562,9 @@
             <div>
                 <label class="block font-medium text-[#787774] text-[11px] uppercase tracking-wider mb-1">Kênh Bán Lẻ:</label>
                 <select id="mapping-modal-channel" required class="w-full px-2.5 py-1.5 rounded border border-[#E9E9E7] text-xs font-medium text-[#37352F] bg-white focus:outline-none focus:border-[#2F3437]">
-                    <option value="SHOPEEMART">🛒 ShopeeMart (Fresh)</option>
-                    <option value="GRABMART">🛵 GrabMart VN</option>
-                    <option value="SHOPEEFOOD">🍲 ShopeeFood VN</option>
+                    <option value="SHOPEEMART">🛒 ShopeeMart (SHOPEEMART)</option>
+                    <option value="GRAB">🛵 GrabMart VN (GRAB)</option>
+                    <option value="SHOPEEFOOD">🍲 ShopeeFood VN (SHOPEEFOOD)</option>
                 </select>
             </div>
 
@@ -561,14 +613,16 @@
                 if (data.success && Array.isArray(data.data)) {
                     let activeCount = 0;
                     data.data.forEach(ch => {
-                        const code = ch.code;
+                        const rawCode = (ch.code || '').toUpperCase();
+                        // Map Canonical GRAB <-> GRABMART UI card IDs seamlessly
+                        const cardCode = (rawCode === 'GRAB' || rawCode === 'GRAB_MART') ? 'GRABMART' : rawCode;
                         const features = ch.features || {};
 
                         if (ch.is_active) activeCount++;
 
                         // Update Master Badge & Switch
-                        const badgeEl = document.getElementById(`badge-${code}`);
-                        const masterToggle = document.getElementById(`toggle-${code}-is_active`);
+                        const badgeEl = document.getElementById(`badge-${cardCode}`);
+                        const masterToggle = document.getElementById(`toggle-${cardCode}-is_active`);
 
                         if (masterToggle) masterToggle.checked = !!ch.is_active;
                         if (badgeEl) {
@@ -583,7 +637,7 @@
 
                         // Update Sub-feature switches
                         ['order_webhook_enabled', 'auto_confirm_enabled', 'stock_sync_enabled', 'menu_sync_enabled'].forEach(key => {
-                            const el = document.getElementById(`toggle-${code}-${key}`);
+                            const el = document.getElementById(`toggle-${cardCode}-${key}`);
                             if (el && features[key] !== undefined) {
                                 el.checked = !!features[key];
                             }
@@ -645,25 +699,202 @@
 
     // Manual sync trigger
     async function triggerSync(channelCode) {
-        showToast(`Đang gửi yêu cầu đồng bộ menu tới ${channelCode}...`, 'info');
+        showToast(`Đang gửi yêu cầu đồng bộ danh mục tới ${channelCode}...`, 'info');
         try {
-            let url = '';
-            if (channelCode === 'SHOPEEFOOD') {
-                url = '/api/v1/shopeefood/sync/menu/10001';
-            } else if (channelCode === 'GRABMART') {
-                url = '/api/v1/grabmart/sync/menu/STORE_HCM_01';
-            }
-            if (url) {
-                const res = await authFetch(url, { method: 'POST' });
-                const data = await res.json();
-                if (res.ok && data.success) {
-                    showToast(data.message || `Đồng bộ ${channelCode} thành công!`, 'success');
-                } else {
-                    showToast(data.message || `Đồng bộ thất bại: ${data.message}`, 'error');
-                }
+            const url = `/api/v1/channels/${encodeURIComponent(channelCode)}/sync-menu?store_id=10001`;
+            const res = await authFetch(url, { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(data.message || `Đồng bộ ${channelCode} thành công!`, 'success');
+            } else {
+                showToast(data.message || `Đồng bộ thất bại`, 'error');
             }
         } catch (e) {
             showToast(`Lỗi khi gọi đồng bộ: ${e.message}`, 'error');
+        }
+    }
+
+    // Poppies ERP Channel Reconciliation & Matching Table
+    async function loadPoppiesMatchingTable() {
+        const tbody = document.getElementById('poppies-matching-tbody');
+        if (!tbody) return;
+        try {
+            const res = await authFetch('/api/v1/channels/poppies-matching');
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const json = await res.json();
+            if (json.success && json.data) {
+                renderPoppiesMatchingTable(json.data);
+            }
+        } catch (e) {
+            tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-[#D44C47]">Không thể tải đối soát kênh Poppies ERP: ${e.message}</td></tr>`;
+        }
+    }
+
+    function renderPoppiesMatchingTable(report) {
+        const tbody = document.getElementById('poppies-matching-tbody');
+        const srcBadge = document.getElementById('poppies-match-source-badge');
+        const sumBadge = document.getElementById('poppies-match-summary-badge');
+
+        if (srcBadge) {
+            if (report.source === 'poppies_live') {
+                srcBadge.textContent = '🟢 Poppies ERP Live';
+                srcBadge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#DBEDDB] text-[#0F7B6C]';
+            } else {
+                srcBadge.textContent = '🟡 Bản chuẩn cục bộ';
+                srcBadge.className = 'inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FDECC8] text-[#D9730D]';
+            }
+        }
+
+        if (sumBadge) {
+            sumBadge.textContent = `${report.matched_channels_count || 0} / ${report.total_poppies_channels || 0} Kênh Khớp Chuẩn`;
+            sumBadge.className = report.needs_reconciliation
+                ? 'inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FDECC8] text-[#D9730D]'
+                : 'inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#DBEDDB] text-[#28456C]';
+        }
+
+        const channels = report.channels || [];
+        if (channels.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-[#787774]">Chưa có dữ liệu kênh.</td></tr>`;
+            return;
+        }
+
+        let html = '';
+        channels.forEach(ch => {
+            const aliasHint = (ch.aliases && ch.aliases.length > 0)
+                ? `<div class="text-[10px] text-[#9B9A97] font-mono">Alias: ${ch.aliases.join(', ')}</div>`
+                : '';
+
+            let pricingBadge = '';
+            if (ch.has_partner_pricing) {
+                const mk = ch.default_markup_percent > 0 ? ` (+${ch.default_markup_percent}%)` : '';
+                pricingBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#E8DEEE] text-[#6940A5]">Giá riêng${mk}</span>`;
+            } else {
+                pricingBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#F1F1EF] text-[#787774]">Kế thừa ${ch.inherited_from || 'STORE'}</span>`;
+            }
+
+            let modeDesc = '';
+            if (ch.integration_mode === 'S2S_ADAPTER') {
+                modeDesc = `<div class="font-medium text-[#0F7B6C]">⚡ Adapter: ${ch.adapter_name}</div>
+                            <div class="text-[10px] text-[#787774]">${ch.mapped_stores_count} chi nhánh • ${ch.custom_price_skus_count} giá riêng • ${ch.blocked_skus_count} cấm bán</div>`;
+            } else if (ch.integration_mode === 'POS_BASE') {
+                modeDesc = `<div class="font-medium text-[#37352F]">🏪 Kênh Gốc POS Tại Quầy</div>
+                            <div class="text-[10px] text-[#787774]">Giá chuẩn Base VAT (${(report.total_local_products || 0).toLocaleString()} SKU)</div>`;
+            } else {
+                modeDesc = `<div class="font-medium text-[#28456C]">🌐 Omnichannel / Haravan</div>
+                            <div class="text-[10px] text-[#787774]">${ch.custom_price_skus_count} giá riêng • ${ch.blocked_skus_count} cấm bán</div>`;
+            }
+
+            let matchBadge = '';
+            if (ch.match_status === 'MATCHED') {
+                matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#DBEDDB] text-[#28456C]">✅ Đã khớp (${ch.ump_is_active ? 'Bật' : 'Tắt'})</span>`;
+            } else if (ch.match_status === 'ALIAS_NEEDS_MERGE') {
+                matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FDECC8] text-[#D9730D]">⚠️ Cần gộp Alias (${(ch.legacy_rows_in_db || []).join(', ')})</span>`;
+            } else {
+                matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FFE2DD] text-[#D44C47]">➕ Chưa tạo trên UMP</span>`;
+            }
+
+            const snapVer = ch.last_snapshot_version ? `<div class="text-[10px] text-[#9B9A97] font-mono mt-0.5">${ch.last_snapshot_version}</div>` : '';
+
+            html += `
+                <tr class="hover:bg-[#F7F6F3]/60 transition-colors">
+                    <td class="py-2.5 px-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="font-mono font-semibold text-[#37352F] bg-[#F7F6F3] px-1.5 py-0.5 rounded border border-[#E9E9E7]">${ch.channel_code}</span>
+                            <span class="font-medium text-[#37352F]">${ch.channel_name}</span>
+                        </div>
+                        ${aliasHint}
+                    </td>
+                    <td class="py-2.5 px-3 font-mono font-semibold text-[#37352F]">
+                        ${ch.arito_channel_code || '—'}
+                    </td>
+                    <td class="py-2.5 px-3">
+                        ${pricingBadge}
+                    </td>
+                    <td class="py-2.5 px-3">
+                        ${modeDesc}
+                    </td>
+                    <td class="py-2.5 px-3 text-center">
+                        ${matchBadge}
+                    </td>
+                    <td class="py-2.5 px-3 text-right">
+                        <button onclick="syncSingleChannelSnapshot('${ch.channel_code}', this)" class="px-2.5 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
+                            Kéo Snapshot Giá
+                        </button>
+                        ${snapVer}
+                    </td>
+                </tr>
+            `;
+        });
+        tbody.innerHTML = html;
+    }
+
+    async function triggerPoppiesChannelSync(includePricing) {
+        const btn = document.getElementById(includePricing ? 'btn-sync-poppies-pricing' : 'btn-sync-poppies-channels');
+        const spinner = document.getElementById('poppies-ch-spinner');
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.classList.add('animate-spin');
+
+        try {
+            showToast(
+                includePricing
+                    ? 'Đang đồng bộ 14+ kênh chuẩn & kéo bảng giá/cấm bán từ Poppies ERP...'
+                    : 'Đang kéo danh sách kênh chuẩn từ Poppies ERP & chuẩn hóa matching...',
+                'info'
+            );
+            const url = `/api/v1/channels/sync-poppies?branch_code=10001&sync_pricing=${includePricing ? 'true' : 'false'}`;
+            const res = await authFetch(url, { method: 'POST' });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                const d = json.data || {};
+                const rec = d.channel_reconciliation || d;
+                const mergedList = rec.legacy_channels_merged || [];
+                const mergedNote = mergedList.length > 0
+                    ? ` (Đã gộp chuẩn hóa: ${mergedList.map(m => m.from_code + '→' + m.to_code).join(', ')})`
+                    : '';
+                showToast(`${json.message}${mergedNote}`, 'success');
+                await loadChannelFeatureFlags();
+                await loadStoreMappingsTable();
+                await loadPoppiesMatchingTable();
+            } else {
+                showToast(json.message || 'Không thể đồng bộ kênh từ Poppies ERP', 'error');
+            }
+        } catch (e) {
+            showToast(`Lỗi kết nối khi đồng bộ Poppies ERP: ${e.message}`, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+            if (spinner) spinner.classList.remove('animate-spin');
+        }
+    }
+
+    async function syncSingleChannelSnapshot(channelCode, btnEl) {
+        const origText = btnEl ? btnEl.textContent : '';
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = 'Đang kéo...';
+        }
+        try {
+            showToast(`Đang kéo Pricing & Exclusions Snapshot kênh ${channelCode} từ Poppies ERP...`, 'info');
+            const res = await authFetch(`/api/v1/pricing/snapshots/sync?branch_code=10001&channel_code=${encodeURIComponent(channelCode)}`, {
+                method: 'POST'
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                const s = json.data || {};
+                showToast(
+                    `Đã đồng bộ kênh ${s.channel_code}: khớp ${(s.matched_skus_count || 0).toLocaleString()} SKU, cập nhật ${s.prices_updated || 0} giá riêng, ${s.blocked_skus_count || 0} SKU cấm bán!`,
+                    'success'
+                );
+                loadPoppiesMatchingTable();
+            } else {
+                showToast(json.message || `Lỗi kéo snapshot kênh ${channelCode}`, 'error');
+            }
+        } catch (e) {
+            showToast(`Lỗi kết nối khi kéo snapshot ${channelCode}: ${e.message}`, 'error');
+        } finally {
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.textContent = origText;
+            }
         }
     }
 
@@ -750,11 +981,11 @@
             const storeLabel = m.store_name ? `${m.store_code} - ${m.store_name}` : (m.store_code || m.store_id);
             let channelBadge = '';
             if (m.channel_code === 'SHOPEEMART') {
-                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FFE2DD] text-[#D44C47] space-x-1"><span>🛒</span><span>ShopeeMart</span></span>`;
-            } else if (m.channel_code === 'GRABMART') {
-                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#DBEDDB] text-[#0F7B6C] space-x-1"><span>🛵</span><span>GrabMart</span></span>`;
+                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FFE2DD] text-[#D44C47] space-x-1"><span>🛒</span><span>ShopeeMart (SHOPEEMART)</span></span>`;
+            } else if (m.channel_code === 'GRAB' || m.channel_code === 'GRABMART') {
+                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#DBEDDB] text-[#0F7B6C] space-x-1"><span>🛵</span><span>GrabMart (${m.channel_code})</span></span>`;
             } else if (m.channel_code === 'SHOPEEFOOD') {
-                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FDECC8] text-[#D9730D] space-x-1"><span>🍲</span><span>ShopeeFood</span></span>`;
+                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FDECC8] text-[#D9730D] space-x-1"><span>🍲</span><span>ShopeeFood (SHOPEEFOOD)</span></span>`;
             } else {
                 channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F1F1EF] text-[#787774]">${m.channel_code}</span>`;
             }
@@ -805,7 +1036,7 @@
     function editMapping(storeCode, channelCode, partnerId, isActive) {
         document.getElementById('store-mapping-modal-title').textContent = `Cập Nhật Ánh Xạ Chi Nhánh ${storeCode}`;
         document.getElementById('mapping-modal-store').value = storeCode;
-        document.getElementById('mapping-modal-channel').value = channelCode;
+        document.getElementById('mapping-modal-channel').value = (channelCode === 'GRABMART' || channelCode === 'GRAB_MART') ? 'GRAB' : channelCode;
         document.getElementById('mapping-modal-partner-id').value = partnerId;
         document.getElementById('mapping-modal-active').checked = !!isActive;
         document.getElementById('store-mapping-modal').classList.remove('hidden');
@@ -875,6 +1106,7 @@
         loadDashboardMetrics();
         loadChannelFeatureFlags();
         loadStoreMappingsTable();
+        loadPoppiesMatchingTable();
     });
     setInterval(loadDashboardMetrics, 20000);
 </script>

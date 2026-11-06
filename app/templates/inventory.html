@@ -25,9 +25,13 @@
 
         <!-- Action Buttons -->
         <div class="flex flex-wrap items-center gap-2.5 text-xs">
-            <button id="btn-sync-poppies" onclick="triggerPoppiesMasterSync()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold flex items-center space-x-2 transition-all shadow-sm" title="Kéo toàn bộ sản phẩm, danh mục, giá bán và tồn kho từ Poppies ERP">
+            <button id="btn-sync-poppies" onclick="triggerPoppiesMasterSync()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold flex items-center space-x-2 transition-all shadow-sm" title="Đồng bộ toàn diện & Matching chính xác Kênh bán, Master SKU, Giá đa kênh & Tồn kho từ Poppies ERP">
                 <svg id="sync-poppies-spinner" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                <span>Đồng Bộ Poppies ERP</span>
+                <span>Đồng Bộ & Matching Poppies</span>
+            </button>
+            <button id="btn-sync-channels-pricing" onclick="triggerPoppiesChannelsAndPricingOnly()" class="px-3.5 py-2 rounded-xl bg-white border border-emerald-200 hover:bg-emerald-50 text-emerald-700 font-bold flex items-center space-x-2 transition-all shadow-xs" title="Đồng bộ nhanh 14+ kênh bán hàng Canonical, bảng giá riêng & danh sách cấm bán trên sàn">
+                <svg id="sync-pricing-spinner" class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Matching Kênh & Giá</span>
             </button>
             <button id="btn-sync-cttk" onclick="triggerPoppiesStockSync()" class="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold flex items-center space-x-2 transition-all shadow-xs" title="Đồng bộ nhanh số lượng tồn kho CTTK">
                 <svg id="sync-cttk-spinner" class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
@@ -35,7 +39,7 @@
             </button>
             <button onclick="triggerSyncAll()" class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold flex items-center space-x-2 transition-all shadow-sm" title="Đồng Bộ Tồn Kho Đa Sàn">
                 <svg id="sync-all-spinner" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                <span>Đồng Bộ Tồn Kho Đa Sàn</span>
+                <span>Đẩy Tồn Lên Sàn</span>
             </button>
         </div>
     </div>
@@ -47,7 +51,9 @@
             <span class="font-bold text-slate-800">Poppies ERP POS Gateway:</span>
             <span id="poppies-status-text" class="text-slate-500 font-medium">Đang kiểm tra kết nối...</span>
         </div>
-        <div class="flex items-center space-x-4 text-xs">
+        <div class="flex flex-wrap items-center gap-3 text-xs">
+            <span>Kênh khớp chuẩn: <strong id="poppies-matched-channels" class="font-mono font-bold text-emerald-700">-- / --</strong></span>
+            <span class="text-slate-200">|</span>
             <span>Tổng SKU: <strong id="poppies-sku-count" class="font-mono font-bold text-slate-900">--</strong></span>
             <span class="text-slate-200">|</span>
             <span>Bản ghi CTTK tồn: <strong id="poppies-cttk-count" class="font-mono font-bold text-slate-900">--</strong></span>
@@ -235,6 +241,59 @@
         </form>
     </div>
 </div>
+
+<!-- SKU 14-Channel Price & Publish Matching Modal -->
+<div id="modal-sku-channels" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-slate-200 shadow-2xl text-slate-900 overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div>
+                <h3 class="text-base font-bold text-slate-900">Giá Bán & Trạng Thái Mở Bán Đa Kênh (Poppies ERP)</h3>
+                <p class="text-xs text-slate-500 font-medium mt-0.5" id="modal-sku-channels-subtitle">--</p>
+            </div>
+            <button onclick="closeSkuChannelsModal()" class="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">✕</button>
+        </div>
+        <div class="p-5 overflow-y-auto flex-1">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                        <th class="py-2 pr-3">Kênh Bán (Canonical)</th>
+                        <th class="py-2 px-3">Mã Arito</th>
+                        <th class="py-2 px-3">Nguồn Giá</th>
+                        <th class="py-2 px-3 text-right">Giá Áp Dụng</th>
+                        <th class="py-2 pl-3 text-center">Mở Bán Kênh</th>
+                    </tr>
+                </thead>
+                <tbody id="modal-sku-channels-tbody" class="divide-y divide-slate-100">
+                    <tr><td colspan="5" class="py-8 text-center text-slate-400">Đang tải dữ liệu kênh...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>Bật/tắt tại đây sẽ đồng bộ 2 chiều sang Poppies ERP & đẩy tức thì ra sàn S2S.</span>
+            <button onclick="closeSkuChannelsModal()" class="px-4 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-bold hover:bg-slate-100 transition-colors">Đóng</button>
+        </div>
+    </div>
+</div>
+
+<!-- Poppies ERP Full Sync & Matching Reconciliation Modal -->
+<div id="modal-poppies-match-result" class="hidden fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-xl w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-slate-900">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3.5">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base">✓</div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-900">Kết Quả Đồng Bộ & Matching Poppies ERP</h3>
+                    <p class="text-xs text-slate-500 font-medium" id="match-result-subtitle">Đã đối soát và chuẩn hóa dữ liệu thành công</p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('modal-poppies-match-result').classList.add('hidden')" class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100">✕</button>
+        </div>
+        <div id="match-result-body" class="space-y-3 text-xs"></div>
+        <div class="flex justify-end pt-3 border-t border-slate-100">
+            <button onclick="document.getElementById('modal-poppies-match-result').classList.add('hidden')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all">Hoàn Tất</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -411,9 +470,14 @@
                     </div>
                 </td>
                 <td class="py-3 px-4">
-                    <div class="flex items-center space-x-2 text-xs text-slate-500 font-medium">
-                        <span class="w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
-                        <span>${syncTime}</span>
+                    <div class="flex flex-col space-y-1">
+                        <div class="flex items-center space-x-2 text-xs text-slate-500 font-medium">
+                            <span class="w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
+                            <span>${syncTime}</span>
+                        </div>
+                        <button onclick="openSkuChannelsModal('${item.sku}', '${item.name.replace(/'/g, "\\'")}')" class="inline-flex items-center space-x-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline w-fit">
+                            <span>Kênh & Giá Poppies &rarr;</span>
+                        </button>
                     </div>
                 </td>
                 <td class="py-3 px-4 text-center whitespace-nowrap">
@@ -590,19 +654,23 @@
         }
     }
 
-    // Check Poppies Gateway Health
+    // Check Poppies Gateway Health & Channel Matching Count
     async function checkPoppiesHealth() {
         const dot = document.getElementById('poppies-indicator-dot');
         const text = document.getElementById('poppies-status-text');
         const skuSpan = document.getElementById('poppies-sku-count');
         const cttkSpan = document.getElementById('poppies-cttk-count');
+        const matchSpan = document.getElementById('poppies-matched-channels');
 
         if (!dot || !text) return;
         dot.className = "inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
         text.textContent = "Đang kiểm tra kết nối...";
 
         try {
-            const res = await authFetch('/api/v1/inventory/poppies/health');
+            const [res, matchRes] = await Promise.all([
+                authFetch('/api/v1/inventory/poppies/health'),
+                authFetch('/api/v1/channels/poppies-matching')
+            ]);
             const result = await res.json();
             if (res.ok && result.success && result.data && (result.data.status === 'ok' || result.data.status === 'healthy')) {
                 dot.className = "inline-block w-2.5 h-2.5 rounded-full bg-emerald-500";
@@ -613,15 +681,74 @@
                 dot.className = "inline-block w-2.5 h-2.5 rounded-full bg-rose-500";
                 text.textContent = (result.data && result.data.error) ? `Mất kết nối: ${result.data.error}` : "Chưa kết nối Gateway";
             }
+
+            if (matchRes && matchRes.ok && matchSpan) {
+                const mJson = await matchRes.json();
+                if (mJson.success && mJson.data) {
+                    matchSpan.textContent = `${mJson.data.matched_channels_count || 0} / ${mJson.data.total_poppies_channels || 0}`;
+                    matchSpan.className = mJson.data.needs_reconciliation
+                        ? "font-mono font-bold text-amber-600"
+                        : "font-mono font-bold text-emerald-700";
+                }
+            }
         } catch(e) {
             dot.className = "inline-block w-2.5 h-2.5 rounded-full bg-rose-500";
             text.textContent = "Lỗi mạng khi kiểm tra";
         }
     }
 
-    // Trigger Poppies Master Data Sync
+    function showPoppiesMatchResultModal(info) {
+        const modal = document.getElementById('modal-poppies-match-result');
+        const body = document.getElementById('match-result-body');
+        const sub = document.getElementById('match-result-subtitle');
+        if (!modal || !body) return;
+
+        const rec = info.channel_reconciliation || {};
+        const cat = info.catalog_sync || {};
+        const match = info.matching || {};
+        const snaps = info.pricing_snapshots_synced || [];
+        const merged = rec.legacy_channels_merged || [];
+
+        sub.textContent = `Hoàn tất trong ${info.elapsed_seconds || 0}s • Nguồn: ${rec.source === 'poppies_live' ? 'Poppies ERP Live' : 'Bản chuẩn Canonical'}`;
+
+        let snapRows = '';
+        snaps.forEach(s => {
+            snapRows += `
+                <div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
+                    <span class="font-mono font-bold text-slate-800">${s.channel_code}</span>
+                    <span class="text-slate-600">Khớp <strong>${(s.matched_skus_count || 0).toLocaleString()}</strong> SKU • <strong>${s.prices_updated || 0}</strong> giá riêng • <strong>${s.blocked_skus_count || 0}</strong> cấm bán</span>
+                </div>
+            `;
+        });
+
+        const mergedHtml = merged.length > 0
+            ? `<div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-medium">
+                 Đã chuẩn hóa & gộp mã kênh cũ: <strong>${merged.map(m => m.from_code + ' → ' + m.to_code).join(', ')}</strong>
+               </div>`
+            : '';
+
+        const catHtml = cat.total_fetched !== undefined
+            ? `<div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                 <div class="font-bold text-slate-800">2. Hàng Hóa Master SKU & Tồn Kho CTTK</div>
+                 <div class="text-slate-600">Tổng đối soát: <strong>${(cat.total_fetched || 0).toLocaleString()}</strong> SKU (+${cat.products_created || 0} mới, cập nhật ${cat.products_updated || 0}) • Tồn kho cập nhật: <strong>${(cat.inventories_updated || 0).toLocaleString()}</strong> dòng</div>
+               </div>`
+            : '';
+
+        body.innerHTML = `
+            <div class="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                <div class="font-bold text-emerald-900">1. Đối Soát & Matching Kênh Chuẩn Poppies ERP</div>
+                <div class="text-emerald-800">Đã khớp chính xác <strong>${match.matched_channels_count || rec.total_poppies_channels || 0} / ${rec.total_poppies_channels || 0}</strong> kênh Canonical (+${rec.channels_created || 0} kênh mới, +${rec.store_mappings_created || 0} liên kết chi nhánh).</div>
+            </div>
+            ${mergedHtml}
+            ${catHtml}
+            ${snapRows ? `<div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1"><div class="font-bold text-slate-800">3. Đồng Bộ Bảng Giá Riêng & Cấm Bán Sàn S2S</div>${snapRows}</div>` : ''}
+        `;
+        modal.classList.remove('hidden');
+    }
+
+    // Trigger Full Poppies Sync & Accurate Matching
     async function triggerPoppiesMasterSync() {
-        if (!confirm("Bắt đầu đồng bộ Master Data (Hàng hóa, Danh mục, Giá bán VAT và Tồn kho 4 chi nhánh) từ Poppies ERP?\n\nQuá trình này có thể mất từ 15-30 giây tùy theo số lượng SKU.")) return;
+        if (!confirm("Thực hiện ĐỒNG BỘ & MATCHING TOÀN DIỆN từ Poppies ERP?\n\nHệ thống sẽ:\n1. Đồng bộ 14+ kênh bán hàng Canonical & chuẩn hóa mã kênh cũ\n2. Khớp nối 100% Master SKU, Barcode & Giá gốc STORE\n3. Đồng bộ tồn kho CTTK cho cả 4 chi nhánh\n4. Kéo bảng giá riêng & danh sách cấm bán cho GrabMart, ShopeeFood, ShopeeMart\n\nQuá trình có thể mất 20-45 giây.")) return;
 
         const btn = document.getElementById('btn-sync-poppies');
         const spinner = document.getElementById('sync-poppies-spinner');
@@ -629,23 +756,142 @@
         spinner.classList.add('animate-spin');
 
         try {
-            showToast("Đang kéo dữ liệu Master Data từ Poppies ERP...", "info");
-            const res = await authFetch('/api/v1/inventory/poppies/sync?fetch_all=true', { method: 'POST' });
+            showToast("Đang đồng bộ & matching dữ liệu toàn diện từ Poppies ERP...", "info");
+            const res = await authFetch(`/api/v1/inventory/poppies/sync-and-match?branch_code=${encodeURIComponent(currentStoreCode)}`, { method: 'POST' });
             const data = await res.json();
             if (res.ok && data.success) {
                 const info = data.data || {};
-                showToast(`Đồng bộ thành công! Đã xử lý ${info.total_fetched || 0} SKU (+${info.products_created || 0} mới, cập nhật ${info.products_updated || 0}).`, "success");
+                showToast(data.message || "Đồng bộ & matching thành công!", "success");
                 loadCategories();
                 loadInventoryOverview();
                 checkPoppiesHealth();
+                showPoppiesMatchResultModal(info);
             } else {
-                showToast(data.message || "Lỗi khi đồng bộ Master Data", "error");
+                showToast(data.message || "Lỗi khi đồng bộ từ Poppies ERP", "error");
             }
         } catch(e) {
-            showToast("Lỗi kết nối khi đồng bộ Master Data", "error");
+            showToast("Lỗi kết nối khi đồng bộ từ Poppies ERP", "error");
         } finally {
             btn.disabled = false;
             spinner.classList.remove('animate-spin');
+        }
+    }
+
+    // Fast Channels & Multi-Channel Pricing Matching Only
+    async function triggerPoppiesChannelsAndPricingOnly() {
+        const btn = document.getElementById('btn-sync-channels-pricing');
+        const spinner = document.getElementById('sync-pricing-spinner');
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.classList.add('animate-spin');
+
+        try {
+            showToast("Đang kéo 14+ kênh chuẩn & matching bảng giá/cấm bán từ Poppies ERP...", "info");
+            const res = await authFetch(`/api/v1/channels/sync-poppies?branch_code=${encodeURIComponent(currentStoreCode)}&sync_pricing=true`, { method: 'POST' });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                showToast(data.message || "Matching kênh & bảng giá thành công!", "success");
+                loadInventoryOverview();
+                checkPoppiesHealth();
+                showPoppiesMatchResultModal(data.data || {});
+            } else {
+                showToast(data.message || "Lỗi khi matching kênh & bảng giá", "error");
+            }
+        } catch(e) {
+            showToast("Lỗi kết nối tới Poppies ERP", "error");
+        } finally {
+            if (btn) btn.disabled = false;
+            if (spinner) spinner.classList.remove('animate-spin');
+        }
+    }
+
+    // Per-SKU 14-Channel Price & Publish Modal
+    let currentModalSku = "";
+    let currentModalSkuName = "";
+
+    async function openSkuChannelsModal(sku, productName) {
+        currentModalSku = sku;
+        currentModalSkuName = productName;
+        const modal = document.getElementById('modal-sku-channels');
+        const sub = document.getElementById('modal-sku-channels-subtitle');
+        const tbody = document.getElementById('modal-sku-channels-tbody');
+        modal.classList.remove('hidden');
+        sub.textContent = `${productName} • SKU: ${sku}`;
+        tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-slate-400">Đang tải trạng thái 14 kênh từ Poppies Governance...</td></tr>';
+
+        try {
+            const res = await authFetch(`/api/v1/pricing/products/${encodeURIComponent(sku)}/channels`);
+            const json = await res.json();
+            if (res.ok && json.success && json.data) {
+                const ov = json.data;
+                sub.textContent = `${ov.product_name} • SKU: ${ov.sku} • Giá gốc STORE: ${formatVND(ov.base_price)}`;
+                let rowsHtml = '';
+                (ov.channels || []).forEach(c => {
+                    const srcBadge = c.has_partner_pricing
+                        ? (c.custom_price !== null && c.custom_price !== undefined
+                            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">Giá riêng sàn</span>'
+                            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">Theo giá chuẩn</span>')
+                        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">Kế thừa ${c.inherited_from || 'STORE'}</span>`;
+
+                    const effPrice = c.allowed_in_context ? formatVND(c.effective_price) : '<span class="text-rose-500 font-semibold">Ngưng bán</span>';
+                    const checkedAttr = c.is_published ? 'checked' : '';
+
+                    rowsHtml += `
+                        <tr class="hover:bg-slate-50">
+                            <td class="py-2.5 pr-3">
+                                <span class="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded mr-1.5">${c.channel_code}</span>
+                                <span class="font-semibold text-slate-700">${c.channel_name}</span>
+                            </td>
+                            <td class="py-2.5 px-3 font-mono font-bold text-slate-600">${c.arito_channel_code || '—'}</td>
+                            <td class="py-2.5 px-3">${srcBadge}</td>
+                            <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${effPrice}</td>
+                            <td class="py-2.5 pl-3 text-center">
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" ${checkedAttr} class="sr-only peer" onchange="toggleSkuChannelPublish('${ov.sku}', '${c.channel_code}', this)">
+                                    <div class="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </label>
+                            </td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = rowsHtml;
+            } else {
+                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-600 font-semibold">${json.message || 'Không thể tải dữ liệu kênh'}</td></tr>`;
+            }
+        } catch(e) {
+            tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-rose-600 font-semibold">Lỗi kết nối khi tải dữ liệu kênh.</td></tr>';
+        }
+    }
+
+    function closeSkuChannelsModal() {
+        document.getElementById('modal-sku-channels').classList.add('hidden');
+    }
+
+    async function toggleSkuChannelPublish(sku, channelCode, inputEl) {
+        const isPub = inputEl.checked;
+        inputEl.disabled = true;
+        try {
+            const res = await authFetch('/api/v1/pricing/channel-publish-status', {
+                method: 'POST',
+                body: JSON.stringify({
+                    scopeType: 'CHANNEL',
+                    scopeCode: channelCode,
+                    sku: sku,
+                    isPublished: isPub
+                })
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                showToast(json.message || `Đã cập nhật kênh ${channelCode} cho SKU ${sku}`, 'success');
+                openSkuChannelsModal(currentModalSku, currentModalSkuName);
+            } else {
+                showToast(json.message || 'Không thể đổi trạng thái kênh', 'error');
+                inputEl.checked = !isPub;
+            }
+        } catch(e) {
+            showToast('Lỗi mạng khi đồng bộ trạng thái kênh', 'error');
+            inputEl.checked = !isPub;
+        } finally {
+            inputEl.disabled = false;
         }
     }
 

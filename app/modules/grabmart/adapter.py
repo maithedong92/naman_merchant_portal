@@ -19,6 +19,14 @@ from app.schemas.sync import SyncResult
 from app.services.channel_service import channel_service
 from app.services.error_service import error_service
 from app.services.order_service import OrderService
+from app.services.poppies_channel_push import (
+    apply_channel_governance_to_stock_items,
+    load_channel_governance_for_products,
+)
+from app.services.poppies_channels import (
+    get_channel_family_codes,
+    resolve_channel_from_db_result,
+)
 from app.modules.grabmart.schemas import (
     GrabCategory,
     GrabCurrency,
@@ -150,23 +158,18 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             .where(Product.is_active == True)
         )
         rows = []
-        disabled_grab_ids = set()
+        is_ch_active = True
+        has_partner_pricing = True
+        map_by_pid: Dict[str, Any] = {}
         if db:
             try:
                 res = await db.execute(query)
                 rows = res.all()
-
-                from app.models.product import ChannelProductMapping
-                dis_stmt = select(ChannelProductMapping.product_id).join(
-                    Channel, Channel.id == ChannelProductMapping.channel_id
-                ).where(
-                    Channel.code.in_(["GRAB", "GRAB_MART", "GRABMART"]),
-                    ChannelProductMapping.is_enabled == False
+                is_ch_active, has_partner_pricing, map_by_pid = await load_channel_governance_for_products(
+                    db=db,
+                    raw_channel_code="GRAB",
+                    product_ids=[str(r[0].id) for r in rows] if rows else None,
                 )
-                dis_res = await db.execute(dis_stmt)
-                scalars = dis_res.scalars() if hasattr(dis_res, "scalars") else None
-                if scalars and hasattr(scalars, "all"):
-                    disabled_grab_ids = set(scalars.all())
             except Exception as ex:
                 logger.error(f"Error querying DB for GrabMart catalog: {ex}. Using default catalog items.")
                 rows = []
@@ -235,7 +238,13 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 ),
             )
             for product, inv in sorted_rows:
-                price_int = int(round(float(product.base_price or 0)))
+                ch_map = map_by_pid.get(str(product.id))
+                eff_price = (
+                    float(ch_map.custom_price)
+                    if (has_partner_pricing and ch_map is not None and ch_map.custom_price is not None)
+                    else float(product.base_price or 0)
+                )
+                price_int = int(round(eff_price))
                 if price_int <= 0:
                     continue
 
@@ -268,7 +277,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 if len(category_map[cat_id]["subCategories"][sub_id]["items"]) >= 1400:
                     continue
 
-                is_disabled_on_grab = (product.id in disabled_grab_ids) or (str(product.sku) in disabled_grab_ids)
+                is_disabled_on_grab = (not is_ch_active) or (ch_map is not None and not ch_map.is_enabled)
                 raw_stock = (
                     int(math.floor(float(inv.available_stock)))
                     if (inv and inv.available_stock is not None)
@@ -476,13 +485,16 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
 
         try:
+            governed_items = await apply_channel_governance_to_stock_items(
+                db=db, raw_channel_code="GRAB", stock_items=stock_items
+            )
             items_payload = []
-            for itm in stock_items:
+            for itm in governed_items:
                 is_out = itm.get("is_out_of_stock", False)
                 stock_qty = int(itm.get("available_stock", 10))
                 items_payload.append({
                     "id": str(itm.get("sku") or itm.get("product_id")),
-                    "price": int(itm.get("price")) if itm.get("price") else None,
+                    "price": int(round(float(itm["price"]))) if itm.get("price") else None,
                     "availableStatus": "UNAVAILABLE" if is_out or stock_qty <= 0 else "AVAILABLE",
                     "maxStock": 0 if is_out or stock_qty <= 0 else stock_qty,
                 })
@@ -640,10 +652,12 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         payload_dict = json.loads(raw_body.decode("utf-8"))
         state_webhook = GrabPushOrderStateWebhook(**payload_dict)
 
-        # 1. Resolve Channel
-        channel_stmt = select(Channel).where(Channel.code == self.channel_code)
+        # 1. Resolve Channel (Canonical GRAB + Legacy GRABMART aware)
+        channel_stmt = select(Channel).where(
+            Channel.code.in_(get_channel_family_codes(self.channel_code))
+        )
         channel_res = await db.execute(channel_stmt)
-        channel = channel_res.scalar_one_or_none()
+        channel = await resolve_channel_from_db_result(channel_res, self.channel_code)
         if not channel:
             return {"status": "ERROR", "message": "GrabMart channel not registered"}
 

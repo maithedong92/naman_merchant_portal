@@ -32,8 +32,9 @@ class ChannelRegistry:
             "GRAB": "GRABMART",
             "GRAB_MART": "GRABMART",
             "SHOPEE_FOOD": "SHOPEEFOOD",
-            "SHOPEE": "SHOPEEMART",
+            "NOW_VN": "SHOPEEFOOD",
             "SHOPEE_MART": "SHOPEEMART",
+            "SHOPEE_FRESH": "SHOPEEMART",
         }
         mapped_code = aliases.get(code)
         if mapped_code and mapped_code in cls._adapters:

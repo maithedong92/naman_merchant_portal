@@ -40,7 +40,13 @@ class ChannelPublishStatusItem(BaseModel):
     arito_channel_code: Optional[str] = None
     channel_group: Optional[str] = None
     is_published: bool
+    is_channel_active: bool = True
+    allowed_in_context: bool = True
+    has_partner_pricing: bool = False
+    inherited_from: Optional[str] = None
     custom_price: Optional[float] = None
+    effective_price: Optional[float] = None
+    aliases: List[str] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
 
@@ -52,13 +58,13 @@ class ProductChannelPublishOverviewResponse(BaseModel):
 
 
 class ProductChannelPublishToggleRequest(BaseModel):
-    channel_code: str = Field(..., description="Sales channel code (e.g. GRAB_MART, SHOPEE_FOOD, HARAVAN_WEB)")
+    channel_code: Optional[str] = Field(default=None, description="Canonical or alias channel code (e.g. GRAB, SHOPEEFOOD, WEB)")
     is_published: bool = Field(..., description="True to publish/open sale, False to unpublish/disable")
 
 
 class PoppiesChannelPublishStatusRequest(BaseModel):
     scopeType: str = Field(default="CHANNEL", description="CHANNEL or STORE")
-    scopeCode: str = Field(..., description="Channel code (e.g. GRAB_MART)")
+    scopeCode: str = Field(..., description="Canonical or alias channel code (e.g. GRAB, SHOPEEFOOD, WEB)")
     sku: str = Field(..., description="Target SKU")
     isPublished: bool = Field(..., description="True to publish, False to unpublish")
 
@@ -72,6 +78,25 @@ class ChannelPublishToggleResult(BaseModel):
     synced_to_poppies: bool
     message: str
     poppies_response: Optional[dict] = None
+    external_channel_sync: Optional[List[dict]] = None
+
+
+class PricingSnapshotSyncResponse(BaseModel):
+    success: bool
+    branch_code: str
+    channel_code: str
+    snapshot_version: Optional[str] = None
+    is_channel_active: bool = True
+    has_partner_pricing: bool = False
+    inherited_from: Optional[str] = None
+    is_delta: bool = False
+    matched_skus_count: int = 0
+    unmatched_skus_count: int = 0
+    prices_updated: int = 0
+    blocked_skus_count: int = 0
+    unblocked_skus_count: int = 0
+    elapsed_seconds: float = 0.0
+    external_channel_sync: Optional[List[dict]] = None
 
 
 class ProductBase(BaseModel):

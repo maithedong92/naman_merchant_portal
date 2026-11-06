@@ -7,6 +7,11 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import get_settings
 from app.models.channel import Channel
+from app.services.poppies_channels import (
+    get_channel_family_codes,
+    normalize_channel_code,
+    resolve_channel_from_db_result,
+)
 
 logger = logging.getLogger("naman_portal.services.channel")
 settings = get_settings()
@@ -34,7 +39,7 @@ INITIAL_CHANNELS = [
         }
     },
     {
-        "code": "GRABMART",
+        "code": "GRAB",
         "name": "GrabMart VN",
         "description": "Tích hợp GrabMart Partner POS API v1.1.3 qua OAuth2. Đồng bộ danh mục, tồn kho và xử lý đơn hàng.",
         "base_url": settings.GRABMART_BASE_URL,
@@ -110,14 +115,10 @@ class ChannelService:
         """Seed initial channels into PostgreSQL if not already present."""
         channels: List[Channel] = []
         for ch_def in INITIAL_CHANNELS:
-            stmt = select(Channel).where(Channel.code == ch_def["code"])
+            family_codes = get_channel_family_codes(ch_def["code"])
+            stmt = select(Channel).where(Channel.code.in_(family_codes))
             res = await db.execute(stmt)
-            if inspect.isawaitable(res):
-                res = await res
-            scalar_fn = getattr(res, "scalar_one_or_none", None)
-            ch = scalar_fn() if callable(scalar_fn) else None
-            if inspect.isawaitable(ch):
-                ch = await ch
+            ch = await resolve_channel_from_db_result(res, ch_def["code"])
 
             if not ch:
                 ch = Channel(
@@ -164,20 +165,18 @@ class ChannelService:
 
     @classmethod
     async def get_channel_by_code(cls, channel_code: str, db: Optional[AsyncSession] = None) -> Optional[Channel]:
-        """Lookup channel by uppercase code."""
+        """Lookup channel by Canonical or alias code."""
         if db is None:
             return None
-        stmt = select(Channel).where(Channel.code == channel_code.upper())
+        family_codes = get_channel_family_codes(channel_code)
+        stmt = select(Channel).where(Channel.code.in_(family_codes))
         res = await db.execute(stmt)
-        if inspect.isawaitable(res):
-            res = await res
-        scalar_fn = getattr(res, "scalar_one_or_none", None)
-        if callable(scalar_fn):
-            val = scalar_fn()
-            if inspect.isawaitable(val):
-                val = await val
-            if isinstance(val, Channel) or (hasattr(val, "is_active") and hasattr(val, "config")):
-                return val
+        val = await resolve_channel_from_db_result(res, channel_code)
+        if isinstance(val, Channel) or (
+            hasattr(val, "is_active")
+            and isinstance(getattr(val, "config", None), (dict, type(None)))
+        ):
+            return val
         return None
 
     @classmethod
@@ -203,8 +202,9 @@ class ChannelService:
 
         if channel is None or not hasattr(channel, "is_active"):
             # Fallback to default channel configuration
+            canon_target = normalize_channel_code(channel_code)
             for ch in INITIAL_CHANNELS:
-                if ch["code"] == channel_code.upper():
+                if normalize_channel_code(ch["code"]) == canon_target:
                     if not ch.get("is_active", True):
                         return False
                     return ch.get("config", {}).get(feature_key, DEFAULT_FEATURES.get(feature_key, True))

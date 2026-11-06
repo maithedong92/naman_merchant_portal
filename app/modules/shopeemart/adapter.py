@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import inspect
 import json
 import logging
 import traceback
@@ -19,6 +20,7 @@ from app.schemas.sync import SyncResult
 from app.services.channel_service import channel_service
 from app.services.error_service import error_service
 from app.services.order_service import OrderService
+from app.services.poppies_channel_push import apply_channel_governance_to_stock_items
 from app.modules.shopeemart.service import shopeemart_client
 
 logger = logging.getLogger("naman_portal.modules.shopeemart.adapter")
@@ -62,11 +64,11 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
 
         try:
             from app.models.product import ChannelProductMapping
-            # Query active products excluding those explicitly disabled on SHOPEE / SHOPEEMART
+            # Query active products excluding those explicitly disabled on SHOPEEMART
             disabled_shopee_subq = select(ChannelProductMapping.product_id).join(
                 Channel, Channel.id == ChannelProductMapping.channel_id
             ).where(
-                Channel.code.in_(["SHOPEE", "SHOPEEMART"]),
+                Channel.code.in_(["SHOPEEMART", "SHOPEE_MART"]),
                 ChannelProductMapping.is_enabled == False
             )
 
@@ -163,8 +165,11 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             )
 
         try:
+            governed_items = await apply_channel_governance_to_stock_items(
+                db=db, raw_channel_code="SHOPEEMART", stock_items=stock_items
+            )
             # Load product metadata to resolve shopee_item_id when not passed directly
-            skus = [str(it.get("sku", "")) for it in stock_items if it.get("sku")]
+            skus = [str(it.get("sku", "")) for it in governed_items if it.get("sku")]
             sku_to_item_id: Dict[str, int] = {}
             if skus:
                 try:
@@ -182,7 +187,7 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                     logger.warning(f"Could not load shopee_item_id from products: {load_ex}")
 
             stock_list = []
-            for item in stock_items:
+            for item in governed_items:
                 sku_str = str(item.get("sku", ""))
                 is_oos = bool(item.get("is_out_of_stock", False))
                 qty = 0 if is_oos else max(0, int(float(item.get("available_stock", 0))))
