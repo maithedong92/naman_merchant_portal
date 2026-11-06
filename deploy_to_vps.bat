@@ -17,13 +17,13 @@ if errorlevel 1 (
 echo       [OK] Da dong bo ma nguon len GitHub.
 echo.
 
-:: 2. Goi SSH vao VPS va thuc thi redeploy
-echo [2/3] Ket noi toi Windows VPS (103.175.248.250:22022) va tu dong redeploy...
-ssh -i "%USERPROFILE%\.ssh\id_ed25519_naman_ump" -p 22022 -o StrictHostKeyChecking=no Administrator@103.175.248.250 "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
+:: 2. Goi SSH vao VPS va thuc thi redeploy (uu tien port 22, du phong port 22022)
+echo [2/3] Ket noi toi Windows VPS (103.175.248.250:22) va tu dong redeploy...
+ssh -i "%USERPROFILE%\.ssh\id_ed25519_naman_ump" -p 22 -o ConnectTimeout=10 -o StrictHostKeyChecking=no Administrator@103.175.248.250 "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
 if errorlevel 1 (
     echo.
-    echo [CANH BAO] Thu lai qua ssh config host naman-vps...
-    ssh naman-vps "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
+    echo [CANH BAO] Port 22 khong phan hoi, thu lai qua port 22022...
+    ssh -i "%USERPROFILE%\.ssh\id_ed25519_naman_ump" -p 22022 -o ConnectTimeout=10 -o StrictHostKeyChecking=no Administrator@103.175.248.250 "cd /d C:\uploadIMG\docker\ump && cmd.exe /c redeploy.bat"
 )
 echo.
 
