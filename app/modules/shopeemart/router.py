@@ -192,8 +192,10 @@ async def update_shopee_live_credentials(
 )
 async def refresh_shopee_token(
     shop_id: Optional[str] = Query(None, description="Shop ID cần làm mới token"),
+    db: Optional[AsyncSession] = Depends(get_optional_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    await shopeemart_client.hydrate_from_db(db)
     token_resp = await shopeemart_client.refresh_access_token(shop_id=shop_id)
     return APIResponse.ok(
         data=token_resp,
@@ -209,7 +211,9 @@ async def refresh_shopee_token(
 )
 async def get_shopee_connection_status(
     shop_id: Optional[str] = Query(None, description="Mã shop cần kiểm tra"),
+    db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
+    await shopeemart_client.hydrate_from_db(db)
     status_info = shopeemart_client.get_connection_status(shop_id=shop_id)
     return APIResponse.ok(
         data=status_info,

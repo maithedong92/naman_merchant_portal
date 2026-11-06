@@ -10,6 +10,8 @@ services:
     restart: always
     env_file:
       - .env
+    volumes:
+      - ./data:/app/data
     extra_hosts:
       # Allows the container to access services on the host machine if needed
       - "host.docker.internal:host-gateway"

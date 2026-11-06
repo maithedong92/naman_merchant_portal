@@ -64,6 +64,12 @@ async def lifespan(app: FastAPI):
         channel_registry.register(GrabMartChannelAdapter())
     if settings.SHOPEEMART_ENABLED:
         channel_registry.register(ShopeeMartChannelAdapter())
+        try:
+            from app.modules.shopeemart.service import shopeemart_client
+            async with AsyncSessionLocal() as session:
+                await shopeemart_client.hydrate_from_db(session)
+        except Exception as ex:
+            logger.warning(f"Lưu ý: Không thể nạp trước ShopeeMart token từ DB ({ex})")
 
     logger.info(f"✅ Các kênh bán lẻ đã đăng ký: {channel_registry.list_channels()}")
     

@@ -80,48 +80,79 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             products = res.scalars().all()
             prod_by_sku = {p.sku: p for p in products}
 
-            resp = await shopeemart_client.call_api(
-                method="GET",
-                path="/api/v2/product/get_item_list",
-                shop_id=partner_store_id,
-                params={"page_size": 50, "item_status": "NORMAL", "offset": 0}
-            )
+            await shopeemart_client.hydrate_from_db(db)
+            effective_shop_id = shopeemart_client._pick_best_shop_id(partner_store_id)
+
+            all_item_ids: List[int] = []
+            offset = 0
+            last_resp: Dict[str, Any] = {}
+            max_pages = 20 if shopeemart_client.is_configured else 1
+
+            for _ in range(max_pages):
+                resp = await shopeemart_client.call_api(
+                    method="GET",
+                    path="/api/v2/product/get_item_list",
+                    shop_id=effective_shop_id,
+                    params={"page_size": 50, "item_status": "NORMAL", "offset": offset}
+                )
+                last_resp = resp
+                resp_body = resp.get("response") if isinstance(resp, dict) else None
+                if not isinstance(resp_body, dict):
+                    break
+                shopee_items = resp_body.get("item", []) or []
+                for it in shopee_items:
+                    if isinstance(it, dict) and it.get("item_id"):
+                        all_item_ids.append(int(it["item_id"]))
+                if not resp_body.get("has_next_page"):
+                    break
+                next_offset = resp_body.get("next_offset")
+                if next_offset is None or int(next_offset) <= offset:
+                    break
+                offset = int(next_offset)
 
             # Map Shopee item_id -> Product.metadata_json["shopee_item_id"] if returned by Shopee
             mapped_count = 0
-            resp_body = resp.get("response") if isinstance(resp, dict) else None
-            shopee_items = resp_body.get("item", []) if isinstance(resp_body, dict) else []
-            item_ids = [int(it["item_id"]) for it in shopee_items if isinstance(it, dict) and it.get("item_id")]
-
-            if item_ids:
-                try:
-                    base_info_resp = await shopeemart_client.get_item_base_info(
-                        item_id_list=item_ids[:50],
-                        shop_id=partner_store_id
-                    )
-                    base_list = (base_info_resp.get("response") or {}).get("item_list") or []
-                    for b_item in base_list:
-                        s_sku = str(b_item.get("item_sku") or "").strip()
-                        s_item_id = b_item.get("item_id")
-                        if s_sku and s_item_id and s_sku in prod_by_sku:
-                            p_obj = prod_by_sku[s_sku]
-                            meta = dict(p_obj.metadata_json or {})
-                            meta["shopee_item_id"] = int(s_item_id)
-                            p_obj.metadata_json = meta
-                            mapped_count += 1
-                    if mapped_count > 0:
-                        await db.commit()
-                except Exception as map_ex:
-                    logger.warning(f"Could not map Shopee item base info: {map_ex}")
+            if all_item_ids:
+                for idx in range(0, len(all_item_ids), 50):
+                    chunk_ids = all_item_ids[idx:idx + 50]
+                    try:
+                        base_info_resp = await shopeemart_client.get_item_base_info(
+                            item_id_list=chunk_ids,
+                            shop_id=effective_shop_id
+                        )
+                        base_list = (base_info_resp.get("response") or {}).get("item_list") or []
+                        for b_item in base_list:
+                            s_sku = str(b_item.get("item_sku") or "").strip()
+                            s_item_id = b_item.get("item_id")
+                            if s_sku and s_item_id and s_sku in prod_by_sku:
+                                p_obj = prod_by_sku[s_sku]
+                                meta = dict(p_obj.metadata_json or {})
+                                meta["shopee_item_id"] = int(s_item_id)
+                                p_obj.metadata_json = meta
+                                mapped_count += 1
+                    except Exception as map_ex:
+                        logger.warning(f"Could not map Shopee item base info chunk: {map_ex}")
+                if mapped_count > 0:
+                    await db.commit()
 
             return SyncResult(
                 channel_code=self.channel_code,
                 store_id=store_id,
                 sync_type="MENU",
                 success=True,
-                total_synced=len(products),
-                message=f"Đã kích hoạt đồng bộ danh mục {len(products)} sản phẩm lên ShopeeMart shop {partner_store_id}",
-                details={"response": resp, "mapped_shopee_items": mapped_count}
+                total_synced=len(all_item_ids) if shopeemart_client.is_configured else len(products),
+                message=(
+                    f"Đã đồng bộ danh mục ShopeeMart (Shop #{effective_shop_id}): "
+                    f"quét {len(all_item_ids)} mặt hàng trên sàn, khớp {mapped_count} SKU nội bộ."
+                    if shopeemart_client.is_configured
+                    else f"Đã kích hoạt đồng bộ danh mục {len(products)} sản phẩm lên ShopeeMart shop {effective_shop_id}"
+                ),
+                details={
+                    "response": last_resp,
+                    "shopee_shop_id": effective_shop_id,
+                    "shopee_items_scanned": len(all_item_ids),
+                    "mapped_shopee_items": mapped_count,
+                }
             )
         except Exception as ex:
             logger.error(f"Lỗi khi đồng bộ sản phẩm lên ShopeeMart: {str(ex)}")
@@ -186,6 +217,9 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                 except Exception as load_ex:
                     logger.warning(f"Could not load shopee_item_id from products: {load_ex}")
 
+            await shopeemart_client.hydrate_from_db(db)
+            effective_shop_id = shopeemart_client._pick_best_shop_id(partner_store_id)
+
             stock_list = []
             for item in governed_items:
                 sku_str = str(item.get("sku", ""))
@@ -204,19 +238,54 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                     stock_entry["item_id"] = int(resolved_item_id)
                 stock_list.append(stock_entry)
 
-            resp = await shopeemart_client.update_stock(
-                shop_id=partner_store_id,
-                stock_list=stock_list
-            )
+            if not shopeemart_client.is_configured:
+                resp = await shopeemart_client.update_stock(
+                    shop_id=effective_shop_id,
+                    stock_list=stock_list
+                )
+                return SyncResult(
+                    channel_code=self.channel_code,
+                    store_id=store_id,
+                    sync_type="STOCK",
+                    success=True,
+                    total_synced=len(stock_list),
+                    message=f"Đã cập nhật tồn kho {len(stock_list)} SKU trên ShopeeMart shop {effective_shop_id}",
+                    details={"response": resp}
+                )
+
+            mapped_entries = [e for e in stock_list if e.get("item_id")]
+            if not mapped_entries:
+                return SyncResult(
+                    channel_code=self.channel_code,
+                    store_id=store_id,
+                    sync_type="STOCK",
+                    success=True,
+                    total_synced=0,
+                    message=f"Các SKU này chưa được ánh xạ item_id trên ShopeeMart (Shop #{effective_shop_id}) nên bỏ qua cập nhật tồn kho.",
+                    details={"skipped_unmapped": len(stock_list), "shopee_shop_id": effective_shop_id}
+                )
+
+            updated_ok = 0
+            last_resp: Dict[str, Any] = {}
+            for entry in mapped_entries:
+                last_resp = await shopeemart_client.update_stock(
+                    shop_id=effective_shop_id,
+                    item_id=int(entry["item_id"]),
+                    stock_list=[{
+                        "model_id": int(entry.get("model_id", 0)),
+                        "seller_stock": entry["seller_stock"],
+                    }],
+                )
+                updated_ok += 1
 
             return SyncResult(
                 channel_code=self.channel_code,
                 store_id=store_id,
                 sync_type="STOCK",
                 success=True,
-                total_synced=len(stock_list),
-                message=f"Đã cập nhật tồn kho {len(stock_list)} SKU trên ShopeeMart shop {partner_store_id}",
-                details={"response": resp}
+                total_synced=updated_ok,
+                message=f"Đã cập nhật tồn kho {updated_ok} SKU trên ShopeeMart (Shop #{effective_shop_id})",
+                details={"response": last_resp, "skipped_unmapped": len(stock_list) - len(mapped_entries)}
             )
         except Exception as ex:
             logger.error(f"Lỗi khi cập nhật tồn kho ShopeeMart: {str(ex)}")

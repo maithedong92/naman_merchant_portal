@@ -162,6 +162,9 @@ async def test_shopeemart_handle_order_webhook_creation():
 
     raw_body = json.dumps(shopee_payload).encode("utf-8")
     mock_db = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = mock_res
 
     mock_order = UnifiedOrder(
         id="ord-shopee-uuid-1",
@@ -205,6 +208,9 @@ async def test_shopeemart_handle_order_webhook_status_update():
 
     raw_body = json.dumps(shopee_payload).encode("utf-8")
     mock_db = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = mock_res
 
     mock_existing_order = UnifiedOrder(
         id="ord-shopee-uuid-1",
@@ -242,6 +248,9 @@ async def test_shopeemart_inventory_sync():
     ]
 
     mock_db = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = mock_res
 
     with patch.object(shopeemart_client, "update_stock", return_value={"error": "", "message": "success"}) as mock_stock:
         result = await adapter.sync_inventory(
@@ -269,6 +278,9 @@ async def test_shopeemart_outbound_order_transitions():
     """Verify outbound state updates trigger ship_order and cancel_order APIs."""
     adapter = ShopeeMartChannelAdapter()
     mock_db = AsyncMock()
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = mock_res
 
     with patch.object(shopeemart_client, "ship_order") as mock_ship, \
          patch.object(shopeemart_client, "cancel_order") as mock_cancel:
@@ -382,4 +394,144 @@ async def test_shopeemart_escrow_financials():
     sm_client = ShopeeMartClient()
     escrow_res = await sm_client.get_escrow_detail("260905SHP111", shop_id="10001")
     assert escrow_res["message"] == "sandbox_mode_success"
+
+
+# ==============================================================================
+# 9. Live Token Hydration, Shop ID Resolution & 403 Auto-Refresh Retry Tests
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_shopeemart_live_db_hydration_and_branch_shop_resolution(tmp_path):
+    """
+    Ensure Live ShopeeMartClient:
+    1. Sanitizes placeholder SHOPEEMART_SHOP_ID ('your_shopee_shop_id').
+    2. Hydrates shop_tokens & default_shop_id ('1925848521') from PostgreSQL Channel.config.
+    3. Resolves internal branch code '10001' to authorized Shopee shop '1925848521' so
+       both query param shop_id and HMAC signature match the token's shop_id.
+    """
+    import time
+    from app.models.channel import Channel
+    import app.modules.shopeemart.service as sm_mod
+
+    tok_file = tmp_path / "shopeemart_tokens.json"
+    cred_file = tmp_path / "shopeemart_credentials.json"
+
+    with patch.object(sm_mod, "TOKEN_STORE_PATH", tok_file), \
+         patch.object(sm_mod, "CREDENTIALS_STORE_PATH", cred_file):
+        sm_client = ShopeeMartClient()
+        sm_client.partner_id = "2045141"
+        sm_client.partner_key = "shpk_live_test_secret_key"
+        sm_client.default_shop_id = sm_client._sanitize_shop_id("your_shopee_shop_id")
+        sm_client._token_cache = {}
+        assert sm_client.default_shop_id == ""
+        assert sm_client.is_configured is True
+
+        ch_row = Channel(
+            id="ch-shopeemart",
+            code="SHOPEEMART",
+            name="ShopeeMart",
+            is_active=True,
+            config={
+                "default_shop_id": "1925848521",
+                "shop_tokens": {
+                    "65786327": {
+                        "access_token": "stale_unlinked_token",
+                        "refresh_token": "stale_unlinked_rt",
+                        "expires_at": time.time() + 7200,
+                    },
+                    "1925848521": {
+                        "access_token": "valid_live_token_1925848521",
+                        "refresh_token": "valid_live_rt_1925848521",
+                        "expires_at": time.time() + 7200,
+                    },
+                },
+            },
+        )
+        mock_db = AsyncMock()
+        mock_res = MagicMock()
+        mock_res.scalars.return_value.all.return_value = [ch_row]
+        mock_db.execute.return_value = mock_res
+
+        resolved_shop, resolved_token = await sm_client.resolve_shop_and_token("10001", db=mock_db)
+        assert resolved_shop == "1925848521"
+        assert resolved_token == "valid_live_token_1925848521"
+        assert tok_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_shopeemart_call_api_auto_refreshes_on_403_invalid_access_token(tmp_path):
+    """
+    Verify call_api automatically refreshes the Shopee OAuth token once and retries
+    when Shopee Open Platform returns HTTP 403 Invalid access_token.
+    """
+    import time
+    import app.modules.shopeemart.service as sm_mod
+    from app.modules.shopeemart.schemas import ShopeeMartTokenResponse
+
+    tok_file = tmp_path / "shopeemart_tokens.json"
+    cred_file = tmp_path / "shopeemart_credentials.json"
+
+    with patch.object(sm_mod, "TOKEN_STORE_PATH", tok_file), \
+         patch.object(sm_mod, "CREDENTIALS_STORE_PATH", cred_file):
+        sm_client = ShopeeMartClient()
+        sm_client.partner_id = "2045141"
+        sm_client.partner_key = "shpk_live_test_secret_key"
+        sm_client.default_shop_id = "1925848521"
+        sm_client._token_cache = {
+            "1925848521": {
+                "access_token": "expired_on_shopee_token",
+                "refresh_token": "valid_refresh_token_1925848521",
+                "expires_at": time.time() + 3600,
+            }
+        }
+
+        resp_403 = MagicMock()
+        resp_403.status_code = 403
+        resp_403.text = '{"error":"error_auth","message":"Invalid access_token, please have a check."}'
+        resp_403.json.return_value = {
+            "error": "error_auth",
+            "message": "Invalid access_token, please have a check.",
+        }
+
+        resp_200 = MagicMock()
+        resp_200.status_code = 200
+        resp_200.text = '{"error":"","message":"","response":{"item":[{"item_id":44136459898}]}}'
+        resp_200.json.return_value = {
+            "error": "",
+            "message": "",
+            "response": {"item": [{"item_id": 44136459898}]},
+        }
+
+        captured_calls = []
+
+        async def fake_request(method, url, params=None, json=None):
+            captured_calls.append(dict(params or {}))
+            return resp_403 if len(captured_calls) == 1 else resp_200
+
+        async def fake_refresh(shop_id=None):
+            sm_client._save_token_cache("1925848521", "fresh_rotated_token_999", "fresh_rt_999", 14400)
+            return ShopeeMartTokenResponse(
+                access_token="fresh_rotated_token_999",
+                refresh_token="fresh_rt_999",
+                expire_in=14400,
+                shop_id=1925848521,
+            )
+
+        with patch("httpx.AsyncClient.request", side_effect=fake_request), \
+             patch.object(sm_client, "hydrate_from_db", new=AsyncMock()), \
+             patch.object(sm_client, "refresh_access_token", side_effect=fake_refresh):
+            result = await sm_client.call_api(
+                method="GET",
+                path="/api/v2/product/get_item_list",
+                shop_id="10001",
+                params={"page_size": 50, "item_status": "NORMAL", "offset": 0},
+            )
+
+        assert len(captured_calls) == 2
+        assert captured_calls[0]["shop_id"] == "1925848521"
+        assert captured_calls[0]["access_token"] == "expired_on_shopee_token"
+        assert captured_calls[1]["shop_id"] == "1925848521"
+        assert captured_calls[1]["access_token"] == "fresh_rotated_token_999"
+        assert result["response"]["item"][0]["item_id"] == 44136459898
+
 
