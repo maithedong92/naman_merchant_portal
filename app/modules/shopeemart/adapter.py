@@ -121,11 +121,22 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                             shop_id=effective_shop_id
                         )
                         base_list = (base_info_resp.get("response") or {}).get("item_list") or []
+                        chunk_skus = [
+                            str(b_item.get("item_sku") or "").strip()
+                            for b_item in base_list
+                            if str(b_item.get("item_sku") or "").strip()
+                        ]
+                        chunk_prod_by_sku = dict(prod_by_sku)
+                        if chunk_skus:
+                            all_match_res = await db.execute(select(Product).where(Product.sku.in_(chunk_skus)))
+                            for p_any in all_match_res.scalars().all():
+                                chunk_prod_by_sku[p_any.sku] = p_any
+
                         for b_item in base_list:
                             s_sku = str(b_item.get("item_sku") or "").strip()
                             s_item_id = b_item.get("item_id")
-                            if s_sku and s_item_id and s_sku in prod_by_sku:
-                                p_obj = prod_by_sku[s_sku]
+                            if s_sku and s_item_id and s_sku in chunk_prod_by_sku:
+                                p_obj = chunk_prod_by_sku[s_sku]
                                 meta = dict(p_obj.metadata_json or {})
                                 meta["shopee_item_id"] = int(s_item_id)
                                 p_obj.metadata_json = meta
