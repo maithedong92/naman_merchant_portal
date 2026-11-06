@@ -759,45 +759,64 @@
     function getChannelBadge(code) {
         const c = (code || '').toUpperCase();
         if (c === 'SHOPEEFOOD') {
-            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">ShopeeFood</span>`;
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200">ShopeeFood</span>`;
         } else if (c === 'GRABMART') {
-            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">GrabMart</span>`;
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">GrabMart</span>`;
         } else if (c === 'SHOPEEMART') {
-            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 text-pink-800 border border-pink-200">ShopeeMart</span>`;
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">ShopeeMart</span>`;
         } else if (c === 'HARAVAN') {
-            return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan</span>`;
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">Haravan</span>`;
         }
-        return `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">${c}</span>`;
+        return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${c}</span>`;
+    }
+
+    // Haravan Source/Channel Badge Helper (Distinct Brand Colors)
+    function getHaravanSourceBadge(source) {
+        const s = (source || 'WEB').toUpperCase();
+        if (s.includes('SHOPEE')) {
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 tracking-tight">SHOPEE</span>`;
+        } else if (s.includes('LAZADA')) {
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 tracking-tight">LAZADA</span>`;
+        } else if (s.includes('TIKTOK')) {
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-900 text-white border border-slate-800 tracking-tight">TIKTOK</span>`;
+        } else if (s.includes('TIKI')) {
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-sky-50 text-sky-700 border border-sky-200 tracking-tight">TIKI</span>`;
+        } else if (s.includes('GRAB')) {
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-tight">GRAB</span>`;
+        } else if (s.includes('POS')) {
+            return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200 tracking-tight">POS</span>`;
+        }
+        return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-teal-50 text-teal-800 border border-teal-200 tracking-tight">${escapeHtml(s)}</span>`;
     }
 
     // Status Badge Helpers (Platform Orders)
     function getStatusBadge(status) {
         const map = {
-            'PENDING': { label: 'Chờ Duyệt', class: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold' },
-            'ACCEPTED': { label: 'Đã Nhận', class: 'bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold' },
-            'PREPARING': { label: 'Đang Soạn Hàng', class: 'bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold' },
-            'READY': { label: 'Sẵn Sàng Giao', class: 'bg-blue-100 text-blue-900 border border-blue-200 font-bold' },
-            'PICKED_UP': { label: 'Đang Vận Chuyển', class: 'bg-purple-100 text-purple-900 border border-purple-200 font-bold' },
+            'PENDING': { label: 'Chờ Duyệt', class: 'bg-amber-50 text-amber-900 border border-amber-300 font-extrabold' },
+            'ACCEPTED': { label: 'Đã Nhận', class: 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-extrabold' },
+            'PREPARING': { label: 'Đang Soạn', class: 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-extrabold' },
+            'READY': { label: 'Sẵn Sàng Giao', class: 'bg-blue-50 text-blue-900 border border-blue-200 font-extrabold' },
+            'PICKED_UP': { label: 'Đang Vận Chuyển', class: 'bg-purple-50 text-purple-900 border border-purple-200 font-extrabold' },
             'DELIVERED': { label: 'Giao Thành Công', class: 'bg-slate-100 text-slate-800 font-bold border border-slate-200' },
-            'CANCELLED': { label: 'Đã Hủy', class: 'bg-rose-100 text-rose-900 border border-rose-200 font-bold' },
+            'CANCELLED': { label: 'Đã Hủy', class: 'bg-rose-50 text-rose-900 border border-rose-200 font-bold' },
         };
         const s = map[status] || { label: status, class: 'bg-slate-100 text-slate-800 font-bold' };
-        return `<span class="px-3 py-1 rounded-full text-xs ${s.class}">${s.label}</span>`;
+        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap ${s.class}">${s.label}</span>`;
     }
 
     // Status Badge Helpers (Haravan Omnichannel Orders - Follow 100% PMDONHANG)
     function getHaravanStatusBadge(status) {
         const map = {
-            'Đơn hàng mới': { label: 'Đơn Hàng Mới', class: 'bg-amber-100 text-amber-900 border border-amber-300 font-bold' },
-            'Đã phân tuyến': { label: 'Đã Phân Tuyến', class: 'bg-blue-100 text-blue-900 border border-blue-200 font-bold' },
-            'Yêu cầu phân tuyến lại': { label: 'Y/C Phân Tuyến Lại', class: 'bg-orange-100 text-orange-900 border border-orange-300 font-bold' },
-            'Đã đóng gói': { label: 'Đã Đóng Gói', class: 'bg-emerald-100 text-emerald-900 border border-emerald-200 font-bold' },
-            'Đã gửi vận đơn': { label: 'Đã Gửi Vận Đơn', class: 'bg-purple-100 text-purple-900 border border-purple-200 font-bold' },
+            'Đơn hàng mới': { label: 'Đơn Hàng Mới', class: 'bg-amber-50 text-amber-900 border border-amber-300 font-extrabold' },
+            'Đã phân tuyến': { label: 'Đã Phân Tuyến', class: 'bg-blue-50 text-blue-900 border border-blue-200 font-extrabold' },
+            'Yêu cầu phân tuyến lại': { label: 'Y/C Phân Tuyến', class: 'bg-orange-50 text-orange-900 border border-orange-300 font-extrabold' },
+            'Đã đóng gói': { label: 'Đã Đóng Gói', class: 'bg-emerald-50 text-emerald-900 border border-emerald-200 font-extrabold' },
+            'Đã gửi vận đơn': { label: 'Đã Gửi VĐ', class: 'bg-purple-50 text-purple-900 border border-purple-200 font-extrabold' },
             'Hoàn thành': { label: 'Hoàn Thành', class: 'bg-slate-100 text-slate-800 font-bold border border-slate-200' },
-            'Đã hủy': { label: 'Đã Hủy', class: 'bg-rose-100 text-rose-900 border border-rose-200 font-bold' },
+            'Đã hủy': { label: 'Đã Hủy', class: 'bg-rose-50 text-rose-900 border border-rose-200 font-bold' },
         };
         const s = map[status] || { label: status || 'Chờ xử lý', class: 'bg-slate-100 text-slate-800 font-bold' };
-        return `<span class="px-3 py-1 rounded-full text-xs ${s.class}">${s.label}</span>`;
+        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap ${s.class}">${s.label}</span>`;
     }
 
     // Dynamic Status Dropdown Switcher (Platform vs Haravan)
@@ -1171,14 +1190,14 @@
             let itemsSnippet = '';
             items.slice(0, 3).forEach(it => {
                 itemsSnippet += `
-                    <div class="flex items-start text-xs font-medium py-0.5">
-                        <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
+                    <div class="flex items-center text-xs font-medium py-0.5 truncate">
+                        <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-900 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
                         <span class="text-slate-800 truncate" title="${escapeHtml(it.item_name)}">${escapeHtml(it.item_name)}</span>
                     </div>
                 `;
             });
             if (items.length > 3) {
-                itemsSnippet += `<div class="text-[11px] text-slate-400 font-medium mt-0.5">+ ${items.length - 3} món khác...</div>`;
+                itemsSnippet += `<div class="text-[10.5px] text-slate-400 font-medium mt-0.5">+ ${items.length - 3} món khác...</div>`;
             }
 
             // Customer & Delivery note
@@ -1189,92 +1208,87 @@
             let deliveryNoteHtml = '';
             if (o.notes || o.delivery_notes) {
                 deliveryNoteHtml = `
-                    <div class="mt-1.5 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-900 font-medium text-[11px] border border-amber-200">
-                        <span class="truncate">Ghi chú: ${escapeHtml(o.notes || o.delivery_notes)}</span>
+                    <div class="mt-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 font-medium text-[10.5px] border border-amber-200/80 truncate max-w-full" title="Ghi chú: ${escapeHtml(o.notes || o.delivery_notes)}">
+                        <span class="font-bold text-amber-800 mr-0.5">📝 Ghi chú:</span>${escapeHtml(o.notes || o.delivery_notes)}
                     </div>
                 `;
             }
 
-            // Action Buttons
+            // Action Buttons (Streamlined & Compact)
             let actionsHtml = `
-                <div class="flex items-center justify-end flex-wrap gap-1.5">
+                <div class="flex items-center justify-end gap-1.5">
                     ${isPending ? `
-                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">Hủy</button>
-                        <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2.5 py-1 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all whitespace-nowrap">Hủy</button>
+                        <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Xác Nhận
                         </button>
                     ` : ''}
 
                     ${isAccepted ? `
-                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">Hủy</button>
-                        <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2.5 py-1 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all whitespace-nowrap">Hủy</button>
+                        <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-3 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Báo Xong
                         </button>
                     ` : ''}
 
                     ${isReady ? `
-                        <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-3 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Giao Xế
                         </button>
                     ` : ''}
 
                     ${o.channel_code === 'SHOPEEMART' ? `
-                        <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 border border-pink-200 text-xs font-bold transition-all" title="In Vận Đơn AWB Shopee">
+                        <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all whitespace-nowrap" title="In Vận Đơn AWB Shopee">
                             AWB
                         </button>
                     ` : ''}
 
-                    <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs" title="Xem chi tiết đơn hàng & lịch sử">
-                        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                        <span>Chi Tiết</span>
+                    <button onclick="openDetailsModal('${o.id}')" class="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all shrink-0" title="Xem chi tiết đơn hàng">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                     </button>
                 </div>
             `;
 
             rowsHtml += `
                 <tr onclick="handleOrderRowClick(event, '${o.id}')" class="transition-colors cursor-pointer ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
-                    <td class="py-4 px-5">
+                    <td class="py-2.5 px-3">
                         <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
-                            <div class="flex items-center gap-2">
-                                <span class="font-mono font-bold text-slate-900 text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
                                     ${o.order_code}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                 </span>
                                 ${channelBadge}
                             </div>
-                            <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                            <div class="text-[10.5px] text-slate-500 mt-0.5 font-medium" title="${fullDate}">
                                 ${timeAgo} · #${o.display_order_id || o.channel_order_id}
                             </div>
                         </div>
                     </td>
-                                ${timeAgo} · #${o.display_order_id || o.channel_order_id}
-                            </div>
-                        </div>
-                    </td>
-                    <td class="py-4 px-5 whitespace-nowrap">
-                        <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">
+                    <td class="py-2.5 px-3 whitespace-nowrap">
+                        <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px] whitespace-nowrap">
                             ${storeLabel}
                         </span>
                     </td>
-                    <td class="py-4 px-5 max-w-[240px]">
-                        <div class="flex items-center justify-between">
+                    <td class="py-2.5 px-3 overflow-hidden">
+                        <div class="flex items-center justify-between gap-1">
                             <span class="font-bold text-slate-900 truncate">${custName}</span>
-                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline ml-1 shrink-0">${custPhone}</a>` : ''}
+                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline shrink-0">${custPhone}</a>` : ''}
                         </div>
                         <div class="text-[11px] text-slate-600 mt-0.5 truncate" title="${escapeHtml(deliveryAddress)}">${escapeHtml(deliveryAddress)}</div>
                         ${deliveryNoteHtml}
                     </td>
-                    <td class="py-4 px-5 max-w-[280px]">
+                    <td class="py-2.5 px-3 overflow-hidden">
                         ${itemsSnippet}
                     </td>
-                    <td class="py-4 px-5 text-right whitespace-nowrap">
-                        <div class="font-mono font-black text-sm text-slate-900">${formatVND(o.total_amount)}</div>
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div class="font-mono font-black text-xs sm:text-sm text-slate-900">${formatVND(o.total_amount)}</div>
                         <div class="text-[10px] text-slate-500 font-medium">${items.length} món</div>
                     </td>
-                    <td class="py-4 px-5 text-center whitespace-nowrap">
+                    <td class="py-2.5 px-3 text-center whitespace-nowrap">
                         ${statusBadge}
                     </td>
-                    <td class="py-4 px-5 text-right whitespace-nowrap">
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
                         ${actionsHtml}
                     </td>
                 </tr>
@@ -1282,18 +1296,27 @@
         });
 
         return `
-            <div class="bg-white rounded-3xl border border-slate-200/80 apple-shadow overflow-hidden">
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs border-collapse orders-table">
-                        <thead class="bg-slate-50/75 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <table class="w-full text-left text-xs border-collapse orders-table table-fixed min-w-[960px]">
+                        <colgroup>
+                            <col style="width: 17%">
+                            <col style="width: 9%">
+                            <col style="width: 23%">
+                            <col style="width: 23%">
+                            <col style="width: 10%">
+                            <col style="width: 9%">
+                            <col style="width: 9%">
+                        </colgroup>
+                        <thead class="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                             <tr>
-                                <th class="py-4 px-5">MÃ ĐƠN & KÊNH</th>
-                                <th class="py-4 px-5">CHI NHÁNH</th>
-                                <th class="py-4 px-5">KHÁCH HÀNG & GIAO HÀNG</th>
-                                <th class="py-4 px-5">MÓN & SỐ LƯỢNG</th>
-                                <th class="py-4 px-5 text-right">TỔNG TIỀN</th>
-                                <th class="py-4 px-5 text-center">TRẠNG THÁI</th>
-                                <th class="py-4 px-5 text-right">THAO TÁC</th>
+                                <th class="py-2.5 px-3">MÃ ĐƠN & KÊNH</th>
+                                <th class="py-2.5 px-3">CHI NHÁNH</th>
+                                <th class="py-2.5 px-3">KHÁCH HÀNG & GIAO HÀNG</th>
+                                <th class="py-2.5 px-3">MÓN & SỐ LƯỢNG</th>
+                                <th class="py-2.5 px-3 text-right">TỔNG TIỀN</th>
+                                <th class="py-2.5 px-3 text-center">TRẠNG THÁI</th>
+                                <th class="py-2.5 px-3 text-right">THAO TÁC</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-slate-800">
@@ -1319,7 +1342,7 @@
             const assignedStore = internal.assigned_store;
             const isUnassigned = !assignedStore;
 
-            const channelBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan (${(o.source || 'Web').toUpperCase()})</span>`;
+            const channelBadge = getHaravanSourceBadge(o.source);
             const statusBadge = getHaravanStatusBadge(procStatus);
             const timeAgo = formatRelativeTime(o.created_at);
             const fullDate = o.created_at ? new Date(o.created_at).toLocaleString('vi-VN') : '';
@@ -1327,9 +1350,9 @@
             // Store badge
             let storeBadge = '';
             if (isUnassigned) {
-                storeBadge = `<span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-extrabold text-[11px] inline-flex items-center gap-1.5 border border-amber-300"><span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>Chưa Phân Tuyến</span>`;
+                storeBadge = `<span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-extrabold text-[10.5px] inline-flex items-center gap-1 border border-amber-300 whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>Chưa Phân Tuyến</span>`;
             } else {
-                storeBadge = `<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">CN ${assignedStore}</span>`;
+                storeBadge = `<span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px] whitespace-nowrap">CN ${assignedStore}</span>`;
             }
 
             // Customer & Delivery
@@ -1344,8 +1367,8 @@
             let noteHtml = '';
             if (o.note) {
                 noteHtml = `
-                    <div class="mt-1.5 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-900 font-medium text-[11px] border border-amber-200">
-                        <span class="truncate">Ghi chú: ${escapeHtml(o.note)}</span>
+                    <div class="mt-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 font-medium text-[10.5px] border border-amber-200/80 truncate max-w-full" title="Ghi chú: ${escapeHtml(o.note)}">
+                        <span class="font-bold text-amber-800 mr-0.5">📝 Ghi chú:</span>${escapeHtml(o.note)}
                     </div>
                 `;
             }
@@ -1355,103 +1378,102 @@
             let itemsSnippet = '';
             lineItems.slice(0, 3).forEach(it => {
                 itemsSnippet += `
-                    <div class="flex items-start text-xs font-medium py-0.5">
-                        <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
+                    <div class="flex items-center text-xs font-medium py-0.5 truncate">
+                        <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-900 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
                         <span class="text-slate-800 truncate" title="${escapeHtml(it.title || it.name)}">${escapeHtml(it.title || it.name)}</span>
-                        ${it.sku ? `<span class="ml-1 text-[9px] font-mono text-slate-500 bg-slate-100 px-1 py-0.2 rounded border border-slate-200 shrink-0">${it.sku}</span>` : ''}
+                        ${it.sku ? `<span class="ml-1.5 text-[9.5px] font-mono font-bold text-slate-700 bg-slate-100 px-1 py-0.2 rounded border border-slate-300 tracking-tight shrink-0" title="SKU: ${escapeHtml(it.sku)}">${escapeHtml(it.sku)}</span>` : ''}
                     </div>
                 `;
             });
             if (lineItems.length > 3) {
-                itemsSnippet += `<div class="text-[11px] text-slate-400 font-medium mt-0.5">+ ${lineItems.length - 3} món khác...</div>`;
+                itemsSnippet += `<div class="text-[10.5px] text-slate-400 font-medium mt-0.5">+ ${lineItems.length - 3} món khác...</div>`;
             }
 
             const totalAmount = o.total_price || 0;
 
-            // Action Buttons
+            // Action Buttons (Streamlined & Compact)
             let actionsHtml = `
-                <div class="flex items-center justify-end flex-wrap gap-1.5">
+                <div class="flex items-center justify-end gap-1.5">
                     ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Phân Tuyến
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all" title="Đổi chi nhánh thực hiện đơn">
+                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2.5 py-1 rounded-lg border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all whitespace-nowrap" title="Đổi chi nhánh thực hiện đơn">
                             Đổi CN
                         </button>
                     ` : ''}
 
-                    ${!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
+                    ${!isUnassigned && !canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                        <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-2.5 py-1 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all whitespace-nowrap" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
                             Y/C Đổi
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã phân tuyến' ? `
-                        <button onclick="executeHaravanPack('${o.id}')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="executeHaravanPack('${o.id}')" class="px-3 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Đóng Gói
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã đóng gói' ? `
-                        <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Gửi VĐ
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
-                        <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all hover:scale-105 active:scale-95">
+                        <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Hoàn Tất
                         </button>
                     ` : ''}
 
-                    <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs" title="Xem chi tiết đơn & lịch sử phân tuyến">
-                        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                        <span>Chi Tiết</span>
+                    <button onclick="openDetailsModal('${o.id}')" class="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all shrink-0" title="Xem chi tiết đơn hàng & lịch sử">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                     </button>
                 </div>
             `;
 
             rowsHtml += `
                 <tr onclick="handleOrderRowClick(event, '${o.id}')" class="transition-colors cursor-pointer ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
-                    <td class="py-4 px-5">
+                    <td class="py-2.5 px-3">
                         <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
-                            <div class="flex items-center gap-2">
-                                <span class="font-mono font-bold text-slate-900 text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
                                     ${o.order_number || ('#' + o.id)}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                 </span>
                                 ${channelBadge}
                             </div>
-                            <div class="text-[11px] text-slate-500 mt-1 font-medium" title="${fullDate}">
+                            <div class="text-[10.5px] text-slate-500 mt-0.5 font-medium" title="${fullDate}">
                                 ${timeAgo} · #${o.id}
                             </div>
                         </div>
                     </td>
-                    <td class="py-4 px-5 whitespace-nowrap">
+                    <td class="py-2.5 px-3 whitespace-nowrap">
                         ${storeBadge}
                     </td>
-                    <td class="py-4 px-5 max-w-[240px]">
-                        <div class="flex items-center justify-between">
+                    <td class="py-2.5 px-3 overflow-hidden">
+                        <div class="flex items-center justify-between gap-1">
                             <span class="font-bold text-slate-900 truncate">${custName}</span>
-                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline ml-1 shrink-0">${custPhone}</a>` : ''}
+                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline shrink-0">${custPhone}</a>` : ''}
                         </div>
                         <div class="text-[11px] text-slate-600 mt-0.5 truncate" title="${escapeHtml(deliveryAddr)}">${escapeHtml(deliveryAddr)}</div>
                         ${noteHtml}
                     </td>
-                    <td class="py-4 px-5 max-w-[280px]">
+                    <td class="py-2.5 px-3 overflow-hidden">
                         ${itemsSnippet}
                     </td>
-                    <td class="py-4 px-5 text-right whitespace-nowrap">
-                        <div class="font-mono font-black text-sm text-slate-900">${formatVND(totalAmount)}</div>
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                        <div class="font-mono font-black text-xs sm:text-sm text-slate-900">${formatVND(totalAmount)}</div>
                         <div class="text-[10px] text-slate-500 font-medium">${lineItems.length} món</div>
                     </td>
-                    <td class="py-4 px-5 text-center whitespace-nowrap">
+                    <td class="py-2.5 px-3 text-center whitespace-nowrap">
                         ${statusBadge}
                     </td>
-                    <td class="py-4 px-5 text-right whitespace-nowrap">
+                    <td class="py-2.5 px-3 text-right whitespace-nowrap">
                         ${actionsHtml}
                     </td>
                 </tr>
@@ -1459,18 +1481,27 @@
         });
 
         return `
-            <div class="bg-white rounded-3xl border border-slate-200/80 apple-shadow overflow-hidden">
+            <div class="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs border-collapse orders-table">
-                        <thead class="bg-slate-50/75 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <table class="w-full text-left text-xs border-collapse orders-table table-fixed min-w-[960px]">
+                        <colgroup>
+                            <col style="width: 17%">
+                            <col style="width: 9%">
+                            <col style="width: 23%">
+                            <col style="width: 23%">
+                            <col style="width: 10%">
+                            <col style="width: 9%">
+                            <col style="width: 9%">
+                        </colgroup>
+                        <thead class="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                             <tr>
-                                <th class="py-4 px-5">MÃ ĐƠN & KÊNH</th>
-                                <th class="py-4 px-5">CHI NHÁNH</th>
-                                <th class="py-4 px-5">KHÁCH HÀNG & GIAO HÀNG</th>
-                                <th class="py-4 px-5">MÓN & SỐ LƯỢNG</th>
-                                <th class="py-4 px-5 text-right">TỔNG TIỀN</th>
-                                <th class="py-4 px-5 text-center">TRẠNG THÁI</th>
-                                <th class="py-4 px-5 text-right">THAO TÁC</th>
+                                <th class="py-2.5 px-3">MÃ ĐƠN & KÊNH</th>
+                                <th class="py-2.5 px-3">CHI NHÁNH</th>
+                                <th class="py-2.5 px-3">KHÁCH HÀNG & GIAO HÀNG</th>
+                                <th class="py-2.5 px-3">MÓN & SỐ LƯỢNG</th>
+                                <th class="py-2.5 px-3 text-right">TỔNG TIỀN</th>
+                                <th class="py-2.5 px-3 text-center">TRẠNG THÁI</th>
+                                <th class="py-2.5 px-3 text-right">THAO TÁC</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 text-slate-800">
