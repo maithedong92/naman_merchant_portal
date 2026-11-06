@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -119,35 +120,79 @@ async def get_shopee_auth_url(
     description="Endpoint chuyển tiếp sau khi shop owner bấm đồng ý cấp quyền trên Shopee để tự động đổi code lấy access_token.",
 )
 async def handle_shopee_auth_callback(
+    request: Request,
     code: str = Query(..., description="Mã ủy quyền một lần (Authorization Code)"),
-    shop_id: str = Query(..., description="Mã gian hàng Shopee (Shop ID)"),
+    shop_id: Optional[str] = Query(None, description="Mã gian hàng Shopee (Shop ID)"),
+    main_account_id: Optional[str] = Query(None, description="Mã tài khoản chính Shopee (nếu có)"),
     db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
-    token_resp = await shopeemart_client.exchange_code_for_token(code=code, shop_id=shop_id)
-    if shopeemart_client.is_configured and shop_id:
+    effective_shop_id = str(shop_id or main_account_id or shopeemart_client.default_shop_id or "").strip()
+    if not effective_shop_id:
+        raise HTTPException(status_code=400, detail="Thiếu tham số shop_id từ Shopee OAuth callback.")
+
+    token_resp = await shopeemart_client.exchange_code_for_token(code=code, shop_id=effective_shop_id)
+    if shopeemart_client.is_configured and effective_shop_id:
         shopeemart_client.save_credentials(
             partner_id=shopeemart_client.partner_id,
             partner_key=shopeemart_client.partner_key,
-            shop_id=str(shop_id),
+            shop_id=effective_shop_id,
             base_url=shopeemart_client.base_url,
         )
     if db is not None:
         try:
-            ch_res = await db.execute(select(Channel).where(Channel.code == "SHOPEEMART"))
-            ch_obj = ch_res.scalar_one_or_none()
+            ch_res = await db.execute(select(Channel).where(Channel.code.in_(["SHOPEEMART", "SHOPEE_MART"])))
+            ch_obj = ch_res.scalars().first()
             if ch_obj:
                 cfg = dict(ch_obj.config or {})
                 tokens_map = dict(cfg.get("shop_tokens") or {})
-                tokens_map[str(shop_id)] = shopeemart_client._token_cache.get(str(shop_id), {})
+                tokens_map[effective_shop_id] = shopeemart_client._token_cache.get(effective_shop_id, {})
                 cfg["shop_tokens"] = tokens_map
-                cfg["default_shop_id"] = str(shop_id)
+                cfg["default_shop_id"] = effective_shop_id
                 ch_obj.config = cfg
                 await db.commit()
         except Exception as db_ex:
             logger.warning(f"Could not save Shopee token into Channel.config: {db_ex}")
+
+    accept_hdr = (request.headers.get("accept") or "").lower()
+    if "text/html" in accept_hdr and request.query_params.get("format") != "json":
+        html = f"""<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <title>Ủy quyền ShopeeMart thành công - Nam An Market</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #F7F6F3; color: #37352F; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+        .card {{ background: #fff; border: 1px solid #E9E9E7; border-radius: 12px; padding: 28px 32px; max-width: 440px; text-align: center; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }}
+        .badge {{ display: inline-block; background: #DBEDDB; color: #0F7B6C; font-weight: 600; font-size: 13px; padding: 4px 12px; border-radius: 999px; margin-bottom: 12px; }}
+        h2 {{ margin: 0 0 8px; font-size: 18px; }}
+        p {{ margin: 0 0 18px; font-size: 13px; color: #787774; line-height: 1.5; }}
+        a.btn {{ display: inline-block; background: #2F3437; color: #fff; text-decoration: none; padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 500; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">✓ Đã kết nối OAuth Shopee Open Platform</div>
+        <h2>Ủy quyền ShopeeMart thành công!</h2>
+        <p>Gian hàng Shopee <strong>#{effective_shop_id}</strong> đã được cấp quyền và lưu trữ an toàn vào Nam An Unified Merchant Portal.</p>
+        <a class="btn" href="/admin?shopee_oauth=success&shop_id={effective_shop_id}">Quay lại Trang Quản Trị</a>
+    </div>
+    <script>
+        try {{
+            if (window.opener && !window.opener.closed) {{
+                window.opener.postMessage({{ type: 'SHOPEEMART_OAUTH_SUCCESS', shop_id: '{effective_shop_id}' }}, window.location.origin);
+                setTimeout(function() {{ window.close(); }}, 1200);
+            }} else {{
+                setTimeout(function() {{ window.location.href = '/admin?shopee_oauth=success&shop_id={effective_shop_id}'; }}, 1500);
+            }}
+        }} catch (e) {{}}
+    </script>
+</body>
+</html>"""
+        return HTMLResponse(content=html, status_code=200)
+
     return APIResponse.ok(
         data=token_resp,
-        message=f"Đã liên kết và cấp quyền thành công cho gian hàng Shopee #{shop_id}."
+        message=f"Đã liên kết và cấp quyền thành công cho gian hàng Shopee #{effective_shop_id}."
     )
 
 
@@ -215,6 +260,16 @@ async def get_shopee_connection_status(
 ):
     await shopeemart_client.hydrate_from_db(db)
     status_info = shopeemart_client.get_connection_status(shop_id=shop_id)
+    # If access_token expired locally and refresh_token exists, verify/refresh once so UI badge is 100% accurate
+    if shopeemart_client.is_configured and status_info.shop_id:
+        cached = shopeemart_client._token_cache.get(str(status_info.shop_id)) or {}
+        import time as _time
+        if float(cached.get("expires_at") or 0) <= _time.time() and cached.get("refresh_token"):
+            try:
+                await shopeemart_client.refresh_access_token(shop_id=status_info.shop_id)
+            except Exception as ex:
+                logger.warning(f"Proactive token check during connection-status failed: {ex}")
+            status_info = shopeemart_client.get_connection_status(shop_id=shop_id)
     return APIResponse.ok(
         data=status_info,
         message=f"Trạng thái kết nối ShopeeMart: {'Đã cấu hình' if status_info.is_configured else 'Chế độ mô phỏng (Sandbox)'}"

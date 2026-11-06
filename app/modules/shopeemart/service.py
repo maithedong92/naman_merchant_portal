@@ -333,6 +333,11 @@ class ShopeeMartClient:
                 if err_code == "shop_no_linked" or "no linked" in err_msg.lower():
                     self._mark_shop_unlinked(target_shop)
                     await self._persist_tokens_to_db()
+                elif "refresh_token" in err_code.lower() or "refresh_token" in err_msg.lower():
+                    cached["refresh_token"] = ""
+                    cached["expires_at"] = 0
+                    self._write_token_cache_file()
+                    await self._persist_tokens_to_db()
                 raise RuntimeError(f"ShopeeMart Token Refresh Error [{err_code}]: {err_msg}")
 
             access_token = data.get("access_token", "")
