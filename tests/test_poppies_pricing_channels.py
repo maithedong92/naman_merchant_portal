@@ -1024,3 +1024,44 @@ async def test_price_book_fallback_and_store_base_price_propagation():
         assert inv_950.available_stock == 11.0
         assert inv_950.is_out_of_stock is False
         assert "290000791000" in cttk_res["availability_changed_skus"]
+
+
+@pytest.mark.asyncio
+async def test_excluded_zero_price_does_not_pollute_custom_price():
+    """Verify TIER_1_EXCLUDED `effective_price=0.0` cleans stale 0.0 custom_price to None instead of overwriting 0.0."""
+    grab_ch = Channel(id="ch-grab", code="GRAB", name="GrabMart", is_active=True, config={"has_partner_pricing": True})
+    p_450 = Product(id="p450", sku="290000790000", name="Dalat Milk 450ml", base_price=29900.0, is_active=True)
+    stale_zero_map = ChannelProductMapping(
+        product_id="p450", channel_id="ch-grab", custom_price=0.0, is_enabled=False, channel_sync_payload={}
+    )
+    mock_db = _make_mock_db()
+    mock_db.execute.side_effect = [
+        _scalar_result(grab_ch),
+        _scalars_result([p_450]),
+        _scalars_result([stale_zero_map]),
+    ]
+    snap = {
+        "success": True,
+        "version": "v-excl",
+        "channel_code": "GRAB",
+        "has_partner_pricing": True,
+        "restrict_to_priced_items": True,
+        "prices": {
+            "290000790000": {
+                "effective_price": 0.0,
+                "base_price": 29900.0,
+                "allowed": False,
+                "allowed_in_context": False,
+            }
+        },
+        "exclusions": ["290000790000"],
+    }
+    with patch.object(poppies_service.client, "get_pricing_snapshot", new_callable=AsyncMock, return_value=snap), \
+         patch("app.services.poppies_pricing_sync.propagate_skus_to_external_channel", new_callable=AsyncMock, return_value=[]):
+        res = await poppies_service.sync_channel_pricing_snapshot(
+            db=mock_db, branch_code="10001", channel_code="GRAB", auto_propagate=False
+        )
+        assert res["success"] is True
+        assert stale_zero_map.custom_price is None
+        assert stale_zero_map.is_enabled is False
+

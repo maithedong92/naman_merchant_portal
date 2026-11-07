@@ -55,7 +55,16 @@ class PoppiesSyncWorker:
                     self._channels_reconciled = True
 
                 synced_channels = {}
-                for ch_code in ("STORE", "GRAB", "SHOPEEFOOD", "SHOPEEMART"):
+                for ch_code in (
+                    "STORE",
+                    "GRAB",
+                    "SHOPEEFOOD",
+                    "SHOPEEMART",
+                    "WEB",
+                    "SHOPEE",
+                    "LAZADA",
+                    "TIKTOK",
+                ):
                     try:
                         res = await poppies_service.sync_channel_pricing_snapshot(
                             db=db,

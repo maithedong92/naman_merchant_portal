@@ -113,7 +113,12 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             )
             item_price = (
                 float(ch_map.custom_price)
-                if (has_partner_pricing and ch_map is not None and ch_map.custom_price is not None)
+                if (
+                    has_partner_pricing
+                    and ch_map is not None
+                    and ch_map.custom_price is not None
+                    and float(ch_map.custom_price) > 0
+                )
                 else float(product.base_price)
             )
 

@@ -256,10 +256,12 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 seq += 1
                 category_map[cat_id]["subCategories"][sub_id]["items"].append(item)
         else:
-            # Sort in-stock items first so active products always appear within GrabMart's 1,400/subCategory cap
+            # Sort enabled & real-photo online items first so curated online products always appear within GrabMart's 1,400/subCategory cap
             sorted_rows = sorted(
                 rows,
                 key=lambda r: (
+                    0 if (not ((not is_ch_active) or (map_by_pid.get(str(r[0].id)) is not None and not map_by_pid[str(r[0].id)].is_enabled))) else 1,
+                    0 if (r[0].image_url or "").strip() else 1,
                     0 if (r[1] and not r[1].is_out_of_stock and float(r[1].available_stock or 0) >= 1) else 1,
                     str(r[0].sku),
                 ),
@@ -268,7 +270,12 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 ch_map = map_by_pid.get(str(product.id))
                 eff_price = (
                     float(ch_map.custom_price)
-                    if (has_partner_pricing and ch_map is not None and ch_map.custom_price is not None)
+                    if (
+                        has_partner_pricing
+                        and ch_map is not None
+                        and ch_map.custom_price is not None
+                        and float(ch_map.custom_price) > 0
+                    )
                     else float(product.base_price or 0)
                 )
                 price_int = int(round(eff_price))

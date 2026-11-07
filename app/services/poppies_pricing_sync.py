@@ -59,20 +59,30 @@ def _extract_snapshot_prices_and_blocks(
             if not sku_str:
                 continue
             if isinstance(val, (int, float)):
-                price_map[sku_str] = float(val)
+                p_f = float(val)
+                if p_f > 0:
+                    price_map[sku_str] = p_f
             elif isinstance(val, dict):
-                if (
+                is_excl = bool(
                     val.get("allowed") is False
                     or val.get("allowed_in_context") is False
                     or val.get("allowedInContext") is False
                     or val.get("is_published") is False
                     or val.get("is_listed") is False
-                ):
+                )
+                if is_excl:
                     blocked_set.add(sku_str)
-                for p_key in ("effective_price", "effectivePrice", "listedPrice", "price"):
+                cand_keys = (
+                    ("effective_price", "effectivePrice", "listedPrice", "price")
+                    if is_excl
+                    else ("effective_price", "effectivePrice", "listedPrice", "price", "base_price", "basePrice")
+                )
+                for p_key in cand_keys:
                     if val.get(p_key) is not None:
-                        price_map[sku_str] = float(val[p_key])
-                        break
+                        p_f = float(val[p_key])
+                        if p_f > 0:
+                            price_map[sku_str] = p_f
+                            break
 
     raw_items = snap.get("items")
     if isinstance(raw_items, list):
@@ -82,18 +92,26 @@ def _extract_snapshot_prices_and_blocks(
             sku_str = str(item.get("sku") or item.get("skuCode") or "").strip()
             if not sku_str:
                 continue
-            if (
+            is_excl = bool(
                 item.get("allowed") is False
                 or item.get("allowed_in_context") is False
                 or item.get("allowedInContext") is False
                 or item.get("is_published") is False
                 or item.get("is_listed") is False
-            ):
+            )
+            if is_excl:
                 blocked_set.add(sku_str)
-            for p_key in ("effective_price", "effectivePrice", "listedPrice", "price"):
+            cand_keys = (
+                ("effective_price", "effectivePrice", "listedPrice", "price")
+                if is_excl
+                else ("effective_price", "effectivePrice", "listedPrice", "price", "base_price", "basePrice")
+            )
+            for p_key in cand_keys:
                 if item.get(p_key) is not None:
-                    price_map[sku_str] = float(item[p_key])
-                    break
+                    p_f = float(item[p_key])
+                    if p_f > 0:
+                        price_map[sku_str] = p_f
+                        break
 
     return price_map, blocked_set
 
@@ -485,7 +503,17 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
                     if pid_str in id_to_sku:
                         changed_skus.add(id_to_sku[pid_str])
         else:
+            # Clean up any legacy <= 0 custom_price rows first (e.g. from excluded 0.00 snapshots)
+            for pid_str, m in existing_mappings.items():
+                if m.custom_price is not None and float(m.custom_price) <= 0:
+                    m.custom_price = None
+                    prices_updated += 1
+                    if pid_str in id_to_sku:
+                        changed_skus.add(id_to_sku[pid_str])
+
             for sku_code, p_val in price_map.items():
+                if p_val <= 0:
+                    continue
                 prod = products_by_sku.get(sku_code)
                 if not prod:
                     unmatched_skus_count += 1

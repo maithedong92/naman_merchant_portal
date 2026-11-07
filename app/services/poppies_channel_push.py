@@ -109,8 +109,12 @@ async def load_channel_governance_for_products(
     map_stmt = select(ChannelProductMapping).where(
         ChannelProductMapping.channel_id.in_(list(ch_by_id.keys()))
     )
+    filter_set: Optional[Set[str]] = None
     if product_ids:
-        map_stmt = map_stmt.where(ChannelProductMapping.product_id.in_(product_ids))
+        if len(product_ids) <= 5000:
+            map_stmt = map_stmt.where(ChannelProductMapping.product_id.in_(product_ids))
+        else:
+            filter_set = set(product_ids)
 
     map_rows = await _extract_orm_scalars(await _safe_execute(db, map_stmt), ChannelProductMapping)
 
@@ -118,6 +122,8 @@ async def load_channel_governance_for_products(
     mapping_by_pid: Dict[str, ChannelProductMapping] = {}
     for m in map_rows:
         pid = str(m.product_id)
+        if filter_set is not None and pid not in filter_set:
+            continue
         ch_obj = ch_by_id.get(str(m.channel_id))
         is_canon_map = bool(ch_obj and ch_obj.code and ch_obj.code.upper() == canon_code)
         if pid not in mapping_by_pid or is_canon_map:
