@@ -463,8 +463,21 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         now_iso = datetime.now(timezone.utc).isoformat()
 
         # 1. Store Inheritance (`has_partner_pricing = False`): clear stale custom prices
+        #    When syncing `STORE` itself, also refresh `Product.base_price` for matched SKUs!
         if not has_partner_pricing:
             matched_skus_count = len(products_by_sku)
+            if canon_code == "STORE" and price_map:
+                matched_skus_count = 0
+                for sku_code, p_val in price_map.items():
+                    prod = products_by_sku.get(sku_code)
+                    if not prod:
+                        unmatched_skus_count += 1
+                        continue
+                    matched_skus_count += 1
+                    if p_val > 0 and abs(p_val - float(prod.base_price or 0.0)) >= 0.01:
+                        prod.base_price = p_val
+                        prices_updated += 1
+                        changed_skus.add(sku_code)
             for pid_str, m in existing_mappings.items():
                 if m.custom_price is not None:
                     m.custom_price = None
@@ -566,6 +579,24 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         # Propagate changes immediately to external platform adapter (GRAB / SHOPEEFOOD / SHOPEEMART)
         if not auto_propagate:
             ext_sync = []
+        elif canon_code == "STORE" and changed_skus:
+            ext_sync = []
+            for ext_ch in ("GRAB", "SHOPEEFOOD", "SHOPEEMART"):
+                if len(changed_skus) > 200:
+                    ext_sync.extend(
+                        await propagate_channel_menu_to_external_channel(
+                            db=db, raw_channel_code=ext_ch, branch_code=branch_code
+                        )
+                    )
+                else:
+                    ext_sync.extend(
+                        await propagate_skus_to_external_channel(
+                            db=db,
+                            raw_channel_code=ext_ch,
+                            skus=list(changed_skus),
+                            branch_code=branch_code,
+                        )
+                    )
         elif prev_channel_active != is_channel_active or len(changed_skus) > 200:
             ext_sync = await propagate_channel_menu_to_external_channel(
                 db=db, raw_channel_code=canon_code, branch_code=branch_code

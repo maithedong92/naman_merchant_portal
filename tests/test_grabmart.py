@@ -435,3 +435,59 @@ async def test_grabmart_outbound_order_status_transitions():
         # 3. CANCELLED
         await adapter.update_order_status("GM-ORD-1", "GM-OUTLET", UnifiedOrderStatus.CANCELLED, mock_db, reason="Shop closed")
         mock_cancel.assert_called_once_with(order_id="GM-ORD-1", merchant_id="GM-OUTLET", cancel_code=1001)
+
+
+@pytest.mark.asyncio
+async def test_grabmart_resolves_real_merchant_ids_and_strips_barcodes():
+    """Verify store codes 10001..10006 resolve to real Grab merchantIDs for outbound API calls."""
+    from app.modules.grabmart.adapter import resolve_grab_outlet_ids
+
+    assert resolve_grab_outlet_ids("10001") == ("5-C4AWPFN3T4AUSA", "10001")
+    assert resolve_grab_outlet_ids("10004") == ("5-C4AWPFN3TNUTKE", "10004")
+    assert resolve_grab_outlet_ids("5-C4CBEVB1TJLWRX") == ("5-C4CBEVB1TJLWRX", "10005")
+    assert resolve_grab_outlet_ids("5-C4AWPFN3TKNKCJ") == ("5-C4AWPFN3TKNKCJ", "10006")
+
+    adapter = GrabMartChannelAdapter()
+    mock_db = AsyncMock()
+    cat = Category(id="cat-d", code="FRESH_YOGURTPASTEURIZED_MILK", name="Sữa Tươi", sequence=1)
+    prod = Product(
+        id="p-dalat",
+        sku="290000791000",
+        name="Sữa tươi thanh trùng không đường Dalat Milk 950ml",
+        base_price=54900.0,
+        barcode="8938503131810       ",
+        category=cat,
+        is_active=True,
+    )
+    inv = StoreInventory(store_id="st-10001", product_id="p-dalat", available_stock=11, is_out_of_stock=False)
+    mock_res = MagicMock()
+    mock_res.all.return_value = [(prod, inv)]
+    mock_db.execute = AsyncMock(return_value=mock_res)
+
+    with patch("app.modules.grabmart.adapter.channel_service.is_feature_enabled", new_callable=AsyncMock, return_value=True), \
+         patch.object(grabmart_client, "notify_menu_update", new_callable=AsyncMock, return_value={"status": "ok"}) as mock_notify, \
+         patch.object(grabmart_client, "batch_update_items", new_callable=AsyncMock, return_value={"total_updated": 1}) as mock_batch:
+
+        menu_sync = await adapter.sync_menu(store_id="st-10001", partner_store_id="10001", db=mock_db)
+        assert menu_sync.success is True
+        mock_notify.assert_awaited_once_with(merchant_id="5-C4AWPFN3T4AUSA")
+
+        cached = adapter.get_cached_menu("5-C4AWPFN3T4AUSA")
+        assert cached is not None
+        assert cached["merchantID"] == "5-C4AWPFN3T4AUSA"
+        assert cached["partnerMerchantID"] == "10001"
+        dalat_item = cached["categories"][0]["subCategories"][0]["items"][0]
+        assert dalat_item["price"] == 54900
+        assert dalat_item["barcodes"] == ["8938503131810"]
+
+        inv_sync = await adapter.sync_inventory(
+            store_id="st-10001",
+            partner_store_id="10001",
+            stock_items=[{"sku": "290000791000", "available_stock": 11, "is_out_of_stock": False, "price": 54900}],
+            db=mock_db,
+        )
+        assert inv_sync.success is True
+        mock_batch.assert_awaited_once()
+        assert mock_batch.call_args.kwargs["merchant_id"] == "5-C4AWPFN3T4AUSA"
+        # Cache invalidated upon stock/price update
+        assert adapter.get_cached_menu("5-C4AWPFN3T4AUSA") is None

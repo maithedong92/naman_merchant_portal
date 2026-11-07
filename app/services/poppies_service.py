@@ -339,6 +339,8 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
         offset = 0
         total_records_processed = 0
         stock_updated_count = 0
+        global_sums: Dict[Tuple[str, str], float] = {}
+        unit_by_sku: Dict[str, str] = {}
 
         while True:
             data = await self.client.get_cttk_records(
@@ -353,8 +355,6 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
 
             total_records_processed += len(items)
 
-            batch_sums: Dict[Tuple[str, str], float] = {}
-            unit_by_sku: Dict[str, str] = {}
             for row in items:
                 sku = str(row.get("sku") or "").strip()
                 sc = str(row.get("storeCode") or "").strip()
@@ -364,48 +364,57 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                     unit_by_sku[sku] = u_name
                 if sku and sc:
                     key = (sku, sc)
-                    batch_sums[key] = batch_sums.get(key, 0.0) + sl
+                    global_sums[key] = global_sums.get(key, 0.0) + sl
 
-            if prod_by_sku and unit_by_sku:
-                for sku_k, u_val in unit_by_sku.items():
-                    p_obj = prod_by_sku.get(sku_k)
-                    if p_obj and u_val and p_obj.unit in ("Cái", ""):
-                        p_obj.unit = u_val[:50]
-
-            for (sku, sc), total_sl in batch_sums.items():
-                store_obj = store_map_by_code.get(sc)
-                if not store_obj:
-                    continue
-
-                inv = inv_by_store_sku.get((str(store_obj.id), sku))
-                if inv:
-                    inv.total_stock = max(0.0, total_sl)
-                    inv.available_stock = max(0.0, total_sl)
-                    inv.is_out_of_stock = inv.available_stock <= 0.0
-                    inv.last_synced_at = datetime.now(timezone.utc)
-                    stock_updated_count += 1
-                elif create_missing_inventories and sku in prod_by_sku:
-                    p_obj = prod_by_sku[sku]
-                    avail = max(0.0, total_sl)
-                    new_inv = StoreInventory(
-                        store_id=store_obj.id,
-                        product_id=p_obj.id,
-                        sku=sku,
-                        total_stock=avail,
-                        reserved_stock=0.0,
-                        available_stock=avail,
-                        safety_stock=2.0,
-                        is_out_of_stock=(avail <= 0.0),
-                        last_synced_at=datetime.now(timezone.utc),
-                    )
-                    db.add(new_inv)
-                    inv_by_store_sku[(str(store_obj.id), sku)] = new_inv
-                    stock_updated_count += 1
-
-            await db.commit()
             if len(items) < limit:
                 break
             offset += len(items)
+
+        if prod_by_sku and unit_by_sku:
+            for sku_k, u_val in unit_by_sku.items():
+                p_obj = prod_by_sku.get(sku_k)
+                if p_obj and u_val and p_obj.unit in ("Cái", ""):
+                    p_obj.unit = u_val[:50]
+
+        now_utc = datetime.now(timezone.utc)
+        availability_changed_skus: List[str] = []
+        seen_changed_skus = set()
+        for (sku, sc), total_sl in global_sums.items():
+            store_obj = store_map_by_code.get(sc)
+            if not store_obj:
+                continue
+
+            inv = inv_by_store_sku.get((str(store_obj.id), sku))
+            if inv:
+                prev_oos = bool(inv.is_out_of_stock)
+                inv.total_stock = max(0.0, total_sl)
+                inv.available_stock = max(0.0, total_sl - float(inv.reserved_stock or 0.0))
+                inv.is_out_of_stock = inv.available_stock <= 0.0
+                inv.last_synced_at = now_utc
+                stock_updated_count += 1
+                if bool(inv.is_out_of_stock) != prev_oos and sku not in seen_changed_skus:
+                    seen_changed_skus.add(sku)
+                    availability_changed_skus.append(sku)
+            elif create_missing_inventories and sku in prod_by_sku:
+                p_obj = prod_by_sku[sku]
+                avail = max(0.0, total_sl)
+                new_inv = StoreInventory(
+                    store_id=store_obj.id,
+                    product_id=p_obj.id,
+                    sku=sku,
+                    total_stock=avail,
+                    reserved_stock=0.0,
+                    available_stock=avail,
+                    safety_stock=2.0,
+                    is_out_of_stock=(avail <= 0.0),
+                    last_synced_at=now_utc,
+                )
+                db.add(new_inv)
+                inv_by_store_sku[(str(store_obj.id), sku)] = new_inv
+                stock_updated_count += 1
+
+        if total_records_processed > 0:
+            await db.commit()
 
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         return {
@@ -413,6 +422,7 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
             "store_code": store_code,
             "total_cttk_records": total_records_processed,
             "inventories_updated": stock_updated_count,
+            "availability_changed_skus": availability_changed_skus,
             "elapsed_seconds": round(elapsed, 2),
         }
 

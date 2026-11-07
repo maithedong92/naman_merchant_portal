@@ -12,6 +12,7 @@ from app.core.exceptions import AppException
 from app.services.poppies_channels import (
     POPPIES_STANDARD_CHANNELS,
     consolidate_channel_records,
+    get_canonical_channel_meta,
     normalize_channel_code,
 )
 
@@ -238,6 +239,82 @@ class PoppiesClient:
             except Exception as ex:
                 last_status = 503
                 last_err_msg = str(ex)
+
+        # Resilient Fallback: Try Poppies Lightweight Price-Book (`/api/v1/pos/pricing/price-book`)
+        # when `/snapshots` returns 404/500 (e.g. ProgrammingError), while still failing closed on 5xx/timeout.
+        pricebook_urls = [
+            f"{self.pos_pricing_base_url}/price-book",
+            "http://127.0.0.1:6515/api/v1/pos/pricing/price-book",
+            "http://host.docker.internal:6515/api/v1/pos/pricing/price-book",
+            "http://103.175.248.250:1155/api/v1/pos/pricing/price-book",
+            "https://poppies.namanmarket.com/api/v1/pos/pricing/price-book",
+        ]
+        seen_pb = set()
+        unique_pb_urls = [u for u in pricebook_urls if not (u in seen_pb or seen_pb.add(u))]
+        pb_params: Dict[str, Any] = {
+            "branch_code": branch_code,
+            "channel_code": canonical_channel,
+            "limit": 100000,
+        }
+        meta = get_canonical_channel_meta(canonical_channel) or {}
+        has_pp = bool(meta.get("has_partner_pricing", False))
+
+        for pb_url in unique_pb_urls:
+            try:
+                async with httpx.AsyncClient(timeout=max(self.timeout, 30.0)) as client:
+                    pb_resp = await client.get(pb_url, params=pb_params, headers=headers)
+                    if pb_resp.status_code == 200:
+                        pb_body = pb_resp.json()
+                        rows = pb_body.get("price_book") if isinstance(pb_body, dict) else None
+                        if isinstance(pb_body, dict) and pb_body.get("success") is not False and isinstance(rows, list):
+                            prices_dict: Dict[str, Dict[str, Any]] = {}
+                            blocked_list: List[str] = []
+                            for row in rows:
+                                if not isinstance(row, dict):
+                                    continue
+                                sku_c = str(row.get("sku") or "").strip()
+                                if not sku_c:
+                                    continue
+                                allowed = bool(row.get("allowed", True))
+                                if not allowed:
+                                    blocked_list.append(sku_c)
+                                p_num = float(row.get("price") or 0.0)
+                                prices_dict[sku_c] = {
+                                    "effective_price": p_num,
+                                    "base_price": p_num,
+                                    "allowed_in_context": allowed,
+                                    "productName": row.get("name"),
+                                    "barcode": row.get("barcode"),
+                                    "is_weight_item": bool(row.get("weight_item", False)),
+                                    "tax_rate_pct": row.get("vat"),
+                                }
+                            logger.info(
+                                f"Đồng bộ thành công {len(prices_dict)} SKU từ Poppies price-book fallback "
+                                f"cho kênh {canonical_channel} ({pb_url})"
+                            )
+                            return {
+                                "success": True,
+                                "source": "price_book_fallback",
+                                "resolved_url": pb_url,
+                                "version": pb_body.get("version"),
+                                "branch_code": pb_body.get("branch_code") or branch_code,
+                                "channel_code": canonical_channel,
+                                "is_active": bool(meta.get("is_active", True)),
+                                "has_partner_pricing": has_pp,
+                                "inherited_from": None if has_pp else "STORE",
+                                "is_delta": False,
+                                "prices": prices_dict,
+                                "exclusions": blocked_list,
+                            }
+                    elif pb_resp.status_code >= 500:
+                        if last_status != 504:
+                            last_status = pb_resp.status_code
+                        continue
+            except httpx.TimeoutException as tex:
+                last_status = 504
+                last_err_msg = f"Timeout kết nối Poppies Price-Book ({tex})"
+            except Exception:
+                pass
 
         raise PoppiesUpstreamError(
             message=(

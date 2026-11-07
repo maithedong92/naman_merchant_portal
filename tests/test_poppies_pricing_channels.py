@@ -945,3 +945,82 @@ def test_api_channels_sync_poppies_matching_and_ui_buttons(client, mock_store_ma
         assert "Bảng Đối Soát & Matching Kênh Chuẩn Poppies ERP" in adm_html
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_price_book_fallback_and_store_base_price_propagation():
+    """
+    Verify:
+    1. When `/snapshots` returns 500 ProgrammingError, `get_pricing_snapshot` seamlessly falls back
+       to `/price-book` and returns normalized pricing & exclusions.
+    2. `sync_channel_pricing_snapshot(channel_code='STORE')` updates `Product.base_price`
+       (`27900 -> 29900`, `50900 -> 54900`) and propagates changed SKUs to external channels.
+    3. `sync_stock_cttk_realtime` accumulates positive + negative (`LOCHUNG`) rows across pages.
+    """
+    def _fake_get(url, params=None, headers=None):
+        resp = MagicMock()
+        if "price-book" in url:
+            resp.status_code = 200
+            resp.json.return_value = {
+                "success": True,
+                "version": "v20261107-pb",
+                "branch_code": "CH10001",
+                "channel_code": (params or {}).get("channel_code", "GRAB"),
+                "price_book": [
+                    {"sku": "290000790000", "name": "Dalat Milk 450ml", "price": 29900.0, "allowed": True},
+                    {"sku": "290000791000", "name": "Dalat Milk 950ml", "price": 54900.0, "allowed": True},
+                    {"sku": "SKU_DENIED", "name": "Denied Item", "price": 15000.0, "allowed": False},
+                ],
+            }
+            return resp
+        resp.status_code = 500
+        return resp
+
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock, side_effect=_fake_get):
+        snap = await poppies_service.client.get_pricing_snapshot(branch_code="10001", channel_code="GRAB")
+        assert snap["source"] == "price_book_fallback"
+        assert snap["has_partner_pricing"] is True
+        assert snap["prices"]["290000790000"]["effective_price"] == 29900.0
+        assert snap["prices"]["290000791000"]["effective_price"] == 54900.0
+        assert "SKU_DENIED" in snap["exclusions"]
+
+        # Sync STORE snapshot -> updates Product.base_price and propagates changed SKUs
+        mock_db = _make_mock_db()
+        store_ch = Channel(id="ch-store", code="STORE", name="POS", is_active=True, config={})
+        p_450 = Product(id="p450", sku="290000790000", name="Dalat Milk 450ml", base_price=27900.0, is_active=True)
+        p_950 = Product(id="p950", sku="290000791000", name="Dalat Milk 950ml", base_price=50900.0, is_active=True)
+        mock_db.execute.side_effect = [
+            _scalar_result(store_ch),
+            _scalars_result([p_450, p_950]),
+            _scalars_result([]),
+        ]
+        with patch("app.services.poppies_pricing_sync.propagate_skus_to_external_channel", new_callable=AsyncMock, return_value=[{"success": True}]) as mock_prop:
+            sync_res = await poppies_service.sync_channel_pricing_snapshot(
+                db=mock_db, branch_code="10001", channel_code="STORE", auto_propagate=True
+            )
+            assert sync_res["prices_updated"] == 2
+            assert p_450.base_price == 29900.0
+            assert p_950.base_price == 54900.0
+            assert mock_prop.await_count == 3  # GRAB, SHOPEEFOOD, SHOPEEMART
+
+    # Verify multi-page CTTK accumulation across positive lots and negative LOCHUNG rows
+    from app.models.inventory import StoreInventory
+
+    mock_cttk_db = _make_mock_db()
+    st_10001 = Store(id="st-1", code="10001", name="Thảo Điền", is_active=True)
+    inv_950 = StoreInventory(
+        store_id="st-1", product_id="p950", sku="290000791000",
+        total_stock=0.0, reserved_stock=0.0, available_stock=0.0, is_out_of_stock=True,
+    )
+    mock_cttk_db.execute.side_effect = [
+        _scalars_result([st_10001]),
+        _scalars_result([inv_950]),
+    ]
+    page1 = {"items": [{"sku": "290000791000", "storeCode": "10001", "slTon": 896.0}] + [{"sku": f"FILL_{i}", "storeCode": "10001", "slTon": 1.0} for i in range(4999)]}
+    page2 = {"items": [{"sku": "290000791000", "storeCode": "10001", "slTon": -885.0}]}
+    with patch.object(poppies_service.client, "get_cttk_records", new_callable=AsyncMock, side_effect=[page1, page2]):
+        cttk_res = await poppies_service.sync_stock_cttk_realtime(db=mock_cttk_db, create_missing_inventories=False)
+        assert cttk_res["success"] is True
+        assert inv_950.available_stock == 11.0
+        assert inv_950.is_out_of_stock is False
+        assert "290000791000" in cttk_res["availability_changed_skus"]

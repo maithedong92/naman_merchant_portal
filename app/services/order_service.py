@@ -88,17 +88,25 @@ class OrderService:
             logger.info(f"Order {channel_order_id} already exists in channel {channel_code} (Idempotent response)")
             return existing_order, False
 
-        # 3. Resolve Store by partner_store_id
+        # 3. Resolve Store by partner_store_id (or raw_payload.merchantID)
+        raw_payload_dict = order_data.get("raw_payload") if isinstance(order_data, dict) else None
+        candidate_partner_ids = [str(partner_store_id)]
+        if isinstance(raw_payload_dict, dict):
+            for k in ("merchantID", "partnerMerchantID"):
+                v = str(raw_payload_dict.get(k) or "").strip()
+                if v and v not in candidate_partner_ids:
+                    candidate_partner_ids.append(v)
+
         mapping_stmt = select(StoreChannelMapping).where(
             StoreChannelMapping.channel_id == channel.id,
-            StoreChannelMapping.partner_store_id == str(partner_store_id)
+            StoreChannelMapping.partner_store_id.in_(candidate_partner_ids)
         ).options(selectinload(StoreChannelMapping.store))
         mapping_res = await db.execute(mapping_stmt)
         mapping = mapping_res.scalar_one_or_none()
         
         if not mapping:
             # Check by Store code (e.g. 10001, 10004, 10005, 10006)
-            store_stmt = select(Store).where(Store.code == str(partner_store_id))
+            store_stmt = select(Store).where(Store.code.in_(candidate_partner_ids))
             store_res = await db.execute(store_stmt)
             store = store_res.scalar_one_or_none()
 
@@ -120,16 +128,28 @@ class OrderService:
                 await db.flush()
 
             store_id = store.id
-            # Create mapping for future orders
+            # Create mapping for future orders only if store+channel has no mapping yet
             try:
-                new_map = StoreChannelMapping(
-                    store_id=store_id,
-                    channel_id=channel.id,
-                    partner_store_id=str(partner_store_id),
-                    is_active=True
+                existing_scm_res = await db.execute(
+                    select(StoreChannelMapping).where(
+                        StoreChannelMapping.store_id == store_id,
+                        StoreChannelMapping.channel_id == channel.id,
+                    )
                 )
-                db.add(new_map)
-                await db.flush()
+                if existing_scm_res.scalar_one_or_none() is None:
+                    preferred_id = (
+                        str(raw_payload_dict.get("merchantID")).strip()
+                        if (isinstance(raw_payload_dict, dict) and raw_payload_dict.get("merchantID"))
+                        else str(partner_store_id)
+                    )
+                    new_map = StoreChannelMapping(
+                        store_id=store_id,
+                        channel_id=channel.id,
+                        partner_store_id=preferred_id,
+                        is_active=True
+                    )
+                    db.add(new_map)
+                    await db.flush()
             except Exception:
                 pass
         else:

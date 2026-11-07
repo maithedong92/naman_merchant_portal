@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_active_user
 from app.core.database import get_db, get_optional_db
@@ -14,7 +15,7 @@ from app.models.operational_error import ErrorSeverity
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
 from app.models.store import Store, StoreChannelMapping
 from app.models.user import User
-from app.modules.grabmart.adapter import GrabMartChannelAdapter
+from app.modules.grabmart.adapter import GrabMartChannelAdapter, STORE_CODE_BY_GRAB_MERCHANT
 from app.modules.grabmart.schemas import (
     GrabCancelOrderRequest,
     GrabMarkOrderReadyRequest,
@@ -25,6 +26,7 @@ from app.modules.grabmart.schemas import (
 from app.modules.grabmart.service import grabmart_client
 from app.services.error_service import error_service
 from app.services.order_service import OrderService
+from app.services.poppies_channels import get_channel_family_codes
 
 logger = logging.getLogger("naman_portal.modules.grabmart.router")
 
@@ -199,7 +201,12 @@ async def get_mart_menu_webhook(
     Resilient design: falls back to standard catalog if database connection is offline.
     """
     grab_merchant_id = merchantID or merchant_id_query or "GM-THAO-DIEN"
-    partner_store_code = partnerMerchantID or partner_merchant_id_query or "10001"
+    partner_store_code = (
+        partnerMerchantID
+        or partner_merchant_id_query
+        or STORE_CODE_BY_GRAB_MERCHANT.get(grab_merchant_id)
+        or "10001"
+    )
     logger.info(f"GrabMart requested menu for merchantID: {grab_merchant_id}, partnerMerchantID: {partner_store_code}")
 
     # Check cache first (only if partnerMerchantID matches)
@@ -210,12 +217,13 @@ async def get_mart_menu_webhook(
     store_id = "default_store"
     if db is not None:
         try:
-            # Resolve store by mapping or code
+            # Resolve store by mapping or code (Canonical GRAB + Legacy GRABMART aware)
             stmt = (
                 select(StoreChannelMapping)
                 .join(Channel)
+                .options(selectinload(StoreChannelMapping.store))
                 .where(
-                    Channel.code == "GRABMART",
+                    Channel.code.in_(get_channel_family_codes("GRAB")),
                     (StoreChannelMapping.partner_store_id == grab_merchant_id)
                     | (StoreChannelMapping.partner_store_id == partner_store_code)
                 )
@@ -225,6 +233,8 @@ async def get_mart_menu_webhook(
 
             if mapping:
                 store_id = mapping.store_id
+                if mapping.store and mapping.store.code:
+                    partner_store_code = mapping.store.code
             else:
                 # Check by Store code directly (e.g. "10001")
                 store_by_code_res = await db.execute(select(Store).where(Store.code == partner_store_code, Store.is_active == True))
@@ -305,12 +315,12 @@ async def trigger_menu_sync(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    # Resolve partner_store_id for this store on GrabMart
+    # Resolve partner_store_id for this store on GrabMart (GRAB / GRABMART)
     stmt = (
         select(StoreChannelMapping)
         .join(Channel)
         .where(
-            Channel.code == "GRABMART",
+            Channel.code.in_(get_channel_family_codes("GRAB")),
             StoreChannelMapping.store_id == store_id,
         )
     )
@@ -361,15 +371,15 @@ async def trigger_stock_sync(
             "sku": inv.product.sku if inv.product else inv.product_id,
             "is_out_of_stock": inv.is_out_of_stock,
             "available_stock": inv.available_stock,
-            "price": int(inv.product.base_price) if inv.product else None,
+            "price": None,
         })
 
-    # Resolve partner store id
+    # Resolve partner store id (GRAB / GRABMART)
     stmt = (
         select(StoreChannelMapping)
         .join(Channel)
         .where(
-            Channel.code == "GRABMART",
+            Channel.code.in_(get_channel_family_codes("GRAB")),
             StoreChannelMapping.store_id == store_id,
         )
     )

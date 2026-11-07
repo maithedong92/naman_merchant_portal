@@ -73,14 +73,17 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"✅ Các kênh bán lẻ đã đăng ký: {channel_registry.list_channels()}")
     
-    # Start Haravan Omnichannel Background Sync Worker
+    # Start Haravan & Poppies ERP Background Sync Workers
     from app.modules.haravan.sync_worker import haravan_sync_worker
+    from app.services.poppies_sync_worker import poppies_sync_worker
     from app.services.arito_service import arito_service
     haravan_sync_worker.start_background_worker()
+    poppies_sync_worker.start_background_worker()
 
     yield
     
     logger.info("=== Đang tắt hệ thống Nam An Merchant Portal ===")
+    poppies_sync_worker.stop_background_worker()
     haravan_sync_worker.stop_background_worker()
     arito_service.close()
     await engine.dispose()

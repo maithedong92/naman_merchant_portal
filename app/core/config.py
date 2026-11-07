@@ -104,6 +104,8 @@ class Settings(BaseSettings):
     POPPIES_API_KEY: str = "naman_pos_api_secret_key_2026"
     POPPIES_WEBHOOK_KEY: str = "naman_pos_api_secret_key_2026"
     POPPIES_TIMEOUT_SECONDS: float = 120.0
+    POPPIES_SYNC_ENABLED: bool = True
+    POPPIES_SYNC_INTERVAL_SECONDS: int = 300
 
 
 @lru_cache()

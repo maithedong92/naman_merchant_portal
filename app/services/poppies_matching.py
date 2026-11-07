@@ -49,6 +49,13 @@ ADAPTER_DEFAULT_CONFIGS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+DEFAULT_GRAB_MERCHANT_IDS: Dict[str, str] = {
+    "10001": "5-C4AWPFN3T4AUSA",
+    "10004": "5-C4AWPFN3TNUTKE",
+    "10005": "5-C4CBEVB1TJLWRX",
+    "10006": "5-C4AWPFN3TKNKCJ",
+}
+
 
 def _classify_integration_mode(canon_code: str, has_adapter: bool) -> str:
     if has_adapter:
@@ -317,8 +324,8 @@ class PoppiesMatchingMixin:
                     stores_by_code[new_st.code] = new_st
 
             existing_sm_res = await db.execute(select(StoreChannelMapping))
-            existing_sm_pairs = {
-                (str(m.store_id), str(m.channel_id)) for m in existing_sm_res.scalars().all()
+            existing_sm_by_pair: Dict[Tuple[str, str], StoreChannelMapping] = {
+                (str(m.store_id), str(m.channel_id)): m for m in existing_sm_res.scalars().all()
             }
 
             for canon_code, ch_obj in reconciled_by_code.items():
@@ -329,17 +336,35 @@ class PoppiesMatchingMixin:
                     if not st_obj.is_active:
                         continue
                     pair = (str(st_obj.id), str(ch_obj.id))
-                    if pair not in existing_sm_pairs:
-                        db.add(
-                            StoreChannelMapping(
-                                store_id=st_obj.id,
-                                channel_id=ch_obj.id,
-                                partner_store_id=st_code,
-                                is_active=True,
-                            )
+                    target_partner_id = (
+                        DEFAULT_GRAB_MERCHANT_IDS.get(st_code, st_code)
+                        if canon_code == "GRAB"
+                        else st_code
+                    )
+                    existing_scm = existing_sm_by_pair.get(pair)
+                    if existing_scm is None:
+                        outlet_cfg = (
+                            {"partner_merchant_id": st_code, "grab_merchant_id": target_partner_id}
+                            if canon_code == "GRAB"
+                            else None
                         )
-                        existing_sm_pairs.add(pair)
+                        new_scm = StoreChannelMapping(
+                            store_id=st_obj.id,
+                            channel_id=ch_obj.id,
+                            partner_store_id=target_partner_id,
+                            channel_config=outlet_cfg,
+                            is_active=True,
+                        )
+                        db.add(new_scm)
+                        existing_sm_by_pair[pair] = new_scm
                         store_mappings_created += 1
+                    elif canon_code == "GRAB" and existing_scm.partner_store_id == st_code and target_partner_id != st_code:
+                        existing_scm.partner_store_id = target_partner_id
+                        merged_outlet_cfg = dict(existing_scm.channel_config or {})
+                        merged_outlet_cfg["partner_merchant_id"] = st_code
+                        merged_outlet_cfg["grab_merchant_id"] = target_partner_id
+                        existing_scm.channel_config = merged_outlet_cfg
+                        _safe_flag_modified(existing_scm, "channel_config")
 
         await db.commit()
 
@@ -473,6 +498,7 @@ class PoppiesMatchingMixin:
         self,
         db: AsyncSession,
         branch_code: str = "10001",
+        create_missing_products: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Resilient Master SKU synchronization using Poppies `STORE` Pricing Snapshot
@@ -503,6 +529,7 @@ class PoppiesMatchingMixin:
 
         prod_res = await db.execute(select(Product))
         prod_cache: Dict[str, Product] = {p.sku: p for p in prod_res.scalars().all()}
+        allow_create = (len(prod_cache) == 0) if create_missing_products is None else bool(create_missing_products)
 
         products_created = 0
         products_updated = 0
@@ -527,6 +554,8 @@ class PoppiesMatchingMixin:
 
             existing = prod_cache.get(sku_code)
             if not existing:
+                if not allow_create:
+                    continue
                 new_prod = Product(
                     sku=sku_code,
                     barcode=barcode_clean,
@@ -545,10 +574,12 @@ class PoppiesMatchingMixin:
                 prod_cache[sku_code] = new_prod
                 products_created += 1
             else:
-                existing.name = name[:255]
+                if name and name != sku_code:
+                    existing.name = name[:255]
                 if barcode_clean:
                     existing.barcode = barcode_clean
-                existing.base_price = base_price
+                if base_price > 0:
+                    existing.base_price = base_price
                 existing.is_active = is_active
                 products_updated += 1
 

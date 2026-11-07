@@ -175,12 +175,17 @@ async def apply_channel_governance_to_stock_items(
             item["is_out_of_stock"] = True
             item["available_stock"] = 0
 
+        has_custom_override = bool(
+            has_partner_pricing and mapping and mapping.custom_price is not None and float(mapping.custom_price) > 0
+        )
         eff_price = (
             float(mapping.custom_price)
-            if (has_partner_pricing and mapping and mapping.custom_price is not None)
+            if has_custom_override
             else float(prod.base_price or 0.0)
         )
-        if item.get("price") is None and eff_price > 0:
+        if has_custom_override:
+            item["price"] = eff_price
+        elif item.get("price") is None and eff_price > 0:
             item["price"] = eff_price
 
         adjusted.append(item)

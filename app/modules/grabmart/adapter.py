@@ -1,8 +1,9 @@
 import json
 import logging
 import math
+import time
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -45,8 +46,34 @@ from app.modules.grabmart.service import grabmart_client
 
 logger = logging.getLogger("naman_portal.modules.grabmart.adapter")
 
-# In-memory store menu cache for GrabMart pull requests
+# In-memory store menu cache for GrabMart pull requests (with short TTL so workers stay fresh)
 _store_menu_cache: Dict[str, Dict[str, Any]] = {}
+_store_menu_cache_ts: Dict[str, float] = {}
+MENU_CACHE_TTL_SECONDS: float = 30.0
+
+# Canonical GrabMart Merchant IDs <-> Nam An Store Codes (verified from Production GrabMart webhooks)
+GRAB_MERCHANT_BY_STORE_CODE: Dict[str, str] = {
+    "10001": "5-C4AWPFN3T4AUSA",
+    "10004": "5-C4AWPFN3TNUTKE",
+    "10005": "5-C4CBEVB1TJLWRX",
+    "10006": "5-C4AWPFN3TKNKCJ",
+}
+STORE_CODE_BY_GRAB_MERCHANT: Dict[str, str] = {
+    v: k for k, v in GRAB_MERCHANT_BY_STORE_CODE.items()
+}
+
+
+def resolve_grab_outlet_ids(partner_store_id: str) -> Tuple[str, str]:
+    """
+    Resolve `(grab_merchant_id, partner_merchant_id)` safely whether caller passes
+    Nam An store code (`10001`..`10006`), real Grab `merchantID` (`5-C4...`), or custom/test ID.
+    """
+    raw = str(partner_store_id or "").strip()
+    if raw in GRAB_MERCHANT_BY_STORE_CODE:
+        return GRAB_MERCHANT_BY_STORE_CODE[raw], raw
+    if raw in STORE_CODE_BY_GRAB_MERCHANT:
+        return raw, STORE_CODE_BY_GRAB_MERCHANT[raw]
+    return raw, raw
 
 
 GRAB_CATEGORY_MAPPING = {
@@ -300,6 +327,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 clean_name = (product.name or str(product.sku)).strip()[:80]
                 clean_desc = (product.description or product.name or clean_name).strip()[:2000]
 
+                clean_barcode = str(product.barcode).strip() if product.barcode else ""
                 item = GrabMenuItem(
                     id=str(product.sku),
                     name=clean_name,
@@ -308,7 +336,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                     availableStatus=is_available,
                     maxStock=max(0, stock_qty),
                     photos=photos,
-                    barcodes=[product.barcode] if product.barcode else [],
+                    barcodes=[clean_barcode] if clean_barcode else [],
                     description=clean_desc,
                     sellingTimeID="standard_schedule",
                 )
@@ -372,6 +400,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
 
         menu_dict = payload.model_dump(exclude_none=True)
         _store_menu_cache[partner_store_id] = menu_dict
+        _store_menu_cache_ts[partner_store_id] = time.time()
         return menu_dict
 
     async def sync_menu(
@@ -395,11 +424,12 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 message="Tính năng 'Đồng bộ thực đơn' cho GrabMart hiện đang TẮT trong cài đặt quản trị.",
             )
 
+        grab_merchant_id, partner_merchant_id = resolve_grab_outlet_ids(partner_store_id)
         try:
             menu_data = await self.build_catalog_menu(
                 store_id=store_id,
-                partner_store_id=partner_store_id,
-                partner_merchant_id=partner_store_id,
+                partner_store_id=grab_merchant_id,
+                partner_merchant_id=partner_merchant_id,
                 db=db,
             )
             total_items = sum(
@@ -408,9 +438,9 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 for sub in cat.get("subCategories", [])
             )
 
-            # Notify GrabMart that new menu is ready
+            # Notify GrabMart that new menu is ready using real Grab merchantID
             try:
-                notify_resp = await grabmart_client.notify_menu_update(merchant_id=partner_store_id)
+                notify_resp = await grabmart_client.notify_menu_update(merchant_id=grab_merchant_id)
             except Exception as notify_ex:
                 logger.warning(
                     f"Outbound notification to GrabMart returned: {notify_ex}. "
@@ -427,8 +457,8 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 sync_type="MENU",
                 success=True,
                 total_synced=total_items,
-                message=f"Đã chuẩn bị {total_items} sản phẩm và lưu bộ nhớ đệm đồng bộ cho GrabMart (Outlet: {partner_store_id})",
-                details={"notification_response": notify_resp},
+                message=f"Đã chuẩn bị {total_items} sản phẩm và gửi thông báo đồng bộ cho GrabMart (Outlet: {grab_merchant_id})",
+                details={"notification_response": notify_resp, "grab_merchant_id": grab_merchant_id, "partner_merchant_id": partner_merchant_id},
             )
         except Exception as ex:
             logger.error(f"Lỗi khi đồng bộ menu GrabMart (Store {store_id}): {str(ex)}")
@@ -455,8 +485,23 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
 
     def get_cached_menu(self, merchant_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve pre-built menu from cache for GrabMart GET webhook."""
-        return _store_menu_cache.get(merchant_id)
+        """Retrieve pre-built menu from cache for GrabMart GET webhook (respecting TTL if timestamped)."""
+        cached = _store_menu_cache.get(merchant_id)
+        if cached is None:
+            return None
+        cached_at = _store_menu_cache_ts.get(merchant_id)
+        if cached_at is not None and (time.time() - cached_at) > MENU_CACHE_TTL_SECONDS:
+            _store_menu_cache.pop(merchant_id, None)
+            _store_menu_cache_ts.pop(merchant_id, None)
+            return None
+        return cached
+
+    def invalidate_cached_menu(self, *keys: str) -> None:
+        """Evict cached menus when prices or inventory change."""
+        for k in keys:
+            if k:
+                _store_menu_cache.pop(k, None)
+                _store_menu_cache_ts.pop(k, None)
 
     # ==========================================================================
     # 2. Inventory / Stock Synchronization
@@ -499,8 +544,11 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                     "maxStock": 0 if is_out or stock_qty <= 0 else stock_qty,
                 })
 
+            grab_merchant_id, partner_merchant_id = resolve_grab_outlet_ids(partner_store_id)
+            self.invalidate_cached_menu(grab_merchant_id, partner_merchant_id, partner_store_id)
+
             response = await grabmart_client.batch_update_items(
-                merchant_id=partner_store_id,
+                merchant_id=grab_merchant_id,
                 items=items_payload,
             )
 
@@ -510,8 +558,8 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 sync_type="STOCK",
                 success=True,
                 total_synced=len(items_payload),
-                message=f"Đã cập nhật tồn kho {len(items_payload)} sản phẩm lên GrabMart ({partner_store_id})",
-                details={"api_response": response},
+                message=f"Đã cập nhật tồn kho/giá {len(items_payload)} sản phẩm lên GrabMart ({grab_merchant_id})",
+                details={"api_response": response, "grab_merchant_id": grab_merchant_id},
             )
         except Exception as ex:
             logger.error(f"Lỗi khi cập nhật tồn kho GrabMart: {str(ex)}")
@@ -733,9 +781,10 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             elif new_status == UnifiedOrderStatus.READY:
                 await grabmart_client.mark_order_ready(channel_order_id)
             elif new_status == UnifiedOrderStatus.CANCELLED:
+                grab_merchant_id, _ = resolve_grab_outlet_ids(partner_store_id)
                 await grabmart_client.cancel_order(
                     order_id=channel_order_id,
-                    merchant_id=partner_store_id,
+                    merchant_id=grab_merchant_id,
                     cancel_code=1001,
                 )
             return True
