@@ -423,3 +423,43 @@ def test_haravan_update_admin_note_endpoint(mock_admin_user):
     app.dependency_overrides.clear()
 
 
+@pytest.mark.asyncio
+async def test_haravan_sync_once_skips_unchanged_orders():
+    """Verify HaravanSyncWorker skips redundant MongoDB writes when order version fingerprint matches."""
+    orders_batch = [
+        {
+            "id": "9001",
+            "order_number": "#NA9001",
+            "updated_at": "2026-11-07T14:00:00Z",
+            "financial_status": "paid",
+            "fulfillment_status": "notfulfilled",
+            "cancelled_status": "uncancelled",
+        },
+        {
+            "id": "9002",
+            "order_number": "#NA9002",
+            "updated_at": "2026-11-07T14:01:00Z",
+            "financial_status": "pending",
+            "fulfillment_status": "notfulfilled",
+            "cancelled_status": "uncancelled",
+        },
+    ]
+    mock_client = MagicMock()
+    mock_client.fetch_latest_orders = AsyncMock(return_value=orders_batch)
+    worker = HaravanSyncWorker(client=mock_client)
+
+    with patch.object(worker, "get_mongo_collection", return_value=MagicMock()), \
+         patch.object(worker, "upsert_order", return_value=True) as mock_upsert:
+        res1 = await worker.sync_once(limit=10)
+        assert res1["processed"] == 2
+        assert res1["unchanged"] == 0
+        assert mock_upsert.call_count == 2
+
+        # Second poll with identical `updated_at` & statuses -> 0 MongoDB writes!
+        res2 = await worker.sync_once(limit=10)
+        assert res2["processed"] == 0
+        assert res2["unchanged"] == 2
+        assert mock_upsert.call_count == 2
+
+
+

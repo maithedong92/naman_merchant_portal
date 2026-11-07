@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, List, Optional, Set, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from app.core.exceptions import NotFoundError
 from app.models.channel import Channel
@@ -377,6 +377,7 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         since_version: Optional[str] = None,
         fmt: str = "map",
         auto_propagate: bool = True,
+        prefer_price_book: bool = False,
     ) -> Dict[str, Any]:
         """
         Pull Pricing & Exclusions Snapshot from Poppies ERP (`GET /api/v1/pos/pricing/snapshots`).
@@ -388,13 +389,17 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         start_time = datetime.now(timezone.utc)
         canon_code = normalize_channel_code(channel_code)
 
+        snap_kwargs: Dict[str, Any] = {
+            "branch_code": branch_code,
+            "channel_code": canon_code,
+            "since_version": since_version,
+            "fmt": fmt,
+        }
+        if prefer_price_book:
+            snap_kwargs["prefer_price_book"] = True
+
         try:
-            snap = await self.client.get_pricing_snapshot(
-                branch_code=branch_code,
-                channel_code=canon_code,
-                since_version=since_version,
-                fmt=fmt,
-            )
+            snap = await self.client.get_pricing_snapshot(**snap_kwargs)
         except PoppiesUpstreamError as up_err:
             # FAIL-CLOSED: Do not modify or wipe any existing ChannelProductMapping rows!
             await db.rollback()
@@ -418,6 +423,7 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         channel = await self._get_or_create_channel(db, canon_code)
         prev_channel_active = bool(channel.is_active)
         cfg = dict(channel.config or {})
+        effective_version = snapshot_version or cfg.get("last_snapshot_version")
         has_partner_pricing = bool(
             snap.get(
                 "has_partner_pricing",
@@ -433,8 +439,56 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
             else (snap.get("inherited_from") or snap.get("inheritedFrom") or "STORE")
         )
         is_delta = bool(snap.get("is_delta", snap.get("isDelta", False)))
+        if snap.get("source") == "price_book_fallback" and "restrict_to_priced_items" not in snap:
+            restrict_to_priced = bool(cfg.get("restrict_to_priced_items", restrict_to_priced))
 
         price_map, blocked_set = _extract_snapshot_prices_and_blocks(snap)
+
+        # Fast-path: Empty delta snapshot requires zero Product / ChannelProductMapping ORM queries!
+        if is_delta and not price_map and not blocked_set:
+            if (
+                prev_channel_active != is_channel_active
+                or cfg.get("last_snapshot_version") != effective_version
+            ):
+                channel.is_active = is_channel_active
+                cfg.update(
+                    {
+                        "has_partner_pricing": has_partner_pricing,
+                        "inherited_from": inherited_from,
+                        "last_snapshot_version": effective_version,
+                        "last_snapshot_branch": branch_code,
+                        "last_snapshot_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                channel.config = cfg
+                _safe_flag_modified(channel, "config")
+                await db.commit()
+
+            ext_sync = []
+            if auto_propagate and prev_channel_active != is_channel_active:
+                ext_sync = await propagate_channel_menu_to_external_channel(
+                    db=db, raw_channel_code=canon_code, branch_code=branch_code
+                )
+            elapsed = round((datetime.now(timezone.utc) - start_time).total_seconds(), 3)
+            return {
+                "success": True,
+                "branch_code": branch_code,
+                "channel_code": canon_code,
+                "snapshot_version": effective_version,
+                "is_channel_active": is_channel_active,
+                "has_partner_pricing": has_partner_pricing,
+                "inherited_from": inherited_from,
+                "is_delta": True,
+                "fast_noop": True,
+                "matched_skus_count": 0,
+                "unmatched_skus_count": 0,
+                "prices_updated": 0,
+                "blocked_skus_count": 0,
+                "blocked_mappings_applied": 0,
+                "unblocked_skus_count": 0,
+                "elapsed_seconds": elapsed,
+                "external_channel_sync": ext_sync,
+            }
 
         channel.is_active = is_channel_active
         cfg.update(
@@ -442,7 +496,7 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
                 "has_partner_pricing": has_partner_pricing,
                 "inherited_from": inherited_from,
                 "restrict_to_priced_items": restrict_to_priced,
-                "last_snapshot_version": snapshot_version,
+                "last_snapshot_version": effective_version,
                 "last_snapshot_branch": branch_code,
                 "last_snapshot_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -450,7 +504,13 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         channel.config = cfg
         _safe_flag_modified(channel, "config")
 
-        prod_res = await db.execute(select(Product))
+        prod_res = await db.execute(
+            select(Product).options(
+                defer(Product.metadata_json),
+                defer(Product.description),
+                defer(Product.image_url),
+            )
+        )
         products_by_sku: Dict[str, Product] = {
             p.sku: p for p in prod_res.scalars().all()
         }
@@ -577,12 +637,14 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
                 existing_mappings[str(prod.id)] = m
                 changed_skus.add(sku_code)
             else:
-                if m.is_enabled is not False:
-                    changed_skus.add(sku_code)
-                m.is_enabled = False
-                prev_payload = dict(m.channel_sync_payload or {})
-                prev_payload.update(payload_meta)
-                m.channel_sync_payload = prev_payload
+                prev_payload = m.channel_sync_payload or {}
+                if m.is_enabled is not False or prev_payload.get("blocked_by_snapshot") is not True:
+                    if m.is_enabled is not False:
+                        changed_skus.add(sku_code)
+                    m.is_enabled = False
+                    updated_payload = dict(prev_payload)
+                    updated_payload.update(payload_meta)
+                    m.channel_sync_payload = updated_payload
             blocked_applied += 1
 
         # 3. Full Snapshot Parity: lift expired snapshot blocks no longer in `blocked_set`

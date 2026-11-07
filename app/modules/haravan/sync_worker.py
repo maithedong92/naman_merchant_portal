@@ -4,11 +4,16 @@ import logging
 from typing import Any, Dict, List, Optional
 import pymongo
 from pymongo import MongoClient
+from sqlalchemy import text
 
 from app.core.config import get_settings
+from app.core.database import AsyncSessionLocal
 from app.modules.haravan.client import HaravanClient
 
 logger = logging.getLogger("naman_portal.haravan.sync")
+
+HARAVAN_ADVISORY_LOCK_KEY = 20261108
+MAX_SEEN_ORDER_VERSIONS = 2000
 
 
 class HaravanSyncWorker:
@@ -23,6 +28,7 @@ class HaravanSyncWorker:
         self._mongo_client: Optional[MongoClient] = None
         self._is_running = False
         self._background_task: Optional[asyncio.Task] = None
+        self._seen_order_versions: Dict[str, str] = {}
 
         # Statistics & Status
         self.last_sync_time: Optional[datetime] = None
@@ -36,7 +42,7 @@ class HaravanSyncWorker:
             self._mongo_client = MongoClient(
                 self.settings.MONGO_URI,
                 serverSelectionTimeoutMS=5000,
-                maxPoolSize=20,
+                maxPoolSize=5,
             )
         db = self._mongo_client[self.settings.MONGO_DB]
         return db[self.settings.MONGO_ORDERS_COLLECTION]
@@ -106,9 +112,21 @@ class HaravanSyncWorker:
             logger.error(f"Lỗi khi upsert đơn hàng {haravan_id}: {e}")
             return False
 
+    @staticmethod
+    def _order_fingerprint(order_doc: Dict[str, Any]) -> Optional[str]:
+        """Return version fingerprint when `updated_at` is present, else None."""
+        updated_at = order_doc.get("updated_at")
+        if not updated_at:
+            return None
+        return (
+            f"{updated_at}|{order_doc.get('financial_status')}|"
+            f"{order_doc.get('fulfillment_status')}|{order_doc.get('cancelled_status')}"
+        )
+
     async def sync_once(self, limit: Optional[int] = None) -> Dict[str, Any]:
         """
         Thực hiện một chu kỳ đồng bộ đơn hàng từ Haravan API về MongoDB.
+        Bỏ qua ghi MongoDB đối với các đơn không thay đổi `updated_at`/trạng thái.
         """
         effective_limit = limit or self.settings.HARAVAN_SYNC_LIMIT
         logger.info(f"Bắt đầu đồng bộ Haravan (tối đa {effective_limit} đơn)...")
@@ -118,26 +136,40 @@ class HaravanSyncWorker:
             if not orders:
                 self.last_sync_time = datetime.now(timezone.utc)
                 self.last_sync_count = 0
-                return {"success": True, "processed": 0, "skipped": 0, "total": 0}
+                return {"success": True, "processed": 0, "unchanged": 0, "skipped": 0, "total": 0}
 
             # Thực hiện ghi MongoDB trong ThreadPool để không block async event loop
             def _write_to_mongo():
-                col = self.get_mongo_collection()
+                col = None
                 processed = 0
+                unchanged = 0
                 skipped = 0
                 for raw in orders:
                     if not raw.get("order_number") or not raw.get("id"):
                         skipped += 1
                         continue
                     norm = self.normalize_order_doc(raw)
+                    oid = norm["id"]
+                    fp = self._order_fingerprint(norm)
+                    if fp is not None and self._seen_order_versions.get(oid) == fp:
+                        unchanged += 1
+                        continue
+                    if col is None:
+                        col = self.get_mongo_collection()
                     if self.upsert_order(col, norm):
                         processed += 1
+                        if fp is not None:
+                            if len(self._seen_order_versions) >= MAX_SEEN_ORDER_VERSIONS and oid not in self._seen_order_versions:
+                                # Trim oldest quarter to bound memory strictly
+                                for drop_k in list(self._seen_order_versions.keys())[: MAX_SEEN_ORDER_VERSIONS // 4]:
+                                    self._seen_order_versions.pop(drop_k, None)
+                            self._seen_order_versions[oid] = fp
                     else:
                         skipped += 1
-                return processed, skipped
+                return processed, unchanged, skipped
 
             loop = asyncio.get_running_loop()
-            processed, skipped = await loop.run_in_executor(None, _write_to_mongo)
+            processed, unchanged, skipped = await loop.run_in_executor(None, _write_to_mongo)
 
             self.last_sync_time = datetime.now(timezone.utc)
             self.last_sync_count = processed
@@ -145,11 +177,12 @@ class HaravanSyncWorker:
             self.last_error = None
 
             logger.info(
-                f"✅ Đồng bộ Haravan hoàn tất: {processed} đơn được lưu/cập nhật, {skipped} bỏ qua."
+                f"✅ Đồng bộ Haravan hoàn tất: {processed} đơn cập nhật, {unchanged} không đổi, {skipped} bỏ qua."
             )
             return {
                 "success": True,
                 "processed": processed,
+                "unchanged": unchanged,
                 "skipped": skipped,
                 "total": len(orders),
                 "timestamp": self.last_sync_time.isoformat(),
@@ -161,6 +194,30 @@ class HaravanSyncWorker:
             self.last_error = error_msg
             return {"success": False, "error": error_msg}
 
+    async def _sync_once_with_advisory_lock(self) -> Dict[str, Any]:
+        """Ensure only 1 Uvicorn worker executes periodic Haravan polling at a time."""
+        try:
+            async with AsyncSessionLocal() as db:
+                lock_res = await db.execute(
+                    text("SELECT pg_try_advisory_lock(:key)"),
+                    {"key": HARAVAN_ADVISORY_LOCK_KEY},
+                )
+                if not bool(lock_res.scalar()):
+                    return {"success": True, "skipped": True, "reason": "another_worker_running"}
+                try:
+                    return await self.sync_once()
+                finally:
+                    try:
+                        await db.execute(
+                            text("SELECT pg_advisory_unlock(:key)"),
+                            {"key": HARAVAN_ADVISORY_LOCK_KEY},
+                        )
+                    except Exception:
+                        pass
+        except Exception:
+            # Fallback if PostgreSQL session is temporarily unavailable
+            return await self.sync_once()
+
     async def _background_loop(self):
         """Vòng lặp chạy nền định kỳ mỗi HARAVAN_SYNC_INTERVAL_SECONDS."""
         interval = max(10, self.settings.HARAVAN_SYNC_INTERVAL_SECONDS)
@@ -169,7 +226,7 @@ class HaravanSyncWorker:
 
         while self._is_running:
             try:
-                await self.sync_once()
+                await self._sync_once_with_advisory_lock()
             except asyncio.CancelledError:
                 logger.info("Haravan Sync Worker nhận lệnh dừng.")
                 break

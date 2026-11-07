@@ -4,7 +4,7 @@ Implements strict Fail-Closed semantics (Section 4.3) for Pricing Snapshots.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from app.core.config import get_settings
@@ -170,12 +170,106 @@ class PoppiesClient:
             "channels": [dict(c) for c in POPPIES_STANDARD_CHANNELS],
         }
 
+    async def _fetch_price_book_as_snapshot(
+        self,
+        branch_code: str,
+        canonical_channel: str,
+        headers: Dict[str, str],
+    ) -> Tuple[Optional[Dict[str, Any]], int, Optional[str]]:
+        """
+        Fetch lightweight `/api/v1/pos/pricing/price-book` (~5 MB vs ~41 MB `/snapshots`)
+        and normalize into snapshot schema while preserving Fail-Closed status codes.
+        """
+        pricebook_urls = [
+            f"{self.pos_pricing_base_url}/price-book",
+            "http://host.docker.internal:6515/api/v1/pos/pricing/price-book",
+            "http://127.0.0.1:6515/api/v1/pos/pricing/price-book",
+            "http://103.175.248.250:1155/api/v1/pos/pricing/price-book",
+            "https://poppies.namanmarket.com/api/v1/pos/pricing/price-book",
+        ]
+        seen_pb = set()
+        unique_pb_urls = [u for u in pricebook_urls if not (u in seen_pb or seen_pb.add(u))]
+        pb_params: Dict[str, Any] = {
+            "branch_code": branch_code,
+            "channel_code": canonical_channel,
+            "limit": 100000,
+        }
+        meta = get_canonical_channel_meta(canonical_channel) or {}
+        has_pp = bool(meta.get("has_partner_pricing", False))
+        pb_status = 503
+        pb_err: Optional[str] = None
+
+        for pb_url in unique_pb_urls:
+            try:
+                async with httpx.AsyncClient(timeout=max(self.timeout, 30.0)) as client:
+                    pb_resp = await client.get(pb_url, params=pb_params, headers=headers)
+                    if pb_resp.status_code == 200:
+                        pb_body = pb_resp.json()
+                        rows = pb_body.get("price_book") if isinstance(pb_body, dict) else None
+                        if isinstance(pb_body, dict) and pb_body.get("success") is not False and isinstance(rows, list):
+                            prices_dict: Dict[str, Dict[str, Any]] = {}
+                            blocked_list: List[str] = []
+                            for row in rows:
+                                if not isinstance(row, dict):
+                                    continue
+                                sku_c = str(row.get("sku") or "").strip()
+                                if not sku_c:
+                                    continue
+                                allowed = bool(row.get("allowed", True))
+                                if not allowed:
+                                    blocked_list.append(sku_c)
+                                p_num = float(row.get("price") or 0.0)
+                                prices_dict[sku_c] = {
+                                    "effective_price": p_num,
+                                    "base_price": p_num,
+                                    "allowed_in_context": allowed,
+                                    "productName": row.get("name"),
+                                    "barcode": row.get("barcode"),
+                                    "is_weight_item": bool(row.get("weight_item", False)),
+                                    "tax_rate_pct": row.get("vat"),
+                                }
+                            logger.info(
+                                f"Đồng bộ thành công {len(prices_dict)} SKU từ Poppies price-book "
+                                f"cho kênh {canonical_channel} ({pb_url})"
+                            )
+                            return (
+                                {
+                                    "success": True,
+                                    "source": "price_book_fallback",
+                                    "resolved_url": pb_url,
+                                    "version": pb_body.get("version"),
+                                    "branch_code": pb_body.get("branch_code") or branch_code,
+                                    "channel_code": canonical_channel,
+                                    "is_active": bool(pb_body.get("is_active", meta.get("is_active", True))),
+                                    "has_partner_pricing": bool(pb_body.get("has_partner_pricing", has_pp)),
+                                    "inherited_from": None if has_pp else "STORE",
+                                    "is_delta": False,
+                                    "prices": prices_dict,
+                                    "exclusions": blocked_list,
+                                },
+                                200,
+                                None,
+                            )
+                    elif pb_resp.status_code >= 500:
+                        if pb_status != 504:
+                            pb_status = pb_resp.status_code
+                        pb_err = f"Poppies Price-Book trả về HTTP {pb_resp.status_code} tại {pb_url}"
+                        continue
+            except httpx.TimeoutException as tex:
+                pb_status = 504
+                pb_err = f"Timeout kết nối Poppies Price-Book ({tex})"
+            except Exception as ex:
+                pb_err = str(ex)
+
+        return None, pb_status, pb_err
+
     async def get_pricing_snapshot(
         self,
         branch_code: str = "10001",
         channel_code: str = "STORE",
         since_version: Optional[str] = None,
         fmt: str = "map",
+        prefer_price_book: bool = False,
     ) -> Dict[str, Any]:
         """
         Fetch multi-channel pricing & exclusions snapshot:
@@ -186,6 +280,19 @@ class PoppiesClient:
         Raises PoppiesUpstreamError so callers retain Last-Known-Good cache & blocked_skus.
         """
         canonical_channel = normalize_channel_code(channel_code)
+        headers = self._get_headers()
+
+        # Resource Optimization: For periodic full background reconciliations without `since_version`,
+        # prefer lightweight `/price-book` (~5 MB) before `/snapshots` (~41 MB).
+        if prefer_price_book and not since_version:
+            pb_snap, _, _ = await self._fetch_price_book_as_snapshot(
+                branch_code=branch_code,
+                canonical_channel=canonical_channel,
+                headers=headers,
+            )
+            if pb_snap is not None:
+                return pb_snap
+
         params: Dict[str, Any] = {
             "branch_code": branch_code,
             "channel_code": canonical_channel,
@@ -196,8 +303,8 @@ class PoppiesClient:
 
         urls_to_try: List[str] = [
             f"{self.pos_pricing_base_url}/snapshots",
-            "http://127.0.0.1:6515/api/v1/pos/pricing/snapshots",
             "http://host.docker.internal:6515/api/v1/pos/pricing/snapshots",
+            "http://127.0.0.1:6515/api/v1/pos/pricing/snapshots",
             "http://103.175.248.250:1155/api/v1/pos/pricing/snapshots",
             "https://poppies.namanmarket.com/api/v1/pos/pricing/snapshots",
         ]
@@ -205,7 +312,6 @@ class PoppiesClient:
         seen_urls = set()
         unique_urls = [u for u in urls_to_try if not (u in seen_urls or seen_urls.add(u))]
 
-        headers = self._get_headers()
         last_status = 503
         last_err_msg = "Không thể kết nối tới Poppies Pricing Snapshot Gateway."
 
@@ -242,79 +348,18 @@ class PoppiesClient:
 
         # Resilient Fallback: Try Poppies Lightweight Price-Book (`/api/v1/pos/pricing/price-book`)
         # when `/snapshots` returns 404/500 (e.g. ProgrammingError), while still failing closed on 5xx/timeout.
-        pricebook_urls = [
-            f"{self.pos_pricing_base_url}/price-book",
-            "http://127.0.0.1:6515/api/v1/pos/pricing/price-book",
-            "http://host.docker.internal:6515/api/v1/pos/pricing/price-book",
-            "http://103.175.248.250:1155/api/v1/pos/pricing/price-book",
-            "https://poppies.namanmarket.com/api/v1/pos/pricing/price-book",
-        ]
-        seen_pb = set()
-        unique_pb_urls = [u for u in pricebook_urls if not (u in seen_pb or seen_pb.add(u))]
-        pb_params: Dict[str, Any] = {
-            "branch_code": branch_code,
-            "channel_code": canonical_channel,
-            "limit": 100000,
-        }
-        meta = get_canonical_channel_meta(canonical_channel) or {}
-        has_pp = bool(meta.get("has_partner_pricing", False))
-
-        for pb_url in unique_pb_urls:
-            try:
-                async with httpx.AsyncClient(timeout=max(self.timeout, 30.0)) as client:
-                    pb_resp = await client.get(pb_url, params=pb_params, headers=headers)
-                    if pb_resp.status_code == 200:
-                        pb_body = pb_resp.json()
-                        rows = pb_body.get("price_book") if isinstance(pb_body, dict) else None
-                        if isinstance(pb_body, dict) and pb_body.get("success") is not False and isinstance(rows, list):
-                            prices_dict: Dict[str, Dict[str, Any]] = {}
-                            blocked_list: List[str] = []
-                            for row in rows:
-                                if not isinstance(row, dict):
-                                    continue
-                                sku_c = str(row.get("sku") or "").strip()
-                                if not sku_c:
-                                    continue
-                                allowed = bool(row.get("allowed", True))
-                                if not allowed:
-                                    blocked_list.append(sku_c)
-                                p_num = float(row.get("price") or 0.0)
-                                prices_dict[sku_c] = {
-                                    "effective_price": p_num,
-                                    "base_price": p_num,
-                                    "allowed_in_context": allowed,
-                                    "productName": row.get("name"),
-                                    "barcode": row.get("barcode"),
-                                    "is_weight_item": bool(row.get("weight_item", False)),
-                                    "tax_rate_pct": row.get("vat"),
-                                }
-                            logger.info(
-                                f"Đồng bộ thành công {len(prices_dict)} SKU từ Poppies price-book fallback "
-                                f"cho kênh {canonical_channel} ({pb_url})"
-                            )
-                            return {
-                                "success": True,
-                                "source": "price_book_fallback",
-                                "resolved_url": pb_url,
-                                "version": pb_body.get("version"),
-                                "branch_code": pb_body.get("branch_code") or branch_code,
-                                "channel_code": canonical_channel,
-                                "is_active": bool(meta.get("is_active", True)),
-                                "has_partner_pricing": has_pp,
-                                "inherited_from": None if has_pp else "STORE",
-                                "is_delta": False,
-                                "prices": prices_dict,
-                                "exclusions": blocked_list,
-                            }
-                    elif pb_resp.status_code >= 500:
-                        if last_status != 504:
-                            last_status = pb_resp.status_code
-                        continue
-            except httpx.TimeoutException as tex:
-                last_status = 504
-                last_err_msg = f"Timeout kết nối Poppies Price-Book ({tex})"
-            except Exception:
-                pass
+        if not prefer_price_book or since_version:
+            pb_snap, pb_status, pb_err = await self._fetch_price_book_as_snapshot(
+                branch_code=branch_code,
+                canonical_channel=canonical_channel,
+                headers=headers,
+            )
+            if pb_snap is not None:
+                return pb_snap
+            if pb_status == 504 or (last_status != 504 and pb_status >= 500):
+                last_status = pb_status
+            if pb_err and last_status == 504:
+                last_err_msg = pb_err
 
         raise PoppiesUpstreamError(
             message=(

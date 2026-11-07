@@ -33,8 +33,8 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://postgres:postgres@localhost:5432/naman_merchant_portal",
         description="Async PostgreSQL connection string"
     )
-    DB_POOL_SIZE: int = 10
-    DB_MAX_OVERFLOW: int = 20
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 5
     DB_ECHO: bool = False
 
     # Security & Authentication
@@ -99,8 +99,8 @@ class Settings(BaseSettings):
 
     # Poppies ERP POS Master Data & Pricing Gateway
     POPPIES_API_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pos/master-data"
-    POPPIES_PRICING_BASE_URL: str = "https://poppies.namanmarket.com/api/v1/pricing"
-    POPPIES_POS_PRICING_BASE_URL: str = "https://poppies.namanmarket.com/api/v1/pos/pricing"
+    POPPIES_PRICING_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pricing"
+    POPPIES_POS_PRICING_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pos/pricing"
     POPPIES_API_KEY: str = "naman_pos_api_secret_key_2026"
     POPPIES_WEBHOOK_KEY: str = "naman_pos_api_secret_key_2026"
     POPPIES_TIMEOUT_SECONDS: float = 120.0

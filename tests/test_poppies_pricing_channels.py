@@ -1065,3 +1065,107 @@ async def test_excluded_zero_price_does_not_pollute_custom_price():
         assert stale_zero_map.custom_price is None
         assert stale_zero_map.is_enabled is False
 
+
+@pytest.mark.asyncio
+async def test_resource_optimizations_empty_delta_noop_and_unchanged_cttk_skip():
+    """
+    Verify resource optimizations:
+    1. Empty delta snapshot (`is_delta=True`, `prices={}`, `exclusions=[]`) short-circuits
+       with `fast_noop=True` without querying `Product` or `ChannelProductMapping`.
+    2. Already-blocked mappings (`is_enabled=False`, `blocked_by_snapshot=True`) are NOT
+       mutated on full reconciliation (0 dirty payload rewrites).
+    3. `sync_stock_cttk_realtime` skips DB writes & commit when stock is unchanged.
+    """
+    from app.models.inventory import StoreInventory
+
+    grab_ch = Channel(
+        id="ch-grab",
+        code="GRAB",
+        name="GrabMart",
+        is_active=True,
+        config={"has_partner_pricing": True, "last_snapshot_version": "v100"},
+    )
+
+    # 1. Empty delta -> only 1 DB execute (`Channel` lookup), 0 Product/Mapping queries!
+    mock_delta_db = _make_mock_db()
+    mock_delta_db.execute.side_effect = [_scalar_result(grab_ch)]
+    empty_delta = {
+        "success": True,
+        "version": "v100",
+        "is_active": True,
+        "has_partner_pricing": True,
+        "is_delta": True,
+        "prices": {},
+        "exclusions": [],
+    }
+    with patch.object(poppies_service.client, "get_pricing_snapshot", new_callable=AsyncMock, return_value=empty_delta):
+        res_delta = await poppies_service.sync_channel_pricing_snapshot(
+            db=mock_delta_db,
+            branch_code="10001",
+            channel_code="GRAB",
+            since_version="v100",
+            auto_propagate=False,
+        )
+        assert res_delta["fast_noop"] is True
+        assert mock_delta_db.execute.await_count == 1
+        assert mock_delta_db.commit.await_count == 0
+
+    # 2. Already-blocked mapping payload reference is untouched on repeat full snapshot
+    orig_payload = {"snapshot_version": "v99", "blocked_by_snapshot": True, "timestamp": "2026-11-07T00:00:00Z"}
+    already_blocked = ChannelProductMapping(
+        product_id="p1",
+        channel_id="ch-grab",
+        custom_price=None,
+        is_enabled=False,
+        channel_sync_payload=orig_payload,
+    )
+    prod1 = Product(id="p1", sku="SKU_LOCKED", name="Locked SKU", base_price=50000.0, is_active=True)
+    mock_full_db = _make_mock_db()
+    mock_full_db.execute.side_effect = [
+        _scalar_result(grab_ch),
+        _scalars_result([prod1]),
+        _scalars_result([already_blocked]),
+    ]
+    full_snap = {
+        "success": True,
+        "version": "v101",
+        "is_active": True,
+        "has_partner_pricing": True,
+        "is_delta": False,
+        "prices": {},
+        "exclusions": ["SKU_LOCKED"],
+    }
+    with patch.object(poppies_service.client, "get_pricing_snapshot", new_callable=AsyncMock, return_value=full_snap):
+        res_full = await poppies_service.sync_channel_pricing_snapshot(
+            db=mock_full_db, branch_code="10001", channel_code="GRAB", auto_propagate=False
+        )
+        assert res_full["blocked_mappings_applied"] == 1
+        assert already_blocked.channel_sync_payload is orig_payload  # Not rewritten!
+
+    # 3. Unchanged CTTK stock -> inventories_updated == 0 and db.commit not called
+    mock_cttk_db = _make_mock_db()
+    st_1 = Store(id="st-1", code="10001", name="Thảo Điền", is_active=True)
+    inv_same = StoreInventory(
+        store_id="st-1",
+        product_id="p1",
+        sku="SKU_LOCKED",
+        total_stock=12.0,
+        reserved_stock=2.0,
+        available_stock=10.0,
+        is_out_of_stock=False,
+    )
+    mock_cttk_db.execute.side_effect = [
+        _scalars_result([st_1]),
+        _scalars_result([inv_same]),
+    ]
+    with patch.object(
+        poppies_service.client,
+        "get_cttk_records",
+        new_callable=AsyncMock,
+        return_value={"items": [{"sku": "SKU_LOCKED", "storeCode": "10001", "slTon": 12.0}]},
+    ):
+        res_cttk = await poppies_service.sync_stock_cttk_realtime(db=mock_cttk_db, batch_size=10000)
+        assert res_cttk["inventories_updated"] == 0
+        assert mock_cttk_db.commit.await_count == 0
+
+

@@ -6,12 +6,14 @@ to GrabMart, ShopeeFood, and ShopeeMart even when Outbox Webhooks are delayed or
 
 import asyncio
 from datetime import datetime, timezone
+import gc
 import logging
 from typing import Any, Dict, Optional
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
+from app.models.channel import Channel
 from app.services.poppies_channel_push import (
     propagate_channel_menu_to_external_channel,
     propagate_skus_to_external_channel,
@@ -21,6 +23,7 @@ from app.services.poppies_service import poppies_service
 logger = logging.getLogger("naman_portal.poppies.worker")
 
 ADVISORY_LOCK_KEY = 20261107
+FULL_RECONCILE_EVERY_N_CYCLES = 12
 
 
 class PoppiesSyncWorker:
@@ -31,11 +34,12 @@ class PoppiesSyncWorker:
         self._is_running: bool = False
         self._background_task: Optional[asyncio.Task] = None
         self._channels_reconciled: bool = False
+        self._cycle_count: int = 0
         self.last_sync_time: Optional[datetime] = None
         self.last_summary: Optional[Dict[str, Any]] = None
         self.last_error: Optional[str] = None
 
-    async def sync_once(self) -> Dict[str, Any]:
+    async def sync_once(self, force_full: bool = False) -> Dict[str, Any]:
         """Run one coordinated sync cycle under PostgreSQL advisory lock across Uvicorn workers."""
         async with AsyncSessionLocal() as db:
             # Ensure only 1 Uvicorn worker executes the periodic sync at a time
@@ -48,14 +52,18 @@ class PoppiesSyncWorker:
                 return {"success": True, "skipped": True, "reason": "another_worker_running"}
 
             try:
+                self._cycle_count += 1
+                is_full_cycle = force_full or (
+                    self._cycle_count % FULL_RECONCILE_EVERY_N_CYCLES == 0
+                )
+
                 if not self._channels_reconciled:
                     await poppies_service.reconcile_channels_from_poppies(
                         db=db, sync_store_outlets=True
                     )
                     self._channels_reconciled = True
 
-                synced_channels = {}
-                for ch_code in (
+                target_channels = (
                     "STORE",
                     "GRAB",
                     "SHOPEEFOOD",
@@ -64,25 +72,46 @@ class PoppiesSyncWorker:
                     "SHOPEE",
                     "LAZADA",
                     "TIKTOK",
-                ):
+                )
+                ch_rows = (
+                    await db.execute(
+                        select(Channel).where(Channel.code.in_(target_channels))
+                    )
+                ).scalars().all()
+                last_ver_by_code: Dict[str, Optional[str]] = {
+                    c.code: (c.config or {}).get("last_snapshot_version")
+                    for c in ch_rows
+                }
+
+                synced_channels = {}
+                for ch_code in target_channels:
                     try:
+                        since_ver = (
+                            None
+                            if is_full_cycle
+                            else last_ver_by_code.get(ch_code)
+                        )
                         res = await poppies_service.sync_channel_pricing_snapshot(
                             db=db,
                             branch_code="10001",
                             channel_code=ch_code,
+                            since_version=since_ver,
                             fmt="map",
                             auto_propagate=True,
+                            prefer_price_book=(since_ver is None),
                         )
                         synced_channels[ch_code] = {
+                            "mode": "delta" if since_ver else "full_price_book",
                             "prices_updated": res.get("prices_updated", 0),
                             "blocked_skus_count": res.get("blocked_skus_count", 0),
                         }
                     except Exception as ch_ex:
                         logger.warning(f"Poppies background pricing sync skipped {ch_code}: {ch_ex}")
                         synced_channels[ch_code] = {"error": str(ch_ex)}
+                    await asyncio.sleep(0.15)
 
                 cttk_res = await poppies_service.sync_stock_cttk_realtime(
-                    db=db, create_missing_inventories=False
+                    db=db, create_missing_inventories=False, batch_size=10000
                 )
                 flipped_skus = cttk_res.get("availability_changed_skus") or []
                 if flipped_skus:
@@ -100,6 +129,8 @@ class PoppiesSyncWorker:
                 self.last_error = None
                 summary = {
                     "success": True,
+                    "cycle": self._cycle_count,
+                    "sync_mode": "full_reconcile" if is_full_cycle else "delta_fast",
                     "channels": synced_channels,
                     "inventories_updated": cttk_res.get("inventories_updated", 0),
                     "availability_flipped_count": len(flipped_skus),
@@ -120,6 +151,7 @@ class PoppiesSyncWorker:
                     )
                 except Exception:
                     pass
+                gc.collect()
 
     async def _background_loop(self) -> None:
         interval = max(60, int(getattr(self.settings, "POPPIES_SYNC_INTERVAL_SECONDS", 300)))

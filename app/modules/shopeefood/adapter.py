@@ -4,7 +4,7 @@ import traceback
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from app.interfaces.channel_adapter import BaseChannelAdapter
 from app.models.channel import Channel
@@ -69,7 +69,7 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 (StoreInventory.product_id == Product.id) & (StoreInventory.store_id == store_id),
                 isouter=True,
             )
-            .options(selectinload(Product.category))
+            .options(selectinload(Product.category), defer(Product.metadata_json))
             .where(Product.is_active == True)
         )
         res = await db.execute(query)
