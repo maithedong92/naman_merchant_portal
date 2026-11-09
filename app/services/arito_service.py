@@ -26,6 +26,8 @@ class AritoInventoryService:
         "10008": "Kho Tổng",
     }
 
+    RETAIL_BRANCHES = ("10001", "10004", "10005", "10006")
+
     def __init__(self, mongo_uri: Optional[str] = None):
         self.settings = get_settings()
         self.mongo_uri = mongo_uri or self.settings.MONGO_URI
@@ -37,6 +39,7 @@ class AritoInventoryService:
             self._client = MongoClient(
                 self.mongo_uri,
                 serverSelectionTimeoutMS=5000,
+                socketTimeoutMS=10000,
                 maxPoolSize=15,
             )
         db = self._client[self.settings.ARITO_DB]
@@ -157,40 +160,51 @@ class AritoInventoryService:
         Gợi ý chi nhánh tối ưu nhất để phân tuyến dựa trên số lượng tồn kho đáp ứng của các sản phẩm.
         items: danh sách sản phẩm gồm [{"sku": "...", "quantity": 1}, ...]
         """
-        skus = [it.get("sku") for it in items if it.get("sku")]
+        sku_qty_map: Dict[str, float] = {}
+        for it in items or []:
+            sku = str(it.get("sku") or "").strip()
+            if not sku:
+                continue
+            try:
+                qty = max(0.0, float(it.get("quantity", 1) or 1))
+            except (ValueError, TypeError):
+                qty = 1.0
+            sku_qty_map[sku] = sku_qty_map.get(sku, 0.0) + qty
+
+        skus = list(sku_qty_map.keys())
         if not skus:
             return {"recommended_store": None, "reason": "Đơn hàng không có mã SKU"}
 
         stock_data = await self.get_inventory_by_skus(skus)
-        store_scores: Dict[str, int] = {code: 0 for code in self.STORE_BRANCH_NAMES}
+        store_scores: Dict[str, int] = {code: 0 for code in self.RETAIL_BRANCHES}
         store_missing_skus: Dict[str, List[str]] = {
-            code: [] for code in self.STORE_BRANCH_NAMES
+            code: [] for code in self.RETAIL_BRANCHES
         }
 
-        for item in items:
-            sku = item.get("sku")
-            req_qty = float(item.get("quantity", 1))
+        for sku, req_qty in sku_qty_map.items():
             sku_info = stock_data.get(sku, {})
             branches = sku_info.get("branches", {})
 
-            for code in self.STORE_BRANCH_NAMES:
-                curr_stock = branches.get(code, {}).get("stock", 0.0)
+            for code in self.RETAIL_BRANCHES:
+                curr_stock = float(branches.get(code, {}).get("stock", 0.0))
                 if curr_stock >= req_qty:
                     store_scores[code] += 1
                 else:
                     store_missing_skus[code].append(sku)
 
-        # Sắp xếp các chi nhánh theo số lượng sản phẩm đáp ứng đủ nhiều nhất
+        # Sắp xếp 4 siêu thị bán lẻ theo số lượng sản phẩm đáp ứng đủ nhiều nhất
         sorted_stores = sorted(
             store_scores.items(), key=lambda kv: kv[1], reverse=True
         )
         best_code, score = sorted_stores[0]
+        recommended_store = best_code if score > 0 else None
+        recommended_name = self.STORE_BRANCH_NAMES.get(best_code) if score > 0 else None
 
         return {
-            "recommended_store": best_code,
-            "store_name": self.STORE_BRANCH_NAMES.get(best_code),
+            "recommended_store": recommended_store,
+            "store_name": recommended_name,
             "fulfilled_items_count": score,
-            "total_items_count": len(items),
+            "total_items_count": len(sku_qty_map),
             "missing_items": store_missing_skus.get(best_code, []),
             "ranking": [
                 {

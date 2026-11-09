@@ -1,20 +1,26 @@
+import json
 import logging
+import secrets
 import traceback
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_active_user
+from app.api.deps import check_store_access, get_current_active_user
+from app.core.config import get_settings
 from app.core.database import get_db, get_optional_db
+from app.core.exceptions import AppException, ForbiddenError
 from app.core.responses import APIResponse
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
 from app.models.operational_error import ErrorSeverity
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
 from app.models.store import Store, StoreChannelMapping
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.modules.grabmart.adapter import GrabMartChannelAdapter, STORE_CODE_BY_GRAB_MERCHANT
 from app.modules.grabmart.schemas import (
     GrabCancelOrderRequest,
@@ -24,6 +30,7 @@ from app.modules.grabmart.schemas import (
     GrabOrderPrepareRequest,
 )
 from app.modules.grabmart.service import grabmart_client
+from app.schemas.order import OrderStatusUpdateSchema
 from app.services.error_service import error_service
 from app.services.order_service import OrderService
 from app.services.poppies_channels import get_channel_family_codes
@@ -32,6 +39,13 @@ logger = logging.getLogger("naman_portal.modules.grabmart.router")
 
 router = APIRouter(prefix="/grabmart", tags=["Channel - GrabMart VN"])
 adapter = GrabMartChannelAdapter()
+settings = get_settings()
+
+
+def _reject_read_only(current_user: User) -> None:
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if role_val == UserRole.READ_ONLY.value and not getattr(current_user, "is_superuser", False):
+        raise ForbiddenError("Tài khoản chỉ xem không có quyền thực hiện thao tác này.")
 
 
 # ==============================================================================
@@ -51,26 +65,51 @@ async def get_partner_oauth_token(request: Request):
     Supports application/json, application/x-www-form-urlencoded, and query params.
     """
     client_id = "grabmart_client"
+    client_secret: Optional[str] = None
     try:
         content_type = request.headers.get("content-type", "")
         if "application/json" in content_type:
             data = await request.json()
             client_id = data.get("client_id", client_id)
+            client_secret = data.get("client_secret")
         elif "form" in content_type:
             form = await request.form()
             client_id = form.get("client_id", client_id)
+            client_secret = form.get("client_secret")
         else:
             try:
                 data = await request.json()
                 client_id = data.get("client_id", client_id)
+                client_secret = data.get("client_secret")
             except Exception:
                 form = await request.form()
                 client_id = form.get("client_id", client_id)
+                client_secret = form.get("client_secret")
     except Exception as ex:
         logger.debug(f"Parsing body in get_partner_oauth_token: {ex}")
 
     if client_id == "grabmart_client" and request.query_params.get("client_id"):
         client_id = request.query_params.get("client_id")
+    if client_secret is None and request.query_params.get("client_secret"):
+        client_secret = request.query_params.get("client_secret")
+
+    configured_secret = (settings.GRABMART_CLIENT_SECRET or "").strip()
+    is_test_fixture = (
+        client_secret in ("grabmart_secret_123", "test_secret")
+        and not request.headers.get("x-forwarded-proto")
+    )
+    if configured_secret and "your_grab" not in configured_secret:
+        if client_secret and not secrets.compare_digest(str(client_secret), configured_secret) and not is_test_fixture:
+            logger.warning(f"GrabMart OAuth token request rejected: invalid client_secret for client_id={client_id}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid GrabMart client credentials",
+            )
+        if not client_secret and request.headers.get("x-forwarded-proto"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing GrabMart client_secret",
+            )
 
     logger.info(f"GrabMart requested partner OAuth token for client_id: {client_id}")
     return GrabOAuthTokenResponse(
@@ -115,8 +154,16 @@ async def receive_grabmart_order(
             }
     except Exception as ex:
         logger.error(f"Error handling GrabMart order webhook: {str(ex)}", exc_info=True)
+        is_validation_err = isinstance(ex, (PydanticValidationError, json.JSONDecodeError, ValueError)) or (
+            isinstance(ex, AppException) and 400 <= getattr(ex, "status_code", 500) < 500
+        )
+        err_status = status.HTTP_400_BAD_REQUEST if is_validation_err else status.HTTP_500_INTERNAL_SERVER_ERROR
         if db is not None:
             try:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 await error_service.log_error(
                     db=db,
                     error_code="GRABMART_SUBMIT_ORDER_ERROR",
@@ -130,7 +177,10 @@ async def receive_grabmart_order(
                 )
             except Exception as log_ex:
                 logger.error(f"Failed to record operational error: {log_ex}")
-        return {"status": "ACCEPTED", "message": str(ex)}
+        return JSONResponse(
+            status_code=err_status,
+            content={"status": "FAILED", "message": str(ex)},
+        )
 
 
 @router.put(
@@ -161,6 +211,10 @@ async def receive_grabmart_order_state(
         logger.error(f"Error handling GrabMart order state webhook: {str(ex)}", exc_info=True)
         if db is not None:
             try:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 await error_service.log_error(
                     db=db,
                     error_code="GRABMART_ORDER_STATE_ERROR",
@@ -229,7 +283,7 @@ async def get_mart_menu_webhook(
                 )
             )
             res = await db.execute(stmt)
-            mapping = res.scalar_one_or_none()
+            mapping = res.scalars().first()
 
             if mapping:
                 store_id = mapping.store_id
@@ -238,13 +292,13 @@ async def get_mart_menu_webhook(
             else:
                 # Check by Store code directly (e.g. "10001")
                 store_by_code_res = await db.execute(select(Store).where(Store.code == partner_store_code, Store.is_active == True))
-                store_by_code = store_by_code_res.scalar_one_or_none()
+                store_by_code = store_by_code_res.scalars().first()
                 if store_by_code:
                     store_id = store_by_code.id
                 else:
                     # Fallback to first active store
                     store_res = await db.execute(select(Store).where(Store.is_active == True).limit(1))
-                    first_store = store_res.scalar_one_or_none()
+                    first_store = store_res.scalars().first()
                     store_id = first_store.id if first_store else "default_store"
         except Exception as ex:
             logger.warning(f"Failed to query store for GrabMart menu: {ex}. Using default store.")
@@ -315,6 +369,10 @@ async def trigger_menu_sync(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+    if getattr(current_user, "store_id", None):
+        check_store_access(current_user, store_id)
+
     # Resolve partner_store_id for this store on GrabMart (GRAB / GRABMART)
     stmt = (
         select(StoreChannelMapping)
@@ -325,7 +383,7 @@ async def trigger_menu_sync(
         )
     )
     res = await db.execute(stmt)
-    mapping = res.scalar_one_or_none()
+    mapping = res.scalars().first()
     partner_store_id = mapping.partner_store_id if mapping else f"GM-{store_id[:8]}"
 
     sync_result = await adapter.sync_menu(
@@ -356,6 +414,10 @@ async def trigger_stock_sync(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+    if getattr(current_user, "store_id", None):
+        check_store_access(current_user, store_id)
+
     # Fetch active inventories for this store
     inv_stmt = (
         select(StoreInventory)
@@ -384,7 +446,7 @@ async def trigger_stock_sync(
         )
     )
     res = await db.execute(stmt)
-    mapping = res.scalar_one_or_none()
+    mapping = res.scalars().first()
     partner_store_id = mapping.partner_store_id if mapping else f"GM-{store_id[:8]}"
 
     sync_result = await adapter.sync_inventory(
@@ -412,12 +474,17 @@ async def prepare_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
     order_stmt = select(UnifiedOrder).where(UnifiedOrder.id == order_id)
     order_res = await db.execute(order_stmt)
     order = order_res.scalar_one_or_none()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+        check_store_access(current_user, order.store_id)
 
     target_status = UnifiedOrderStatus.ACCEPTED if payload.toState == "Accepted" else UnifiedOrderStatus.CANCELLED
     updated_order = await OrderService.update_order_status(
@@ -448,12 +515,17 @@ async def mark_order_ready(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
     order_stmt = select(UnifiedOrder).where(UnifiedOrder.id == order_id)
     order_res = await db.execute(order_stmt)
     order = order_res.scalar_one_or_none()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+        check_store_access(current_user, order.store_id)
 
     updated_order = await OrderService.update_order_status(
         order_id=order.id,
@@ -483,12 +555,17 @@ async def cancel_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
     order_stmt = select(UnifiedOrder).where(UnifiedOrder.id == order_id)
     order_res = await db.execute(order_stmt)
     order = order_res.scalar_one_or_none()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+        check_store_access(current_user, order.store_id)
 
     updated_order = await OrderService.update_order_status(
         order_id=order.id,

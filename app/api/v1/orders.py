@@ -142,7 +142,8 @@ async def get_order_detail(
 ):
     """Get complete order details including items and state transition history."""
     order = await OrderService.get_order_by_id(order_id, db)
-    check_store_access(current_user, order.store_id)
+    if not (current_user.store_id is None and current_user.role == UserRole.READ_ONLY.value):
+        check_store_access(current_user, order.store_id)
     return APIResponse.ok(data=order)
 
 
@@ -160,6 +161,9 @@ async def update_order_status(
     # Fetch order first to check store access
     order = await OrderService.get_order_by_id(order_id, db)
     check_store_access(current_user, order.store_id)
+
+    # Enforce audit trail integrity: always record authenticated user's username
+    payload.changed_by = current_user.username
 
     updated_order = await OrderService.update_order_status(order_id, payload, db)
     return APIResponse.ok(

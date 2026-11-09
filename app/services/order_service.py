@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import AppException, ConflictError, NotFoundError, ValidationError
 from app.models.channel import Channel
-from app.models.inventory import StoreInventory
+from app.models.inventory import InventoryStockLog, StoreInventory
 from app.models.order import OrderItem, OrderStatusHistory, UnifiedOrder, UnifiedOrderStatus
 from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
@@ -20,22 +20,29 @@ from app.services.poppies_channels import (
 
 logger = logging.getLogger("naman_portal.order_service")
 
-# State machine allowed transitions
+VN_TZ = timezone(timedelta(hours=7))
+
+# State machine allowed transitions (including partner webhook catch-up transitions)
 VALID_STATUS_TRANSITIONS: Dict[UnifiedOrderStatus, List[UnifiedOrderStatus]] = {
     UnifiedOrderStatus.PENDING: [
         UnifiedOrderStatus.ACCEPTED,
         UnifiedOrderStatus.PREPARING,
+        UnifiedOrderStatus.READY,
+        UnifiedOrderStatus.PICKED_UP,
+        UnifiedOrderStatus.DELIVERED,
         UnifiedOrderStatus.CANCELLED,
     ],
     UnifiedOrderStatus.ACCEPTED: [
         UnifiedOrderStatus.PREPARING,
         UnifiedOrderStatus.READY,
         UnifiedOrderStatus.PICKED_UP,
+        UnifiedOrderStatus.DELIVERED,
         UnifiedOrderStatus.CANCELLED,
     ],
     UnifiedOrderStatus.PREPARING: [
         UnifiedOrderStatus.READY,
         UnifiedOrderStatus.PICKED_UP,
+        UnifiedOrderStatus.DELIVERED,
         UnifiedOrderStatus.CANCELLED,
     ],
     UnifiedOrderStatus.READY: [
@@ -102,19 +109,20 @@ class OrderService:
             StoreChannelMapping.partner_store_id.in_(candidate_partner_ids)
         ).options(selectinload(StoreChannelMapping.store))
         mapping_res = await db.execute(mapping_stmt)
-        mapping = mapping_res.scalar_one_or_none()
+        mapping = mapping_res.scalars().first()
         
         if not mapping:
             # Check by Store code (e.g. 10001, 10004, 10005, 10006)
             store_stmt = select(Store).where(Store.code.in_(candidate_partner_ids))
             store_res = await db.execute(store_stmt)
-            store = store_res.scalar_one_or_none()
+            store = store_res.scalars().first()
+            matched_exact_store = store is not None
 
             if not store:
                 # Check any fallback store
-                fallback_stmt = select(Store).where(Store.is_active == True).limit(1)
+                fallback_stmt = select(Store).where(Store.is_active == True).order_by(Store.code).limit(1)
                 fallback_res = await db.execute(fallback_stmt)
-                store = fallback_res.scalar_one_or_none()
+                store = fallback_res.scalars().first()
 
             if not store:
                 # Auto-create store if database is completely fresh
@@ -126,38 +134,47 @@ class OrderService:
                 )
                 db.add(store)
                 await db.flush()
+                matched_exact_store = True
 
             store_id = store.id
-            # Create mapping for future orders only if store+channel has no mapping yet
-            try:
-                existing_scm_res = await db.execute(
-                    select(StoreChannelMapping).where(
-                        StoreChannelMapping.store_id == store_id,
-                        StoreChannelMapping.channel_id == channel.id,
+            # Create mapping for future orders ONLY if store matched explicitly by code (never bind unknown partner_store_id to fallback store)
+            if matched_exact_store:
+                try:
+                    existing_scm_res = await db.execute(
+                        select(StoreChannelMapping).where(
+                            StoreChannelMapping.store_id == store_id,
+                            StoreChannelMapping.channel_id == channel.id,
+                        )
                     )
-                )
-                if existing_scm_res.scalar_one_or_none() is None:
-                    preferred_id = (
-                        str(raw_payload_dict.get("merchantID")).strip()
-                        if (isinstance(raw_payload_dict, dict) and raw_payload_dict.get("merchantID"))
-                        else str(partner_store_id)
-                    )
-                    new_map = StoreChannelMapping(
-                        store_id=store_id,
-                        channel_id=channel.id,
-                        partner_store_id=preferred_id,
-                        is_active=True
-                    )
-                    db.add(new_map)
-                    await db.flush()
-            except Exception:
-                pass
+                    if existing_scm_res.scalars().first() is None:
+                        preferred_id = (
+                            str(raw_payload_dict.get("merchantID")).strip()
+                            if (isinstance(raw_payload_dict, dict) and raw_payload_dict.get("merchantID"))
+                            else str(partner_store_id)
+                        )
+                        new_map = StoreChannelMapping(
+                            store_id=store_id,
+                            channel_id=channel.id,
+                            partner_store_id=preferred_id,
+                            is_active=True
+                        )
+                        db.add(new_map)
+                        await db.flush()
+                except Exception:
+                    pass
         else:
             store_id = mapping.store_id
 
-        # 4. Generate Internal Order Code: NAM-<CHANNEL_CODE>-YYYYMMDD-<COUNT>
-        today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
-        order_code = f"NAM-{channel_code[:2]}-{today_str}-{channel_order_id[-6:]}"
+        # 4. Generate Internal Order Code: NAM-<CHANNEL_PREFIX>-YYYYMMDD-<SUFFIX>
+        prefix_map = {
+            "SHOPEEFOOD": "SF",
+            "SHOPEEMART": "SM",
+            "GRABMART": "GM",
+            "GRAB": "GM",
+        }
+        ch_prefix = prefix_map.get(channel_code.upper(), channel_code[:3].upper())
+        today_str = datetime.now(VN_TZ).strftime("%Y%m%d")
+        order_code = f"NAM-{ch_prefix}-{today_str}-{str(channel_order_id)[-6:]}"
 
         # 5. Construct Unified Order
         order = UnifiedOrder(
@@ -212,23 +229,44 @@ class OrderService:
 
             # Reserve physical inventory for active non-cancelled orders
             if order.status != UnifiedOrderStatus.CANCELLED and sku_val and sku_val != "UNKNOWN":
-                inv_res = await db.execute(
-                    select(StoreInventory).where(
+                inv_stmt = (
+                    select(StoreInventory)
+                    .where(
                         StoreInventory.store_id == store_id,
-                        StoreInventory.sku == sku_val
+                        StoreInventory.sku == sku_val,
                     )
+                    .with_for_update()
                 )
-                inv_obj = inv_res.scalar_one_or_none()
+                inv_res = await db.execute(inv_stmt)
+                inv_obj = inv_res.scalars().first()
                 if inv_obj:
+                    qty_before = float(inv_obj.available_stock or 0.0)
                     inv_obj.reserved_stock = float(inv_obj.reserved_stock or 0.0) + qty_val
-                    inv_obj.available_stock = max(0.0, float(inv_obj.total_stock or 0.0) - inv_obj.reserved_stock)
-                    if inv_obj.available_stock <= 0.0:
-                        inv_obj.is_out_of_stock = True
+                    inv_obj.available_stock = max(
+                        0.0,
+                        float(inv_obj.total_stock or 0.0)
+                        - float(inv_obj.reserved_stock)
+                        - float(inv_obj.safety_stock or 0.0),
+                    )
+                    inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
+                    if inv_obj.is_out_of_stock:
                         depleted_stock_items.append({
                             "sku": sku_val,
                             "available_stock": 0,
                             "is_out_of_stock": True
                         })
+                    db.add(
+                        InventoryStockLog(
+                            store_id=store_id,
+                            sku=sku_val,
+                            change_type="ORDER_RESERVE",
+                            quantity_before=qty_before,
+                            quantity_delta=-float(qty_val),
+                            quantity_after=float(inv_obj.available_stock),
+                            reference_id=order.order_code,
+                            note=f"Giữ tồn đơn {channel_code} #{channel_order_id}",
+                        )
+                    )
 
         # 7. Add Initial History Log
         history = OrderStatusHistory(
@@ -343,9 +381,9 @@ class OrderService:
         store_id: Optional[str],
         db: AsyncSession
     ) -> Dict[str, Any]:
-        """Calculate order metric counters for dashboard KPI tiles."""
-        now = datetime.now(timezone.utc)
-        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        """Calculate order metric counters for dashboard KPI tiles (Vietnam UTC+7 day boundary)."""
+        now_vn = datetime.now(VN_TZ)
+        start_of_day = now_vn.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
 
         # Total
         total_stmt = select(func.count(UnifiedOrder.id))
@@ -397,9 +435,9 @@ class OrderService:
             cancelled_stmt = cancelled_stmt.where(UnifiedOrder.store_id == store_id)
         cancelled_today_count = (await db.execute(cancelled_stmt)).scalar() or 0
 
-        # Revenue today
+        # Revenue today (exclude CANCELLED and unaccepted PENDING orders)
         revenue_stmt = select(func.coalesce(func.sum(UnifiedOrder.total_amount), 0.0)).where(
-            UnifiedOrder.status != UnifiedOrderStatus.CANCELLED,
+            UnifiedOrder.status.not_in([UnifiedOrderStatus.CANCELLED, UnifiedOrderStatus.PENDING]),
             UnifiedOrder.created_at >= start_of_day
         )
         if store_id:
@@ -451,30 +489,108 @@ class OrderService:
 
         # Update order entity
         order.status = target_status
+        now_utc = datetime.now(timezone.utc)
         if data.estimated_ready_time:
             order.estimated_ready_time = data.estimated_ready_time
         if target_status == UnifiedOrderStatus.READY:
-            order.completed_at = datetime.now(timezone.utc)
+            if order.completed_at is None:
+                order.completed_at = now_utc
         elif target_status == UnifiedOrderStatus.PICKED_UP:
-            order.picked_up_at = datetime.now(timezone.utc)
-        elif target_status == UnifiedOrderStatus.CANCELLED:
-            order.cancellation_reason = data.cancellation_reason or data.note
-            order.cancelled_by = data.changed_by
-            # Release reserved stock back to available_stock
+            order.picked_up_at = now_utc
+        elif target_status == UnifiedOrderStatus.DELIVERED:
+            if order.picked_up_at is None:
+                order.picked_up_at = now_utc
+            order.completed_at = now_utc
+
+        restocked_items: List[Dict[str, Any]] = []
+
+        # Finalize stock deduction when order is handed over / delivered
+        if target_status in (UnifiedOrderStatus.PICKED_UP, UnifiedOrderStatus.DELIVERED) and current_status not in (
+            UnifiedOrderStatus.PICKED_UP,
+            UnifiedOrderStatus.DELIVERED,
+            UnifiedOrderStatus.CANCELLED,
+        ):
             for itm in (order.items or []):
                 if itm.sku and itm.sku != "UNKNOWN":
                     inv_res = await db.execute(
-                        select(StoreInventory).where(
+                        select(StoreInventory)
+                        .where(
                             StoreInventory.store_id == order.store_id,
-                            StoreInventory.sku == itm.sku
+                            StoreInventory.sku == itm.sku,
                         )
+                        .with_for_update()
                     )
-                    inv_obj = inv_res.scalar_one_or_none()
+                    inv_obj = inv_res.scalars().first()
                     if inv_obj:
-                        inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - int(itm.quantity or 1))
-                        inv_obj.available_stock = max(0.0, float(inv_obj.total_stock or 0.0) - inv_obj.reserved_stock)
-                        if inv_obj.available_stock > 0:
-                            inv_obj.is_out_of_stock = False
+                        qty_val = float(itm.quantity or 1)
+                        qty_before = float(inv_obj.total_stock or 0.0)
+                        inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - qty_val)
+                        inv_obj.total_stock = max(0.0, float(inv_obj.total_stock or 0.0) - qty_val)
+                        inv_obj.available_stock = max(
+                            0.0,
+                            float(inv_obj.total_stock)
+                            - float(inv_obj.reserved_stock)
+                            - float(inv_obj.safety_stock or 0.0),
+                        )
+                        inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
+                        db.add(
+                            InventoryStockLog(
+                                store_id=order.store_id,
+                                sku=itm.sku,
+                                change_type="ORDER_COMPLETE",
+                                quantity_before=qty_before,
+                                quantity_delta=-qty_val,
+                                quantity_after=float(inv_obj.total_stock),
+                                reference_id=order.order_code,
+                                note=f"Xuất kho hoàn tất đơn {order.order_code}",
+                            )
+                        )
+        elif target_status == UnifiedOrderStatus.CANCELLED and current_status != UnifiedOrderStatus.CANCELLED:
+            order.cancellation_reason = data.cancellation_reason or data.note
+            order.cancelled_by = data.changed_by
+            # Only auto-restore shelf stock if order was NOT already picked up by driver
+            if current_status != UnifiedOrderStatus.PICKED_UP:
+                for itm in (order.items or []):
+                    if itm.sku and itm.sku != "UNKNOWN":
+                        inv_res = await db.execute(
+                            select(StoreInventory)
+                            .where(
+                                StoreInventory.store_id == order.store_id,
+                                StoreInventory.sku == itm.sku,
+                            )
+                            .with_for_update()
+                        )
+                        inv_obj = inv_res.scalars().first()
+                        if inv_obj:
+                            qty_val = float(itm.quantity or 1)
+                            qty_before = float(inv_obj.available_stock or 0.0)
+                            was_oos = bool(inv_obj.is_out_of_stock)
+                            inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - qty_val)
+                            inv_obj.available_stock = max(
+                                0.0,
+                                float(inv_obj.total_stock or 0.0)
+                                - float(inv_obj.reserved_stock)
+                                - float(inv_obj.safety_stock or 0.0),
+                            )
+                            inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
+                            db.add(
+                                InventoryStockLog(
+                                    store_id=order.store_id,
+                                    sku=itm.sku,
+                                    change_type="ORDER_CANCEL",
+                                    quantity_before=qty_before,
+                                    quantity_delta=qty_val,
+                                    quantity_after=float(inv_obj.available_stock),
+                                    reference_id=order.order_code,
+                                    note=f"Hoàn tồn do hủy đơn {order.order_code}",
+                                )
+                            )
+                            if was_oos and not inv_obj.is_out_of_stock:
+                                restocked_items.append({
+                                    "sku": itm.sku,
+                                    "available_stock": int(inv_obj.available_stock),
+                                    "is_out_of_stock": False,
+                                })
 
         # Add history log
         history = OrderStatusHistory(
@@ -487,11 +603,32 @@ class OrderService:
         db.add(history)
         await db.commit()
 
+        # Propagate restocked items back to external channels if any SKU flipped from OOS to available
+        if restocked_items:
+            try:
+                mappings_res = await db.execute(
+                    select(StoreChannelMapping)
+                    .options(selectinload(StoreChannelMapping.channel))
+                    .where(StoreChannelMapping.store_id == order.store_id, StoreChannelMapping.is_active == True)
+                )
+                for m in mappings_res.scalars().all():
+                    if m.channel and m.partner_store_id:
+                        ch_adapter = channel_registry.get(m.channel.code)
+                        if ch_adapter:
+                            await ch_adapter.sync_inventory(
+                                store_id=order.store_id,
+                                partner_store_id=m.partner_store_id,
+                                stock_items=restocked_items,
+                                db=db,
+                            )
+            except Exception as sync_ex:
+                logger.warning(f"Could not propagate restocked items after cancelling order {order.order_code}: {sync_ex}")
+
         # Notify external channel adapter if enabled and requested
         if sync_to_channel:
             channel_stmt = select(Channel).where(Channel.id == order.channel_id)
             channel_res = await db.execute(channel_stmt)
-            channel = channel_res.scalar_one_or_none()
+            channel = channel_res.scalars().first()
 
             if channel:
                 adapter = channel_registry.get(channel.code)
@@ -503,7 +640,7 @@ class OrderService:
                             StoreChannelMapping.store_id == order.store_id
                         )
                         mapping_res = await db.execute(mapping_stmt)
-                        mapping = mapping_res.scalar_one_or_none()
+                        mapping = mapping_res.scalars().first()
                         partner_store_id = mapping.partner_store_id if mapping else ""
 
                         await adapter.update_order_status(

@@ -1319,17 +1319,18 @@ class ShopeeMartClient:
         time_to: int,
         order_status: Optional[str] = None,
         page_size: int = 50,
-        shop_id: Optional[str] = None
+        shop_id: Optional[str] = None,
+        time_range_field: str = "create_time",
     ) -> Dict[str, Any]:
         """
         Query order list by time range and status for reconciliation.
         Endpoint: GET /api/v2/order/get_order_list
         """
         params: Dict[str, Any] = {
-            "time_range_field": "create_time",
+            "time_range_field": time_range_field or "create_time",
             "time_from": time_from,
             "time_to": time_to,
-            "page_size": page_size
+            "page_size": page_size,
         }
         if order_status:
             params["order_status"] = order_status
@@ -1338,7 +1339,7 @@ class ShopeeMartClient:
             method="GET",
             path="/api/v2/order/get_order_list",
             shop_id=shop_id,
-            params=params
+            params=params,
         )
 
     async def handle_buyer_cancellation(

@@ -1,13 +1,14 @@
 import logging
 from typing import Any, Dict, List, Optional
 import io
+import os
 import re
 import urllib.parse
 from fastapi import APIRouter, Depends, Query, Body, UploadFile, File, Form, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user, require_super_admin, require_store_manager
+from app.api.deps import get_current_user, require_super_admin, require_store_manager, require_staff
 from app.core.responses import APIResponse
 from app.models.user import User
 from app.modules.haravan.sync_worker import haravan_sync_worker
@@ -58,7 +59,7 @@ async def trigger_haravan_sync(
 ):
     result = await haravan_sync_worker.sync_once(limit=limit)
     if not result.get("success"):
-        return APIResponse.error(
+        return APIResponse.fail(
             message=result.get("error", "Lỗi trong quá trình đồng bộ đơn hàng."),
             error_code="HARAVAN_SYNC_ERROR",
         )
@@ -75,10 +76,10 @@ async def trigger_haravan_sync(
     description="Tra cứu số lượng tồn kho của danh sách SKU trên 4 siêu thị Nam An Market (10001, 10004, 10005, 10006).",
 )
 async def check_arito_inventory(
-    skus: str = Query(..., description="Danh sách SKU cách nhau bởi dấu phẩy, ví dụ: '001020,001021'"),
+    skus: str = Query(..., max_length=5000, description="Danh sách SKU cách nhau bởi dấu phẩy, ví dụ: '001020,001021'"),
     current_user: User = Depends(get_current_user),
 ):
-    sku_list = [s.strip() for s in skus.split(",") if s.strip()]
+    sku_list = [s.strip() for s in skus.split(",") if s.strip()][:200]
     stock_data = await arito_service.get_inventory_by_skus(sku_list)
     return APIResponse.ok(
         data=stock_data,
@@ -141,8 +142,8 @@ class ShipOrderRequest(BaseModel):
 
 
 class CompleteOrderRequest(BaseModel):
-    actual_total: float = Field(..., description="Tổng tiền hàng thực tế sau cân/soạn")
-    actual_shipping: float = Field(0.0, description="Phí ship thực tế")
+    actual_total: float = Field(..., ge=0, description="Tổng tiền hàng thực tế sau cân/soạn")
+    actual_shipping: float = Field(0.0, ge=0, description="Phí ship thực tế")
     actual_carrier: str = Field("Nam An Market", description="Đơn vị vận chuyển thực tế")
     tracking_code: str = Field("", description="Mã vận đơn thực tế")
     note: str = Field("", description="Ghi chú hoàn thành đơn")
@@ -169,7 +170,7 @@ async def list_haravan_orders(
     search: Optional[str] = Query(None, description="Tìm theo mã đơn (#NA...), SĐT, tên khách hàng"),
     unassigned_only: bool = Query(False, description="Chỉ lấy các đơn CHƯA PHÂN TUYẾN (Cần tổng đài điều phối)"),
     incomplete_only: bool = Query(False, description="Chỉ lấy các đơn CHƯA HOÀN THÀNH (khác Hoàn thành và Đã hủy)"),
-    page: int = Query(1, ge=1, description="Trang hiện tại"),
+    page: int = Query(1, ge=1, le=1000, description="Trang hiện tại"),
     page_size: int = Query(25, ge=1, le=100, description="Số đơn mỗi trang"),
     current_user: User = Depends(get_current_user),
 ):
@@ -266,7 +267,7 @@ async def assign_haravan_order(
 async def reassign_haravan_order(
     order_id: str,
     payload: ReassignOrderRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
     updated = await haravan_order_service.request_reassignment(
         order_id_or_sn=order_id,
@@ -288,7 +289,7 @@ async def reassign_haravan_order(
 )
 async def pack_haravan_order(
     order_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
     updated = await haravan_order_service.pack_order(
         order_id_or_sn=order_id,
@@ -309,7 +310,7 @@ async def pack_haravan_order(
 async def ship_haravan_order(
     order_id: str,
     payload: ShipOrderRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
     updated = await haravan_order_service.ship_order(
         order_id_or_sn=order_id,
@@ -333,7 +334,7 @@ async def ship_haravan_order(
 async def complete_haravan_order(
     order_id: str,
     payload: CompleteOrderRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
     updated = await haravan_order_service.complete_order(
         order_id_or_sn=order_id,
@@ -359,7 +360,7 @@ async def complete_haravan_order(
 async def cancel_haravan_order(
     order_id: str,
     payload: CancelOrderRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
     updated = await haravan_order_service.cancel_order(
         order_id_or_sn=order_id,
@@ -386,7 +387,7 @@ class AdminNoteRequest(BaseModel):
 async def update_haravan_admin_note(
     order_id: str,
     payload: AdminNoteRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
     updated = await haravan_order_service.update_admin_note(
         order_id_or_sn=order_id,
@@ -413,29 +414,36 @@ async def upload_order_file(
     order_id: str,
     file: UploadFile = File(..., description="Tệp tin cần tải lên (PDF, PNG, JPG, WEBP)"),
     file_type: str = Form("order", description="Loại tệp: 'order' (Hóa đơn/Đơn gốc) hoặc 'tracking' (Vận đơn/Phiếu gửi)"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
-    if file_type not in ["order", "tracking"]:
-        return APIResponse.error(
+    if file_type not in ("order", "tracking"):
+        return APIResponse.fail(
             message="Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.",
             error_code="INVALID_FILE_TYPE",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await file.read(file_service.MAX_FILE_SIZE + 1)
     if not file_bytes:
-        return APIResponse.error(
+        return APIResponse.fail(
             message="Tệp tin tải lên rỗng (0 bytes).",
             error_code="EMPTY_FILE",
         )
 
-    filename = file.filename or "attachment.pdf"
+    if len(file_bytes) > file_service.MAX_FILE_SIZE:
+        max_mb = file_service.MAX_FILE_SIZE // (1024 * 1024)
+        return APIResponse.fail(
+            message=f"Dung lượng tệp vượt quá giới hạn cho phép ({max_mb}MB).",
+            error_code="FILE_TOO_LARGE",
+        )
+
+    filename = os.path.basename(str(file.filename or "attachment.pdf").replace("\\", "/")) or "attachment.pdf"
     success, file_url, err = await file_service.upload_file(
         file_bytes=file_bytes,
         filename=filename,
         file_type=file_type,
     )
     if not success:
-        return APIResponse.error(
+        return APIResponse.fail(
             message=f"Tải lên tệp thất bại: {err}",
             error_code="FILE_UPLOAD_FAILED",
         )
@@ -470,10 +478,10 @@ async def upload_order_file(
 async def delete_order_file(
     order_id: str,
     file_type: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
 ):
-    if file_type not in ["order", "tracking"]:
-        return APIResponse.error(
+    if file_type not in ("order", "tracking"):
+        return APIResponse.fail(
             message="Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.",
             error_code="INVALID_FILE_TYPE",
         )
@@ -499,6 +507,9 @@ async def download_order_file_proxy(
     file_type: str,
     current_user: User = Depends(get_current_user),
 ):
+    if file_type not in ("order", "tracking"):
+        return Response(content="Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.", status_code=400)
+
     order = await haravan_order_service.get_order_detail(order_id, current_user)
     prefix = f"{file_type}_file"
     file_url = order.get("internal", {}).get(prefix)
@@ -512,7 +523,9 @@ async def download_order_file_proxy(
     encoded_filename = urllib.parse.quote(filename)
     ascii_filename = re.sub(r'[^\x20-\x7E]', '_', filename)
     headers = {
-        "Content-Disposition": f'inline; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}'
+        "Content-Disposition": f'inline; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}',
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox",
     }
 
     return StreamingResponse(

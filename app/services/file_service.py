@@ -12,7 +12,9 @@ Kế thừa và đồng bộ 100% logic xử lý từ ứng dụng desktop pmdon
 import logging
 import mimetypes
 import os
+import posixpath
 import re
+import urllib.parse
 from typing import Any, Dict, Optional, Tuple
 import httpx
 
@@ -25,6 +27,7 @@ class FileService:
     """Service xử lý upload, download và chuẩn hóa tệp đính kèm đơn hàng."""
 
     ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+    ALLOWED_HOSTS = {"namanapi.namanmarket.com"}
     MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB
 
     def __init__(self):
@@ -39,7 +42,7 @@ class FileService:
         """
         Chuẩn hóa URL download từ dữ liệu lưu trong database hoặc path server trả về.
         Tuân thủ 100% logic clean_file_url & get_download_url từ pmdonhang:
-          - Nếu là URL tuyệt đối có schema http/https: giữ nguyên
+          - Nếu là URL tuyệt đối có schema http/https: chỉ cho phép host namanapi.namanmarket.com (chống SSRF)
           - Nếu chứa '/orders/': định dạng https://namanapi.namanmarket.com/orders/{filename}?image_path={filename}
           - Nếu chứa '/uploadIMG/': định dạng https://namanapi.namanmarket.com/images/{filename}
           - Các trường hợp khác: fallback về https://namanapi.namanmarket.com/files/{filename}
@@ -51,30 +54,47 @@ class FileService:
         if not url_str:
             return ""
 
-        # Nếu đã là URL hợp lệ đầy đủ bắt đầu bằng http:// hoặc https://
-        if url_str.startswith(("http://", "https://")):
+        # Nếu là URL có scheme hoặc bắt đầu bằng // -> Kiểm tra chặt hostname để chống SSRF
+        if url_str.startswith(("http://", "https://", "//")) or "://" in url_str:
+            try:
+                parsed = urllib.parse.urlparse(url_str)
+            except Exception:
+                return ""
+            if parsed.scheme not in ("http", "https"):
+                logger.warning(f"Từ chối URL tệp có scheme không hợp lệ: {url_str}")
+                return ""
+            hostname = (parsed.hostname or "").lower()
+            if hostname not in self.ALLOWED_HOSTS:
+                logger.warning(f"Chặn SSRF: URL tệp trỏ tới host không được phép '{hostname}'")
+                return ""
             return url_str
 
         # Chuẩn hóa dấu phân cách thư mục
         path = url_str.replace("\\", "/")
         path = re.sub(r"^[A-Za-z]:/", "", path)  # Bỏ ổ đĩa Windows C:/ nếu có
         filename = os.path.basename(path)
+        if not filename or filename in (".", ".."):
+            return ""
 
         if "/orders/" in path:
             return f"{self.download_order_url}{filename}?image_path={filename}"
         elif "/uploadIMG/" in path or "/images/" in path:
             return f"{self.download_image_url}{filename}"
         elif path.startswith("/"):
-            return f"{self.base_url}{path}"
+            norm_path = posixpath.normpath(path)
+            if not norm_path.startswith("/") or norm_path.startswith("//"):
+                norm_path = "/" + filename
+            return f"{self.base_url}{norm_path}"
         else:
             return f"{self.download_file_url}{filename}"
 
     def validate_file(self, filename: str, file_size: int) -> Tuple[bool, str]:
         """Kiểm tra tính hợp lệ của định dạng và dung lượng file."""
-        if not filename:
+        safe_name = os.path.basename(str(filename or "").replace("\\", "/")).strip()
+        if not safe_name:
             return False, "Tên tệp không được để trống."
 
-        _, ext = os.path.splitext(filename)
+        _, ext = os.path.splitext(safe_name)
         ext = ext.lower()
 
         if ext not in self.ALLOWED_EXTENSIONS:
@@ -105,16 +125,20 @@ class FileService:
         Returns:
             (success: bool, file_url: str, error_message: str)
         """
-        valid, err = self.validate_file(filename, len(file_bytes))
+        if file_type not in ("order", "tracking"):
+            return False, "", "Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'."
+
+        safe_name = os.path.basename(str(filename or "attachment.bin").replace("\\", "/")).strip() or "attachment.bin"
+        valid, err = self.validate_file(safe_name, len(file_bytes))
         if not valid:
             return False, "", err
 
-        mime_type, _ = mimetypes.guess_type(filename)
+        mime_type, _ = mimetypes.guess_type(safe_name)
         if not mime_type:
-            mime_type = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
+            mime_type = "application/pdf" if safe_name.lower().endswith(".pdf") else "application/octet-stream"
 
         files = {
-            "file": (filename, file_bytes, mime_type),
+            "file": (safe_name, file_bytes, mime_type),
         }
         data = {
             "file_type": file_type,

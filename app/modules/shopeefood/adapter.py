@@ -185,6 +185,21 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
 
             # Notify ShopeeFood S2S API that new menu is ready
             notify_resp = await shopeefood_client.notify_menu_sync(partner_restaurant_id=partner_store_id)
+            if not isinstance(notify_resp, dict) or notify_resp.get("result") != "success":
+                err_msg = (
+                    notify_resp.get("error")
+                    if isinstance(notify_resp, dict)
+                    else str(notify_resp)
+                ) or "ShopeeFood S2S API did not return success"
+                return SyncResult(
+                    channel_code=self.channel_code,
+                    store_id=store_id,
+                    sync_type="MENU",
+                    success=False,
+                    total_synced=0,
+                    message=f"Đồng bộ thực đơn ShopeeFood thất bại (Cửa hàng: {partner_store_id}): {err_msg}",
+                    details={"notification_response": notify_resp},
+                )
 
             return SyncResult(
                 channel_code=self.channel_code,
@@ -199,6 +214,10 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             logger.error(f"Lỗi khi đồng bộ menu ShopeeFood chi nhánh {store_id}: {str(ex)}")
             if db is not None:
                 try:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="SHOPEEFOOD_SYNC_MENU_ERROR",
@@ -262,6 +281,21 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 partner_restaurant_id=partner_store_id,
                 dishes=dishes,
             )
+            if not isinstance(response, dict) or response.get("result") != "success":
+                err_msg = (
+                    response.get("error")
+                    if isinstance(response, dict)
+                    else str(response)
+                ) or "ShopeeFood S2S API did not return success"
+                return SyncResult(
+                    channel_code=self.channel_code,
+                    store_id=store_id,
+                    sync_type="STOCK",
+                    success=False,
+                    total_synced=0,
+                    message=f"Cập nhật tồn kho ShopeeFood thất bại ({partner_store_id}): {err_msg}",
+                    details={"api_response": response},
+                )
 
             return SyncResult(
                 channel_code=self.channel_code,
@@ -276,6 +310,10 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             logger.error(f"Lỗi khi cập nhật tồn kho ShopeeFood: {str(ex)}")
             if db is not None:
                 try:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="SHOPEEFOOD_SYNC_STOCK_ERROR",
@@ -300,6 +338,54 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
     # 3. Inbound Webhook Handling (Orders & Status Updates)
     # ==========================================================================
 
+    @staticmethod
+    def _map_webhook_status(raw_status: Any) -> Optional[UnifiedOrderStatus]:
+        """Map ShopeeFood / Foody numeric or string status to UnifiedOrderStatus."""
+        if raw_status is None:
+            return None
+        if isinstance(raw_status, int) or (isinstance(raw_status, str) and raw_status.strip().isdigit()):
+            code = int(str(raw_status).strip())
+            numeric_map = {
+                0: UnifiedOrderStatus.ACCEPTED,
+                1: UnifiedOrderStatus.PENDING,
+                2: UnifiedOrderStatus.CANCELLED,
+                4: UnifiedOrderStatus.ACCEPTED,
+                5: UnifiedOrderStatus.READY,
+                6: UnifiedOrderStatus.PICKED_UP,
+                7: UnifiedOrderStatus.DELIVERED,
+                8: UnifiedOrderStatus.CANCELLED,
+                9: UnifiedOrderStatus.CANCELLED,
+            }
+            return numeric_map.get(code)
+
+        s = str(raw_status).strip().upper()
+        string_map = {
+            "PENDING": UnifiedOrderStatus.PENDING,
+            "NEW": UnifiedOrderStatus.PENDING,
+            "CREATED": UnifiedOrderStatus.PENDING,
+            "CONFIRMED": UnifiedOrderStatus.ACCEPTED,
+            "ACCEPTED": UnifiedOrderStatus.ACCEPTED,
+            "PREPARING": UnifiedOrderStatus.PREPARING,
+            "PROCESSING": UnifiedOrderStatus.PREPARING,
+            "COOKING": UnifiedOrderStatus.PREPARING,
+            "READY": UnifiedOrderStatus.READY,
+            "READY_FOR_PICKUP": UnifiedOrderStatus.READY,
+            "PACKED": UnifiedOrderStatus.READY,
+            "PICKED_UP": UnifiedOrderStatus.PICKED_UP,
+            "SHIPPED": UnifiedOrderStatus.PICKED_UP,
+            "DELIVERING": UnifiedOrderStatus.PICKED_UP,
+            "DELIVERED": UnifiedOrderStatus.DELIVERED,
+            "COMPLETED": UnifiedOrderStatus.DELIVERED,
+            "DONE": UnifiedOrderStatus.DELIVERED,
+            "CANCELLED": UnifiedOrderStatus.CANCELLED,
+            "CANCELED": UnifiedOrderStatus.CANCELLED,
+            "CANCEL": UnifiedOrderStatus.CANCELLED,
+            "OUT_OF_SERVICE": UnifiedOrderStatus.CANCELLED,
+            "REJECTED": UnifiedOrderStatus.CANCELLED,
+            "FAILED": UnifiedOrderStatus.CANCELLED,
+        }
+        return string_map.get(s)
+
     async def handle_order_webhook(
         self,
         headers: Dict[str, str],
@@ -307,9 +393,10 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
         db: AsyncSession
     ) -> Dict[str, Any]:
         """
-        Process incoming ShopeeFood order webhook.
+        Process incoming ShopeeFood order or update_order webhook.
         Checks if 'order_webhook_enabled' is active.
-        If 'auto_confirm_enabled' is active, auto-transitions order to ACCEPTED and notifies Foody.
+        If 'auto_confirm_enabled' is active, auto-transitions new order to ACCEPTED and notifies Foody.
+        When existing order is updated (created is False), updates driver info and transitions status.
         """
         enabled = await channel_service.is_feature_enabled(self.channel_code, "order_webhook_enabled", db)
         if not enabled:
@@ -327,10 +414,44 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
 
         # Check auto-confirm toggle
         auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
-        initial_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else UnifiedOrderStatus.PENDING
+        raw_status = payload.get("order_status") if payload.get("order_status") is not None else payload.get("status")
+        mapped_status = self._map_webhook_status(raw_status)
+
+        if mapped_status in (
+            UnifiedOrderStatus.CANCELLED,
+            UnifiedOrderStatus.DELIVERED,
+            UnifiedOrderStatus.PICKED_UP,
+            UnifiedOrderStatus.READY,
+            UnifiedOrderStatus.PREPARING,
+        ):
+            initial_status = mapped_status
+        else:
+            initial_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else (mapped_status or UnifiedOrderStatus.PENDING)
 
         customer_info = payload.get("customer") or {}
-        driver_info = payload.get("driver") or {}
+        driver_info = payload.get("driver") or payload.get("shipper") or {}
+
+        driver_name = (
+            (driver_info.get("name") if isinstance(driver_info, dict) else None)
+            or payload.get("driver_name")
+            or payload.get("shipper_name")
+        )
+        driver_phone = (
+            (driver_info.get("phone") if isinstance(driver_info, dict) else None)
+            or payload.get("driver_phone")
+            or payload.get("shipper_phone")
+        )
+        driver_plate = (
+            (
+                driver_info.get("license_plate")
+                or driver_info.get("plate")
+                or driver_info.get("vehicle_number")
+                if isinstance(driver_info, dict)
+                else None
+            )
+            or payload.get("driver_license_plate")
+            or payload.get("license_plate")
+        )
 
         order_data = {
             "display_order_id": payload.get("display_order_id") or (channel_order_id[-6:] if channel_order_id else None),
@@ -342,8 +463,9 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             "customer_name": customer_info.get("name") if isinstance(customer_info, dict) else None,
             "customer_phone": customer_info.get("phone") if isinstance(customer_info, dict) else None,
             "delivery_address": customer_info.get("address") if isinstance(customer_info, dict) else None,
-            "driver_name": driver_info.get("name") if isinstance(driver_info, dict) else None,
-            "driver_phone": driver_info.get("phone") if isinstance(driver_info, dict) else None,
+            "driver_name": driver_name,
+            "driver_phone": driver_phone,
+            "driver_license_plate": driver_plate,
             "raw_payload": payload,
         }
 
@@ -369,6 +491,44 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             db=db,
         )
 
+        # If order already existed (e.g. /webhooks/update_order), update driver details and transition status
+        if not created:
+            driver_updated = False
+            if driver_name and getattr(order, "driver_name", None) != driver_name:
+                order.driver_name = driver_name
+                driver_updated = True
+            if driver_phone and getattr(order, "driver_phone", None) != driver_phone:
+                order.driver_phone = driver_phone
+                driver_updated = True
+            if driver_plate and getattr(order, "driver_license_plate", None) != driver_plate:
+                order.driver_license_plate = driver_plate
+                driver_updated = True
+
+            if mapped_status is not None and mapped_status != order.status:
+                note_str = (
+                    payload.get("cancel_reason")
+                    or payload.get("cancellation_reason")
+                    or payload.get("note")
+                    or payload.get("message")
+                    or "ShopeeFood webhook update"
+                )
+                updated_order = await OrderService.update_order_status(
+                    db=db,
+                    order_id=order.id,
+                    payload=OrderStatusUpdateSchema(
+                        new_status=mapped_status,
+                        note=str(note_str),
+                        changed_by="SHOPEEFOOD_WEBHOOK",
+                        cancellation_reason=str(note_str) if mapped_status == UnifiedOrderStatus.CANCELLED else None,
+                    ),
+                    sync_to_channel=False,
+                    trigger_channel_sync=False,
+                )
+                if updated_order is not None:
+                    order = updated_order
+            elif driver_updated and db is not None:
+                await db.commit()
+
         # If auto-confirm is enabled, trigger outbound confirmation to ShopeeFood
         if auto_confirm and created:
             try:
@@ -386,7 +546,7 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             "reply": {
                 "order_id": order.channel_order_id,
                 "internal_order_code": order.order_code,
-                "status": order.status.value,
+                "status": order.status.value if hasattr(order.status, "value") else str(order.status),
                 "auto_confirmed": auto_confirm,
                 "created": created,
             }
@@ -434,6 +594,10 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             logger.error(f"Lỗi khi cập nhật trạng thái đơn lên ShopeeFood: {str(ex)}")
             if db is not None:
                 try:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="SHOPEEFOOD_SYNC_ORDER_STATUS_ERROR",

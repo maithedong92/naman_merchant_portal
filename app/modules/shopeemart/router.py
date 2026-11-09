@@ -6,16 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_active_user
+from app.api.deps import check_store_access, get_current_active_user
 from app.core.database import get_db, get_optional_db
+from app.core.exceptions import ForbiddenError
 from app.core.responses import APIResponse
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
 from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
-from app.models.user import User
-from app.modules.shopeemart.adapter import ShopeeMartChannelAdapter
+from app.models.user import User, UserRole
+from app.modules.shopeemart.adapter import ShopeeMartChannelAdapter, normalize_shopee_cancel_reason
 from app.modules.shopeemart.schemas import (
     ShopeeMartAddItemRequest,
     ShopeeMartAuthUrlResponse,
@@ -45,6 +46,12 @@ router = APIRouter(prefix="/shopeemart", tags=["Channel - ShopeeMart VN"])
 adapter = ShopeeMartChannelAdapter()
 
 
+def _reject_read_only(current_user: User) -> None:
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if role_val == UserRole.READ_ONLY.value and not getattr(current_user, "is_superuser", False):
+        raise ForbiddenError("Tài khoản chỉ xem không có quyền thực hiện thao tác này.")
+
+
 # ==============================================================================
 # 1. Inbound Webhooks from Shopee Open Platform Push Notification
 # ==============================================================================
@@ -62,13 +69,32 @@ async def receive_shopeemart_order_webhook(
     raw_body = await request.body()
     headers = dict(request.headers)
 
-    # Optional signature verification
     full_url = str(request.url)
-    if authorization and not shopeemart_client.verify_webhook_signature(full_url, raw_body, authorization):
-        logger.warning(f"ShopeeMart webhook signature invalid for url: {full_url}")
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    public_url = f"{proto}://{host}{request.url.path}"
+    if request.url.query:
+        public_url = f"{public_url}?{request.url.query}"
+
+    if authorization:
+        is_valid = shopeemart_client.verify_webhook_signature(full_url, raw_body, authorization)
+        if not is_valid and public_url != full_url:
+            is_valid = shopeemart_client.verify_webhook_signature(public_url, raw_body, authorization)
+        if not is_valid:
+            logger.warning(f"ShopeeMart webhook signature invalid for url: {public_url} (internal: {full_url})")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="ShopeeMart webhook signature verification failed"
+            )
+    elif request.headers.get("x-forwarded-proto") and shopeemart_client.is_configured:
+        logger.warning(f"ShopeeMart webhook missing Authorization header on public URL: {public_url}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="ShopeeMart webhook signature verification failed"
+            detail="Missing ShopeeMart webhook Authorization signature"
         )
 
     try:
@@ -290,9 +316,14 @@ async def sync_store_menu_to_shopee(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
     store_stmt = select(Store).where((Store.id == store_id) | (Store.code == store_id))
-    store_obj = (await db.execute(store_stmt)).scalar_one_or_none()
+    store_obj = (await db.execute(store_stmt)).scalars().first()
     effective_store_id = store_obj.id if store_obj else store_id
+
+    if getattr(current_user, "store_id", None):
+        check_store_access(current_user, effective_store_id)
 
     stmt = (
         select(StoreChannelMapping)
@@ -303,7 +334,7 @@ async def sync_store_menu_to_shopee(
         )
     )
     res = await db.execute(stmt)
-    mapping = res.scalar_one_or_none()
+    mapping = res.scalars().first()
     partner_store_id = (
         mapping.partner_store_id
         if (mapping and mapping.partner_store_id)
@@ -331,6 +362,10 @@ async def sync_store_inventory_to_shopee(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+    if getattr(current_user, "store_id", None):
+        check_store_access(current_user, store_id)
+
     inv_stmt = (
         select(StoreInventory)
         .where(StoreInventory.store_id == store_id)
@@ -358,7 +393,7 @@ async def sync_store_inventory_to_shopee(
         )
     )
     res = await db.execute(stmt)
-    mapping = res.scalar_one_or_none()
+    mapping = res.scalars().first()
     if not mapping or not mapping.partner_store_id:
         raise HTTPException(
             status_code=400,
@@ -390,12 +425,17 @@ async def mark_shopee_order_ready(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
     order_stmt = select(UnifiedOrder).where(UnifiedOrder.id == order_id)
     order_res = await db.execute(order_stmt)
     order = order_res.scalar_one_or_none()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+        check_store_access(current_user, order.store_id)
 
     updated_order = await OrderService.update_order_status(
         order_id=order.id,
@@ -426,6 +466,8 @@ async def cancel_shopee_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
     order_stmt = select(UnifiedOrder).where(UnifiedOrder.id == order_id)
     order_res = await db.execute(order_stmt)
     order = order_res.scalar_one_or_none()
@@ -433,12 +475,21 @@ async def cancel_shopee_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+        check_store_access(current_user, order.store_id)
+
+    normalized_reason = normalize_shopee_cancel_reason(payload.cancel_reason)
+    if payload.item_list:
+        raw_p = dict(order.raw_payload) if isinstance(getattr(order, "raw_payload", None), dict) else {}
+        raw_p["cancel_item_list"] = payload.item_list
+        order.raw_payload = raw_p
+
     updated_order = await OrderService.update_order_status(
         order_id=order.id,
         payload=OrderStatusUpdateSchema(
             new_status=UnifiedOrderStatus.CANCELLED,
-            note=f"Hủy đơn ShopeeMart: {payload.cancel_reason}",
-            cancellation_reason=payload.cancel_reason,
+            note=f"Hủy đơn ShopeeMart: {normalized_reason}",
+            cancellation_reason=normalized_reason,
             changed_by=current_user.username,
         ),
         db=db,
@@ -447,7 +498,7 @@ async def cancel_shopee_order(
 
     return APIResponse.ok(
         data={"order_id": order.id, "status": updated_order.status},
-        message=f"Đơn hàng ShopeeMart đã được hủy ({payload.cancel_reason}).",
+        message=f"Đơn hàng ShopeeMart đã được hủy ({normalized_reason}).",
     )
 
 
@@ -715,6 +766,7 @@ async def download_shopee_awb(
     order_sn: str,
     shop_id: Optional[str] = Query(None),
     document_type: str = Query("THERMAL_AIR_WAYBILL", description="THERMAL_AIR_WAYBILL hoặc NORMAL_AIR_WAYBILL"),
+    current_user: User = Depends(get_current_active_user),
 ):
     pdf_bytes = await shopeemart_client.download_shipping_document_bytes(
         order_sn=order_sn,
@@ -741,13 +793,53 @@ async def handle_buyer_cancel(
     order_sn: str,
     payload: ShopeeMartBuyerCancellationRequest,
     shop_id: Optional[str] = Query(None),
+    db: Optional[AsyncSession] = Depends(get_optional_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    _reject_read_only(current_user)
+
+    order: Optional[UnifiedOrder] = None
+    if db is not None:
+        try:
+            order_res = await db.execute(
+                select(UnifiedOrder).where(UnifiedOrder.channel_order_id == order_sn)
+            )
+            order = order_res.scalars().first()
+        except Exception as lookup_ex:
+            logger.warning(f"Could not look up local order for buyer cancellation ({order_sn}): {lookup_ex}")
+
+    if order and getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+        check_store_access(current_user, order.store_id)
+
     result = await shopeemart_client.handle_buyer_cancellation(
         order_sn=order_sn,
         operation=payload.operation,
         shop_id=shop_id
     )
+
+    if (
+        payload.operation
+        and payload.operation.upper() == "ACCEPT"
+        and db is not None
+        and order is not None
+        and getattr(order, "status", None) != UnifiedOrderStatus.CANCELLED
+    ):
+        try:
+            await OrderService.update_order_status(
+                order_id=order.id,
+                payload=OrderStatusUpdateSchema(
+                    new_status=UnifiedOrderStatus.CANCELLED,
+                    note="Chấp thuận yêu cầu hủy đơn từ người mua ShopeeMart (ACCEPT)",
+                    cancellation_reason="CUSTOMER_REQUEST",
+                    changed_by=current_user.username,
+                ),
+                db=db,
+                sync_to_channel=False,
+                trigger_channel_sync=False,
+            )
+        except Exception as cancel_ex:
+            logger.warning(f"Could not transition local order {order_sn} to CANCELLED after buyer cancel ACCEPT: {cancel_ex}")
+
     return APIResponse.ok(
         data=result,
         message=f"Đã gửi phản hồi {payload.operation} cho yêu cầu hủy đơn #{order_sn}."

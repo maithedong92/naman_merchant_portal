@@ -1,6 +1,8 @@
+import inspect
 import json
 import logging
 import math
+import re
 import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
@@ -34,6 +36,7 @@ from app.modules.grabmart.schemas import (
     GrabDaySchedule,
     GrabMenuItem,
     GrabMartMenuPayload,
+    GrabOrderPrice,
     GrabSection,
     GrabPushOrderStateWebhook,
     GrabSellingPeriod,
@@ -471,6 +474,10 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             logger.error(f"Lỗi khi đồng bộ menu GrabMart (Store {store_id}): {str(ex)}")
             if db is not None:
                 try:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="GRABMART_SYNC_MENU_ERROR",
@@ -572,6 +579,10 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             logger.error(f"Lỗi khi cập nhật tồn kho GrabMart: {str(ex)}")
             if db is not None:
                 try:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="GRABMART_SYNC_STOCK_ERROR",
@@ -647,17 +658,29 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                     full_address = f"{addr_str} (Ghi chú giao: {instr})" if addr_str else f"Ghi chú giao: {instr}"
 
         auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
-        is_auto = auto_confirm or (webhook.featureFlags and webhook.featureFlags.orderAcceptedType == "AUTO")
+        accepted_type = (
+            webhook.orderAcceptedType
+            or (webhook.featureFlags.orderAcceptedType if webhook.featureFlags else None)
+            or "AUTO"
+        )
+        is_auto = auto_confirm or (accepted_type == "AUTO")
         initial_status = UnifiedOrderStatus.ACCEPTED if is_auto else UnifiedOrderStatus.PENDING
+
+        exponent = (
+            int(webhook.currency.exponent)
+            if (webhook.currency and webhook.currency.exponent and int(webhook.currency.exponent) > 0)
+            else 0
+        )
+        divisor = float(10 ** exponent) if exponent > 0 else 1.0
 
         price_obj = webhook.price or GrabOrderPrice()
         order_data = {
             "display_order_id": webhook.shortOrderNumber or channel_order_id[-6:],
             "initial_status": initial_status,
-            "subtotal_amount": float(price_obj.subtotal or 0),
-            "discount_amount": float(price_obj.merchantFundPromo or 0),
-            "delivery_fee": float(price_obj.deliveryFee or 0),
-            "total_amount": float(price_obj.total or 0),
+            "subtotal_amount": float(price_obj.subtotal or 0) / divisor,
+            "discount_amount": float(price_obj.merchantFundPromo or 0) / divisor,
+            "delivery_fee": float(price_obj.deliveryFee or 0) / divisor,
+            "total_amount": float(price_obj.total or 0) / divisor,
             "customer_name": cust_name,
             "customer_phone": cust_phone,
             "delivery_address": full_address,
@@ -666,16 +689,28 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
 
         items_data = []
         for itm in (webhook.items or []):
-            unit_price = float(itm.price or 0)
+            mods = list(itm.modifiers or [])
+            mod_price = sum(
+                float(getattr(m, "price", 0) or 0) * int(getattr(m, "quantity", 1) or 1)
+                for m in mods
+            )
+            unit_price = (float(itm.price or 0) + mod_price) / divisor
             qty = itm.quantity or 1
-            items_data.append({
+            serialized_mods = [
+                m.model_dump(exclude_none=True) if hasattr(m, "model_dump") else dict(m)
+                for m in mods
+            ] if mods else None
+            item_entry: Dict[str, Any] = {
                 "sku": itm.id,
                 "item_name": itm.name or f"GrabMart Product {itm.id}",
                 "quantity": qty,
                 "unit_price": unit_price,
                 "total_price": unit_price * qty,
                 "notes": itm.specifications,
-            })
+            }
+            if serialized_mods:
+                item_entry["modifiers"] = serialized_mods
+            items_data.append(item_entry)
 
         order, created = await OrderService.create_or_get_inbound_order(
             channel_code=self.channel_code,
@@ -685,6 +720,15 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             items_data=items_data,
             db=db,
         )
+
+        if auto_confirm and initial_status == UnifiedOrderStatus.ACCEPTED and accepted_type == "MANUAL":
+            try:
+                await grabmart_client.accept_or_reject_order(
+                    order_id=webhook.orderID,
+                    to_state="Accepted",
+                )
+            except Exception as acc_ex:
+                logger.warning(f"Failed to send auto-accept to GrabMart for manual order {webhook.orderID}: {acc_ex}")
 
         return {
             "status": "ACCEPTED",
@@ -729,6 +773,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             return {"status": "ORDER_NOT_FOUND", "orderID": state_webhook.orderID}
 
         # 3. Map GrabMart state to UnifiedOrderStatus
+        state_str = (state_webhook.state or "").strip().upper()
         state_map = {
             "ACCEPTED": UnifiedOrderStatus.ACCEPTED,
             "DRIVER_ALLOCATED": order.status,  # Order remains in current status; track driver ETA
@@ -738,11 +783,21 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             "CANCELLED": UnifiedOrderStatus.CANCELLED,
             "FAILED": UnifiedOrderStatus.CANCELLED,
         }
-        target_status = state_map.get(state_webhook.state, order.status)
+        target_status = state_map.get(state_str, order.status)
         reason_note = state_webhook.message or state_webhook.code or f"GrabMart state: {state_webhook.state}"
 
         if state_webhook.driverETA:
             reason_note += f" (Tài xế đến trong {state_webhook.driverETA}s)"
+
+        if state_str in ("DRIVER_ALLOCATED", "DRIVER_ARRIVED"):
+            raw_payload = dict(order.raw_payload) if isinstance(getattr(order, "raw_payload", None), dict) else {}
+            raw_payload["last_grab_state"] = state_str
+            raw_payload["last_state_note"] = reason_note
+            if state_webhook.driverETA is not None:
+                raw_payload["driverETA"] = state_webhook.driverETA
+            order.raw_payload = raw_payload
+            if target_status == order.status and db is not None:
+                await db.commit()
 
         if target_status != order.status:
             await OrderService.update_order_status(
@@ -768,6 +823,16 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
     # 4. Outbound Order Lifecycle Operations
     # ==========================================================================
 
+    @staticmethod
+    def _parse_cancel_code(reason: Optional[str]) -> int:
+        """Extract GrabMart cancelCode (1001..1004) from reason string if present, defaulting to 1001."""
+        if not reason:
+            return 1001
+        m = re.search(r"\b(100[1-4])\b", str(reason))
+        if m:
+            return int(m.group(1))
+        return 1001
+
     async def update_order_status(
         self,
         channel_order_id: str,
@@ -775,12 +840,14 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         new_status: UnifiedOrderStatus,
         db: AsyncSession,
         reason: Optional[str] = None,
+        order: Optional[UnifiedOrder] = None,
     ) -> bool:
         """
         Send state transition from Nam An Merchant Portal to GrabMart.
         - ACCEPTED -> POST /partner/v1/order/prepare (Accepted)
-        - READY -> POST /partner/v1/order/ready (markStatus: 1)
-        - CANCELLED -> POST /partner/v1/order/cancel (cancelCode: 1001)
+        - READY -> POST /partner/v1/orders/mark (markStatus: 1)
+        - CANCELLED (from PENDING) -> POST /partner/v1/order/prepare (Rejected), fallback to PUT /partner/v1/order/cancel
+        - CANCELLED -> PUT /partner/v1/order/cancel (cancelCode: 1001..1004)
         """
         try:
             if new_status == UnifiedOrderStatus.ACCEPTED:
@@ -789,16 +856,51 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 await grabmart_client.mark_order_ready(channel_order_id)
             elif new_status == UnifiedOrderStatus.CANCELLED:
                 grab_merchant_id, _ = resolve_grab_outlet_ids(partner_store_id)
-                await grabmart_client.cancel_order(
-                    order_id=channel_order_id,
-                    merchant_id=grab_merchant_id,
-                    cancel_code=1001,
+                cancel_code = self._parse_cancel_code(reason)
+
+                ord_obj = order
+                if ord_obj is None and db is not None:
+                    try:
+                        ord_res = await db.execute(
+                            select(UnifiedOrder).where(UnifiedOrder.channel_order_id == channel_order_id)
+                        )
+                        ord_obj = ord_res.scalar_one_or_none()
+                        if inspect.iscoroutine(ord_obj):
+                            ord_obj = await ord_obj
+                    except Exception:
+                        ord_obj = None
+
+                is_pending = (
+                    (ord_obj is not None and getattr(ord_obj, "status", None) == UnifiedOrderStatus.PENDING)
+                    or (reason is not None and "rejected" in str(reason).lower())
                 )
+                if is_pending:
+                    try:
+                        await grabmart_client.accept_or_reject_order(
+                            order_id=channel_order_id,
+                            to_state="Rejected",
+                        )
+                    except Exception:
+                        await grabmart_client.cancel_order(
+                            order_id=channel_order_id,
+                            merchant_id=grab_merchant_id,
+                            cancel_code=cancel_code,
+                        )
+                else:
+                    await grabmart_client.cancel_order(
+                        order_id=channel_order_id,
+                        merchant_id=grab_merchant_id,
+                        cancel_code=cancel_code,
+                    )
             return True
         except Exception as ex:
             logger.error(f"Lỗi khi gửi cập nhật trạng thái lên GrabMart: {str(ex)}")
             if db is not None:
                 try:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="GRABMART_SYNC_ORDER_STATUS_ERROR",

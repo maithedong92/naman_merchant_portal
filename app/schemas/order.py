@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from decimal import Decimal
+from typing import Any, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.order import UnifiedOrderStatus
 
 
@@ -36,10 +37,10 @@ class UnifiedOrderBase(BaseModel):
     channel_order_id: str
     display_order_id: Optional[str] = None
     status: UnifiedOrderStatus
-    subtotal_amount: float
-    discount_amount: float = 0.0
-    delivery_fee: float = 0.0
-    total_amount: float
+    subtotal_amount: Union[float, Decimal] = 0.0
+    discount_amount: Union[float, Decimal] = 0.0
+    delivery_fee: Union[float, Decimal] = 0.0
+    total_amount: Union[float, Decimal] = 0.0
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     delivery_address: Optional[str] = None
@@ -47,6 +48,13 @@ class UnifiedOrderBase(BaseModel):
     driver_phone: Optional[str] = None
     order_time: Optional[datetime] = None
     estimated_ready_time: Optional[datetime] = None
+
+    @field_validator("subtotal_amount", "discount_amount", "delivery_fee", "total_amount", mode="before")
+    @classmethod
+    def _coerce_financial_float(cls, v: Any) -> float:
+        if v is None:
+            return 0.0
+        return float(v)
 
 
 class UnifiedOrderResponse(UnifiedOrderBase):

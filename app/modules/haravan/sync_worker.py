@@ -42,6 +42,7 @@ class HaravanSyncWorker:
             self._mongo_client = MongoClient(
                 self.settings.MONGO_URI,
                 serverSelectionTimeoutMS=5000,
+                socketTimeoutMS=10000,
                 maxPoolSize=5,
             )
         db = self._mongo_client[self.settings.MONGO_DB]

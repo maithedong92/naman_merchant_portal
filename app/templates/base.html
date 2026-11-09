@@ -197,13 +197,16 @@
                 }
             },
             setUser(user) {
+                window.currentUser = user || {};
                 localStorage.setItem("naman_user_profile", JSON.stringify(user));
             }
         };
+        window.currentUser = TokenManager.getUser();
 
-        // Modern Apple Toast Notification
+        // Modern Apple Toast Notification (XSS-safe text rendering)
         function showToast(message, type = 'info') {
             const container = document.getElementById('toast-container');
+            if (!container) return;
             const toast = document.createElement('div');
             
             let colorClass = 'bg-white text-slate-900 border-slate-200/80';
@@ -212,6 +215,9 @@
             if (type === 'error') {
                 colorClass = 'bg-rose-50 text-rose-900 border-rose-200';
                 iconSvg = '<svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+            } else if (type === 'warning') {
+                colorClass = 'bg-amber-50 text-amber-950 border-amber-200';
+                iconSvg = '<svg class="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
             } else if (type === 'success') {
                 colorClass = 'bg-emerald-50 text-emerald-950 border-emerald-200';
                 iconSvg = '<svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
@@ -219,13 +225,23 @@
 
             toast.className = `pointer-events-auto px-4 py-3 rounded-2xl apple-shadow border ${colorClass} flex items-center space-x-3 text-xs font-semibold transition-all duration-300 transform translate-y-3 opacity-0`;
             
-            toast.innerHTML = `
-                <div class="shrink-0">${iconSvg}</div>
-                <div class="flex-1 leading-snug">${message}</div>
-                <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-slate-700 ml-2 font-bold p-1">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            `;
+            const iconWrap = document.createElement('div');
+            iconWrap.className = 'shrink-0';
+            iconWrap.innerHTML = iconSvg;
+
+            const msgSpan = document.createElement('div');
+            msgSpan.className = 'flex-1 leading-snug';
+            msgSpan.textContent = String(message ?? '');
+
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'text-slate-400 hover:text-slate-700 ml-2 font-bold p-1';
+            closeBtn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+            closeBtn.onclick = () => toast.remove();
+
+            toast.appendChild(iconWrap);
+            toast.appendChild(msgSpan);
+            toast.appendChild(closeBtn);
             container.appendChild(toast);
             setTimeout(() => {
                 toast.classList.remove('translate-y-3', 'opacity-0');
@@ -236,10 +252,45 @@
             }, 3800);
         }
 
+        // Singleton Refresh Token Promise Lock to prevent concurrent 401 refresh storms
+        let _refreshTokenPromise = null;
+
+        async function _performTokenRefresh() {
+            if (_refreshTokenPromise) {
+                return _refreshTokenPromise;
+            }
+            const refresh = TokenManager.getRefreshToken();
+            if (!refresh) {
+                return null;
+            }
+            _refreshTokenPromise = (async () => {
+                try {
+                    const refreshRes = await fetch('/api/v1/auth/refresh', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ refresh_token: refresh })
+                    });
+                    if (refreshRes.ok) {
+                        const refData = await refreshRes.json();
+                        if (refData.success && refData.data && refData.data.access_token) {
+                            TokenManager.setTokens(refData.data.access_token, refData.data.refresh_token);
+                            return refData.data.access_token;
+                        }
+                    }
+                } catch(e) {}
+                return null;
+            })();
+            try {
+                return await _refreshTokenPromise;
+            } finally {
+                _refreshTokenPromise = null;
+            }
+        }
+
         // Authenticated Fetch wrapper
         async function authFetch(url, options = {}) {
             let token = TokenManager.getToken();
-            options.headers = options.headers || {};
+            options.headers = { ...(options.headers || {}) };
             if (token) {
                 options.headers['Authorization'] = `Bearer ${token}`;
             }
@@ -249,27 +300,15 @@
 
             let res = await fetch(url, options);
             if (res.status === 401) {
-                const refresh = TokenManager.getRefreshToken();
-                if (refresh) {
-                    try {
-                        const refreshRes = await fetch('/api/v1/auth/refresh', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ refresh_token: refresh })
-                        });
-                        if (refreshRes.ok) {
-                            const refData = await refreshRes.json();
-                            if (refData.success && refData.data) {
-                                TokenManager.setTokens(refData.data.access_token, refData.data.refresh_token);
-                                options.headers['Authorization'] = `Bearer ${refData.data.access_token}`;
-                                return await fetch(url, options);
-                            }
-                        }
-                    } catch(e) {}
+                const newAccessToken = await _performTokenRefresh();
+                if (newAccessToken) {
+                    options.headers['Authorization'] = `Bearer ${newAccessToken}`;
+                    return await fetch(url, options);
                 }
                 TokenManager.clear();
                 if (!window.location.pathname.includes('/login')) {
-                    window.location.href = '/admin/login?redirect=' + encodeURIComponent(window.location.pathname);
+                    const currentPathAndQuery = window.location.pathname + (window.location.search || '');
+                    window.location.href = '/admin/login?redirect=' + encodeURIComponent(currentPathAndQuery);
                 }
             }
             return res;

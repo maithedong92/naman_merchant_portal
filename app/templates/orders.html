@@ -19,6 +19,26 @@
         border-color: #059669 !important;
         background-color: #FFFFFF !important;
     }
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        #shopee-awb-modal, #shopee-awb-modal * {
+            visibility: visible;
+        }
+        #shopee-awb-modal {
+            position: fixed;
+            inset: 0;
+            background: white;
+            display: flex !important;
+            align-items: flex-start !important;
+            justify-content: center !important;
+            padding: 0 !important;
+        }
+        .no-print {
+            display: none !important;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -158,8 +178,9 @@
     <div class="bg-white rounded-2xl border border-slate-200/80 p-3.5 apple-shadow flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <!-- Channel Filter Pills -->
         <div class="flex flex-wrap items-center gap-2" id="channel-filter-pills">
-            <button onclick="setChannelFilter('')" class="channel-pill px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-900 text-white shadow-sm" data-channel="">
-                Tất cả sàn
+            <button onclick="setChannelFilter('')" class="channel-pill px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-900 text-white shadow-sm flex items-center space-x-1.5" data-channel="">
+                <span>Tất cả sàn</span>
+                <span id="platform-urgent-badge" class="hidden px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold animate-pulse">0</span>
             </button>
             <button onclick="setChannelFilter('SHOPEEFOOD')" class="channel-pill px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/70 transition-all flex items-center space-x-1.5" data-channel="SHOPEEFOOD">
                 <span class="w-2 h-2 rounded-full bg-orange-500"></span>
@@ -210,7 +231,7 @@
             </select>
 
             <div class="relative">
-                <input type="text" id="search-input" onkeyup="if(event.key==='Enter') onFilterChange()" placeholder="Tìm mã đơn, tên, SĐT..." class="w-52 pl-9 pr-4 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all">
+                <input type="text" id="search-input" oninput="onSearchInput()" onkeyup="if(event.key==='Enter') onFilterChange()" placeholder="Tìm mã đơn, tên, SĐT..." class="w-52 pl-9 pr-4 py-2 rounded-xl bg-slate-100 border border-transparent text-xs text-slate-900 placeholder-slate-400 focus:bg-white focus:border-slate-300 focus:outline-none focus:ring-4 focus:ring-slate-900/5 transition-all">
                 <svg class="w-4 h-4 text-slate-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             </div>
 
@@ -687,17 +708,42 @@
     let autoRefreshTimer = null;
     let audioChimeEnabled = true;
     let knownPendingIds = new Set();
+    let knownHaravanIds = new Set();
+    let _haravanInitialLoadDone = false;
+    let _isLoadingFeed = false;
+    let _lastFeedLoadTime = 0;
+    let _searchDebounceTimer = null;
     let currentCancellingOrderId = null;
     let currentCancellingOrderIsHaravan = false;
     let currentOrdersCache = [];
     let currentHaravanOrderId = null;
     let currentHaravanOrderDetail = null;
 
-    // Synthesizer Audio Ding-Dong Chime (HTML5 Web Audio API)
+    const isReadOnly = () => {
+        const u = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || window.currentUser || {};
+        return u.role === 'READ_ONLY' && !u.is_superuser;
+    };
+
+    function onSearchInput() {
+        if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+        _searchDebounceTimer = setTimeout(() => {
+            onFilterChange();
+        }, 350);
+    }
+
+    // Synthesizer Audio Ding-Dong Chime (HTML5 Web Audio API - Singleton AudioContext)
     function playOrderChime() {
         if (!audioChimeEnabled) return;
         try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            if (!window._orderAudioCtx || window._orderAudioCtx.state === 'closed') {
+                window._orderAudioCtx = new AudioCtx();
+            }
+            const ctx = window._orderAudioCtx;
+            if (ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
+            }
             const now = ctx.currentTime;
 
             // First chime tone (high ding)
@@ -1028,8 +1074,39 @@
         });
     }
 
+    // Always-on background check for urgent PENDING Quick-Commerce orders (GrabMart, ShopeeFood, ShopeeMart)
+    async function checkUrgentPlatformOrders() {
+        try {
+            const storeParam = currentFilter.store_code ? `&store_code=${encodeURIComponent(currentFilter.store_code)}` : '';
+            const res = await authFetch(`/api/v1/orders?status=PENDING&page=1&page_size=20${storeParam}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json.success && json.data) {
+                    const items = json.data.items || [];
+                    const total = (json.data.meta && json.data.meta.total_items !== undefined) ? json.data.meta.total_items : items.length;
+                    const urgentBadge = document.getElementById('platform-urgent-badge');
+                    if (urgentBadge) {
+                        urgentBadge.textContent = total;
+                        if (total > 0) {
+                            urgentBadge.classList.remove('hidden');
+                        } else {
+                            urgentBadge.classList.add('hidden');
+                        }
+                    }
+                    checkNewPendingOrders(items);
+                }
+            }
+        } catch (e) {
+            // Silently ignore background check error
+        }
+    }
+
     // Load Order Feed (Omnichannel: Platform + Haravan)
     async function loadOrdersFeed(isManual = false) {
+        if (_isLoadingFeed && !isManual) return;
+        _isLoadingFeed = true;
+        _lastFeedLoadTime = Date.now();
+
         const spinner = document.getElementById('refresh-spinner');
         if (spinner && isManual) spinner.classList.add('animate-spin');
 
@@ -1038,6 +1115,9 @@
             checkHaravanIncompleteCount();
 
             if (currentFilter.is_haravan) {
+                // Always monitor incoming GrabMart / ShopeeFood / ShopeeMart PENDING orders even on Haravan tab
+                checkUrgentPlatformOrders();
+
                 // Fetch Haravan Orders from MongoDB
                 const params = new URLSearchParams();
                 params.append('page', currentFilter.page);
@@ -1051,14 +1131,16 @@
                 if (res.ok) {
                     const json = await res.json();
                     if (json.success && json.data) {
-                        renderHaravanOrders(json.data.items || []);
+                        const items = json.data.items || [];
+                        renderHaravanOrders(items);
                         renderPagination({
                             page: json.data.page,
                             page_size: json.data.page_size,
                             total_items: json.data.total,
                             total_pages: json.data.total_pages
                         });
-                        renderHaravanSummary(json.data.items || [], json.data.total);
+                        renderHaravanSummary(items, json.data.total);
+                        checkNewHaravanOrders(items);
                     }
                 }
             } else {
@@ -1096,6 +1178,7 @@
         } catch(e) {
             console.error("Lỗi khi tải đơn hàng:", e);
         } finally {
+            _isLoadingFeed = false;
             if (spinner && isManual) {
                 setTimeout(() => spinner.classList.remove('animate-spin'), 400);
             }
@@ -1114,7 +1197,7 @@
         const allEl = document.getElementById('kpi-all-count');
         if (allEl) allEl.textContent = totalAll;
 
-        // Header Pending Badge
+        // Header Pending Badge & Platform Urgent Pill Badge
         const navBadge = document.getElementById('nav-pending-orders-badge');
         if (navBadge) {
             if (s.pending_count > 0) {
@@ -1122,6 +1205,15 @@
                 navBadge.classList.remove('hidden');
             } else {
                 navBadge.classList.add('hidden');
+            }
+        }
+        const urgentBadge = document.getElementById('platform-urgent-badge');
+        if (urgentBadge) {
+            urgentBadge.textContent = s.pending_count || 0;
+            if ((s.pending_count || 0) > 0) {
+                urgentBadge.classList.remove('hidden');
+            } else {
+                urgentBadge.classList.add('hidden');
             }
         }
     }
@@ -1144,7 +1236,7 @@
             if (st === 'Đã gửi vận đơn') shipped++;
             if (st === 'Hoàn thành') {
                 completed++;
-                revenue += (o.internal?.completion_info?.actual_total || o.total_price || 0);
+                revenue += Number(o.internal?.completion_info?.actual_total ?? o.internal?.actual_total ?? o.total_price ?? 0) || 0;
             }
         });
 
@@ -1158,17 +1250,41 @@
         if (allEl) allEl.textContent = total !== undefined ? total : items.length;
     }
 
-    // Play chime when new pending orders appear
+    // Play chime & toast alert when new pending quick-commerce orders appear
     function checkNewPendingOrders(items) {
         let hasNew = false;
+        let latestNewOrder = null;
         items.forEach(o => {
             if (o.status === 'PENDING') {
                 if (!knownPendingIds.has(o.id)) {
                     hasNew = true;
+                    latestNewOrder = o;
                     knownPendingIds.add(o.id);
                 }
             }
         });
+        if (hasNew) {
+            playOrderChime();
+            if (latestNewOrder && currentFilter.is_haravan) {
+                showToast(`🔔 Đơn mới cần duyệt trên ${latestNewOrder.channel_code || 'Sàn'}: ${latestNewOrder.order_code || latestNewOrder.id}`, 'warning');
+            }
+        }
+    }
+
+    // Play chime when new Haravan orders arrive in 'Đơn hàng mới' or 'Đã phân tuyến'
+    function checkNewHaravanOrders(items) {
+        let hasNew = false;
+        items.forEach(o => {
+            const st = (o.internal && o.internal.order_processing_status) || 'Đơn hàng mới';
+            const oid = String(o.id);
+            if (!knownHaravanIds.has(oid)) {
+                knownHaravanIds.add(oid);
+                if (_haravanInitialLoadDone && (st === 'Đơn hàng mới' || st === 'Đã phân tuyến')) {
+                    hasNew = true;
+                }
+            }
+        });
+        _haravanInitialLoadDone = true;
         if (hasNew) {
             playOrderChime();
         }
@@ -1218,31 +1334,32 @@
                 `;
             }
 
-            // Action Buttons (Streamlined, No Overlap)
+            // Action Buttons (Streamlined, No Overlap, RBAC-gated)
+            const readOnlyUser = isReadOnly();
             let actionsHtml = `
                 <div class="inline-flex items-center justify-end gap-1.5">
-                    ${isPending ? `
-                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
-                        <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                    ${!readOnlyUser && isPending ? `
+                        <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
+                        <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Xác Nhận
                         </button>
                     ` : ''}
 
-                    ${isAccepted ? `
-                        <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
-                        <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                    ${!readOnlyUser && isAccepted ? `
+                        <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
+                        <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Báo Xong
                         </button>
                     ` : ''}
 
-                    ${isReady ? `
-                        <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                    ${!readOnlyUser && isReady ? `
+                        <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Giao Xế
                         </button>
                     ` : ''}
 
                     ${o.channel_code === 'SHOPEEMART' ? `
-                        <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all whitespace-nowrap" title="In Vận Đơn AWB Shopee">
+                        <button onclick="openShopeeAwbModal('${escapeHtml(o.channel_order_id || o.display_order_id)}')" class="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all whitespace-nowrap" title="In Vận Đơn AWB Shopee">
                             AWB
                         </button>
                     ` : ''}
@@ -1250,30 +1367,30 @@
             `;
 
             rowsHtml += `
-                <tr onclick="handleOrderRowClick(event, '${o.id}')" class="transition-colors cursor-pointer ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
+                <tr onclick="handleOrderRowClick(event, '${escapeHtml(o.id)}')" class="transition-colors cursor-pointer ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
                     <td class="py-2.5 px-3 whitespace-nowrap">
-                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
+                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${escapeHtml(o.id)}')" title="Bấm để xem chi tiết đơn hàng">
                             <div class="flex items-center gap-1.5">
                                 <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
-                                    ${o.order_code}
+                                    ${escapeHtml(o.order_code)}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                 </span>
                                 ${channelBadge}
                             </div>
-                            <div class="text-[10.5px] text-slate-500 mt-0.5 font-medium" title="${fullDate}">
-                                ${timeAgo} · #${o.display_order_id || o.channel_order_id}
+                            <div class="text-[10.5px] text-slate-500 mt-0.5 font-medium" title="${escapeHtml(fullDate)}">
+                                ${escapeHtml(timeAgo)} · #${escapeHtml(o.display_order_id || o.channel_order_id)}
                             </div>
                         </div>
                     </td>
                     <td class="py-2.5 px-3 whitespace-nowrap">
                         <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px] whitespace-nowrap">
-                            ${storeLabel}
+                            ${escapeHtml(storeLabel)}
                         </span>
                     </td>
                     <td class="py-2.5 px-3 max-w-[200px]">
                         <div class="flex items-center justify-between gap-1">
-                            <span class="font-bold text-slate-900 truncate" title="${escapeHtml(custName)}">${custName}</span>
-                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline shrink-0">${custPhone}</a>` : ''}
+                            <span class="font-bold text-slate-900 truncate" title="${escapeHtml(custName)}">${escapeHtml(custName)}</span>
+                            ${custPhone !== '--' ? `<a href="tel:${escapeHtml(custPhone)}" class="text-[11px] text-emerald-700 font-bold hover:underline shrink-0">${escapeHtml(custPhone)}</a>` : ''}
                         </div>
                         <div class="text-[11px] text-slate-600 mt-0.5 truncate" title="${escapeHtml(deliveryAddress)}">${escapeHtml(deliveryAddress)}</div>
                         ${deliveryNoteHtml}
@@ -1323,8 +1440,9 @@
     function renderHaravanOrdersTable(orders) {
         currentOrdersCache = orders;
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
+        const readOnlyUser = isReadOnly();
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
-        const canDispatch = isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER');
+        const canDispatch = !readOnlyUser && (isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
 
         let rowsHtml = '';
         orders.forEach(o => {
@@ -1343,7 +1461,7 @@
             if (isUnassigned) {
                 storeBadge = `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 font-extrabold text-[10px] inline-flex items-center gap-1 border border-amber-300 whitespace-nowrap"><span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>Chưa Phân Tuyến</span>`;
             } else {
-                storeBadge = `<span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px] whitespace-nowrap">CN ${assignedStore}</span>`;
+                storeBadge = `<span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px] whitespace-nowrap">CN ${escapeHtml(assignedStore)}</span>`;
             }
 
             // Customer & Delivery
@@ -1370,7 +1488,7 @@
             lineItems.slice(0, 3).forEach(it => {
                 itemsSnippet += `
                     <div class="flex items-center text-xs font-medium py-0.5 max-w-[240px] truncate">
-                        <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-900 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
+                        <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-900 font-mono font-bold text-[11px] mr-1.5 shrink-0">${Number(it.quantity || 1)}x</span>
                         <span class="text-slate-800 truncate" title="${escapeHtml(it.title || it.name)}">${escapeHtml(it.title || it.name)}</span>
                         ${it.sku ? `<span class="ml-1.5 text-[9.5px] font-mono font-bold text-slate-700 bg-slate-100 px-1 py-0.2 rounded border border-slate-300 tracking-tight shrink-0" title="SKU: ${escapeHtml(it.sku)}">${escapeHtml(it.sku)}</span>` : ''}
                     </div>
@@ -1380,43 +1498,43 @@
                 itemsSnippet += `<div class="text-[10.5px] text-slate-400 font-medium mt-0.5">+ ${lineItems.length - 3} món khác...</div>`;
             }
 
-            const totalAmount = o.total_price || 0;
+            const totalAmount = Number(o.total_price || 0);
 
-            // Action Buttons (Streamlined, strictly non-overlapping)
+            // Action Buttons (Streamlined, strictly non-overlapping, RBAC-gated)
             let actionsHtml = `
                 <div class="inline-flex items-center justify-end gap-1.5">
                     ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Phân Tuyến
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanAssignModal('${o.id}')" class="px-2 py-0.5 rounded-md border border-blue-200 hover:bg-blue-50 text-blue-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Đổi chi nhánh thực hiện đơn">
+                        <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-2 py-0.5 rounded-md border border-blue-200 hover:bg-blue-50 text-blue-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Đổi chi nhánh thực hiện đơn">
                             Đổi CN
                         </button>
                     ` : ''}
 
-                    ${!isUnassigned && !canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
+                    ${!readOnlyUser && !isUnassigned && !canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                        <button onclick="openHaravanReassignModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
                             Y/C Đổi
                         </button>
                     ` : ''}
 
-                    ${!isUnassigned && procStatus === 'Đã phân tuyến' ? `
-                        <button onclick="executeHaravanPack('${o.id}')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                    ${!readOnlyUser && !isUnassigned && procStatus === 'Đã phân tuyến' ? `
+                        <button onclick="executeHaravanPack('${escapeHtml(o.id)}')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Đóng Gói
                         </button>
                     ` : ''}
 
-                    ${!isUnassigned && procStatus === 'Đã đóng gói' ? `
-                        <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                    ${!readOnlyUser && !isUnassigned && procStatus === 'Đã đóng gói' ? `
+                        <button onclick="openHaravanShipModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Gửi VĐ
                         </button>
                     ` : ''}
 
-                    ${!isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
-                        <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                    ${!readOnlyUser && !isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
+                        <button onclick="openHaravanCompleteModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}', ${totalAmount})" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Hoàn Tất
                         </button>
                     ` : ''}
@@ -1424,18 +1542,18 @@
             `;
 
             rowsHtml += `
-                <tr onclick="handleOrderRowClick(event, '${o.id}')" class="transition-colors cursor-pointer ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
+                <tr onclick="handleOrderRowClick(event, '${escapeHtml(o.id)}')" class="transition-colors cursor-pointer ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
                     <td class="py-2.5 px-3 whitespace-nowrap">
-                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${o.id}')" title="Bấm để xem chi tiết đơn hàng">
+                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${escapeHtml(o.id)}')" title="Bấm để xem chi tiết đơn hàng">
                             <div class="flex items-center gap-1.5">
                                 <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
-                                    ${o.order_number || ('#' + o.id)}
+                                    ${escapeHtml(o.order_number || ('#' + o.id))}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                 </span>
                                 ${channelBadge}
                             </div>
-                            <div class="text-[10.5px] text-slate-500 mt-0.5 font-medium" title="${fullDate}">
-                                ${timeAgo} · #${o.id}
+                            <div class="text-[10.5px] text-slate-500 mt-0.5 font-medium" title="${escapeHtml(fullDate)}">
+                                ${escapeHtml(timeAgo)} · #${escapeHtml(o.id)}
                             </div>
                         </div>
                     </td>
@@ -1444,8 +1562,8 @@
                     </td>
                     <td class="py-2.5 px-3 max-w-[200px]">
                         <div class="flex items-center justify-between gap-1">
-                            <span class="font-bold text-slate-900 truncate" title="${escapeHtml(custName)}">${custName}</span>
-                            ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[11px] text-emerald-700 font-bold hover:underline shrink-0">${custPhone}</a>` : ''}
+                            <span class="font-bold text-slate-900 truncate" title="${escapeHtml(custName)}">${escapeHtml(custName)}</span>
+                            ${custPhone !== '--' ? `<a href="tel:${escapeHtml(custPhone)}" class="text-[11px] text-emerald-700 font-bold hover:underline shrink-0">${escapeHtml(custPhone)}</a>` : ''}
                         </div>
                         <div class="text-[11px] text-slate-600 mt-0.5 truncate" title="${escapeHtml(deliveryAddr)}">${escapeHtml(deliveryAddr)}</div>
                         ${noteHtml}
@@ -1513,6 +1631,7 @@
             return;
         }
 
+        const readOnlyUser = isReadOnly();
         let html = '';
         orders.forEach(o => {
             const isPending = o.status === 'PENDING';
@@ -1531,9 +1650,9 @@
                 itemsHtml += `
                     <div class="flex items-start justify-between py-1.5 border-b border-slate-100 text-xs">
                         <div class="pr-2">
-                            <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5">${item.quantity}x</span>
-                            <span class="text-slate-800 font-medium">${item.item_name}</span>
-                            ${item.notes ? `<p class="text-[11px] text-amber-700 font-medium mt-0.5">Ghi chú: ${item.notes}</p>` : ''}
+                            <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5">${Number(item.quantity || 1)}x</span>
+                            <span class="text-slate-800 font-medium">${escapeHtml(item.item_name)}</span>
+                            ${item.notes ? `<p class="text-[11px] text-amber-700 font-medium mt-0.5">Ghi chú: ${escapeHtml(item.notes)}</p>` : ''}
                         </div>
                         <span class="font-mono text-slate-700 shrink-0 font-bold">${formatVND(item.total_price)}</span>
                     </div>
@@ -1546,7 +1665,7 @@
                 const parts = o.delivery_address.split('Ghi chú giao:');
                 deliveryNoteHtml = `
                     <div class="mt-2 p-2.5 rounded-xl bg-amber-50 text-amber-900 text-xs flex items-center space-x-1.5 border border-amber-200">
-                        <span class="font-medium">Ghi chú giao: ${parts[1].replace(')', '')}</span>
+                        <span class="font-medium">Ghi chú giao: ${escapeHtml(parts[1].replace(')', ''))}</span>
                     </div>
                 `;
             }
@@ -1558,17 +1677,17 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <div onclick="openDetailsModal('${o.id}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
+                            <div onclick="openDetailsModal('${escapeHtml(o.id)}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
                                 <span class="text-sm font-extrabold text-slate-900 font-mono group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
-                                    ${o.order_code}
+                                    ${escapeHtml(o.order_code)}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                 </span>
-                                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.display_order_id || o.channel_order_id}</span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${escapeHtml(o.display_order_id || o.channel_order_id)}</span>
                             </div>
-                            <span class="text-xs text-slate-500 font-medium">• ${storeLabel}</span>
+                            <span class="text-xs text-slate-500 font-medium">• ${escapeHtml(storeLabel)}</span>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <span class="text-xs text-slate-400 font-medium">${timeAgo}</span>
+                            <span class="text-xs text-slate-400 font-medium">${escapeHtml(timeAgo)}</span>
                             ${statusBadge}
                         </div>
                     </div>
@@ -1580,20 +1699,20 @@
                             <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
                                 <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thông Tin Khách Hàng</div>
                                 <div class="flex items-center justify-between">
-                                    <span class="text-xs font-bold text-slate-900">${o.customer_name || 'Khách Vãng Lai'}</span>
-                                    ${o.customer_phone ? `<a href="tel:${o.customer_phone}" class="text-xs text-emerald-700 font-bold hover:underline">${o.customer_phone}</a>` : ''}
+                                    <span class="text-xs font-bold text-slate-900">${escapeHtml(o.customer_name || 'Khách Vãng Lai')}</span>
+                                    ${o.customer_phone ? `<a href="tel:${escapeHtml(o.customer_phone)}" class="text-xs text-emerald-700 font-bold hover:underline">${escapeHtml(o.customer_phone)}</a>` : ''}
                                 </div>
-                                <div class="text-xs text-slate-600 leading-relaxed">${o.delivery_address || 'Nhận tại quầy / Không rõ địa chỉ'}</div>
+                                <div class="text-xs text-slate-600 leading-relaxed">${escapeHtml(o.delivery_address || 'Nhận tại quầy / Không rõ địa chỉ')}</div>
                                 ${deliveryNoteHtml}
                             </div>
 
                             ${o.driver_name ? `
                                 <div class="p-3 rounded-xl bg-blue-50 text-xs text-blue-900 border border-blue-200 flex items-center justify-between">
                                     <div>
-                                        <span class="font-bold">${o.driver_name}</span>
-                                        ${o.driver_license_plate ? `<span class="text-blue-600 ml-1">(${o.driver_license_plate})</span>` : ''}
+                                        <span class="font-bold">${escapeHtml(o.driver_name)}</span>
+                                        ${o.driver_license_plate ? `<span class="text-blue-600 ml-1">(${escapeHtml(o.driver_license_plate)})</span>` : ''}
                                     </div>
-                                    ${o.driver_phone ? `<a href="tel:${o.driver_phone}" class="font-bold text-blue-700 hover:underline">Gọi xế</a>` : ''}
+                                    ${o.driver_phone ? `<a href="tel:${escapeHtml(o.driver_phone)}" class="font-bold text-blue-700 hover:underline">Gọi xế</a>` : ''}
                                 </div>
                             ` : ''}
                         </div>
@@ -1623,37 +1742,37 @@
                     <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-2">
                             ${o.channel_code === 'SHOPEEMART' ? `
-                                <button onclick="openShopeeAwbModal('${o.channel_order_id || o.display_order_id}')" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-xs font-bold text-pink-700 border border-pink-200 transition-all flex items-center space-x-1">
+                                <button onclick="openShopeeAwbModal('${escapeHtml(o.channel_order_id || o.display_order_id)}')" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-xs font-bold text-pink-700 border border-pink-200 transition-all flex items-center space-x-1">
                                     <span>Vận Đơn AWB</span>
                                 </button>
                             ` : ''}
-                            <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
+                            <button onclick="openDetailsModal('${escapeHtml(o.id)}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
                                 Chi tiết & Lịch sử
                             </button>
                         </div>
 
                         <!-- Status Transition Action Buttons -->
                         <div class="flex items-center space-x-2">
-                            ${isPending ? `
-                                <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                            ${!readOnlyUser && isPending ? `
+                                <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
-                                <button onclick="transitionOrderStatus('${o.id}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Xác Nhận Đơn</span>
                                 </button>
                             ` : ''}
 
-                            ${isAccepted ? `
-                                <button onclick="openCancelModal('${o.id}', '${o.order_code}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                            ${!readOnlyUser && isAccepted ? `
+                                <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
-                                <button onclick="transitionOrderStatus('${o.id}', 'READY', 'Món ăn đã đóng gói xong')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'READY', 'Món ăn đã đóng gói xong')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Báo Sẵn Sàng</span>
                                 </button>
                             ` : ''}
 
-                            ${isReady ? `
-                                <button onclick="transitionOrderStatus('${o.id}', 'PICKED_UP', 'Tài xế đã nhận hàng tại quầy')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                            ${!readOnlyUser && isReady ? `
+                                <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'PICKED_UP', 'Tài xế đã nhận hàng tại quầy')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Giao Cho Tài Xế</span>
                                 </button>
                             ` : ''}
@@ -1695,8 +1814,9 @@
         }
 
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
+        const readOnlyUser = isReadOnly();
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
-        const canDispatch = isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER');
+        const canDispatch = !readOnlyUser && (isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
 
         let html = '';
         orders.forEach(o => {
@@ -1705,7 +1825,7 @@
             const assignedStore = internal.assigned_store;
             const isUnassigned = !assignedStore;
 
-            const channelBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan (${(o.source || 'Web').toUpperCase()})</span>`;
+            const channelBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">Haravan (${escapeHtml((o.source || 'Web').toUpperCase())})</span>`;
             const statusBadge = getHaravanStatusBadge(procStatus);
             const timeAgo = formatRelativeTime(o.created_at);
 
@@ -1714,7 +1834,7 @@
             if (isUnassigned) {
                 storeBadge = `<span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-extrabold text-[11px] inline-flex items-center gap-1.5 border border-amber-300"><span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>Chưa Phân Tuyến</span>`;
             } else {
-                storeBadge = `<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">CN ${assignedStore}</span>`;
+                storeBadge = `<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-800 font-bold text-[11px]">CN ${escapeHtml(assignedStore)}</span>`;
             }
 
             // Customer info
@@ -1733,9 +1853,9 @@
                 itemsHtml += `
                     <div class="flex items-start justify-between py-1.5 border-b border-slate-100 text-xs">
                         <div class="pr-2">
-                            <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5">${item.quantity}x</span>
-                            <span class="text-slate-800 font-medium">${item.title || item.name}</span>
-                            ${item.sku ? `<span class="ml-1 text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">SKU: ${item.sku}</span>` : ''}
+                            <span class="px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-800 font-mono font-bold text-[11px] mr-1.5">${Number(item.quantity || 1)}x</span>
+                            <span class="text-slate-800 font-medium">${escapeHtml(item.title || item.name)}</span>
+                            ${item.sku ? `<span class="ml-1 text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">SKU: ${escapeHtml(item.sku)}</span>` : ''}
                         </div>
                         <span class="font-mono text-slate-700 shrink-0 font-bold">${formatVND(itemTotal)}</span>
                     </div>
@@ -1747,7 +1867,7 @@
             if (o.note) {
                 noteHtml = `
                     <div class="mt-2 p-2.5 rounded-xl bg-amber-50 text-amber-900 text-xs flex items-center space-x-1.5 border border-amber-200">
-                        <span class="font-medium">Ghi chú khách: ${o.note}</span>
+                        <span class="font-medium">Ghi chú khách: ${escapeHtml(o.note)}</span>
                     </div>
                 `;
             }
@@ -1758,9 +1878,9 @@
                 internalInfoHtml += `
                     <div class="p-3 rounded-xl bg-blue-50 text-xs text-blue-900 space-y-0.5 border border-blue-200">
                         <div class="font-bold flex items-center space-x-1">
-                            <span>Phân tuyến: <strong>${internal.assignment_reason}</strong></span>
+                            <span>Phân tuyến: <strong>${escapeHtml(internal.assignment_reason)}</strong></span>
                         </div>
-                        ${internal.assignment_note ? `<div class="text-[11px] text-slate-600 pl-2 mt-0.5">${internal.assignment_note}</div>` : ''}
+                        ${internal.assignment_note ? `<div class="text-[11px] text-slate-600 pl-2 mt-0.5">${escapeHtml(internal.assignment_note)}</div>` : ''}
                     </div>
                 `;
             }
@@ -1768,17 +1888,18 @@
                 internalInfoHtml += `
                     <div class="p-3 rounded-xl bg-rose-50 text-xs text-rose-900 space-y-0.5 border border-rose-200">
                         <div class="font-bold flex items-center space-x-1">
-                            <span>Lý do y/c phân tuyến lại: <strong>${internal.reassignment_reason}</strong></span>
+                            <span>Lý do y/c phân tuyến lại: <strong>${escapeHtml(internal.reassignment_reason)}</strong></span>
                         </div>
-                        ${internal.reassignment_note ? `<div class="text-[11px] text-slate-600 pl-2 mt-0.5">${internal.reassignment_note}</div>` : ''}
+                        ${internal.reassignment_note ? `<div class="text-[11px] text-slate-600 pl-2 mt-0.5">${escapeHtml(internal.reassignment_note)}</div>` : ''}
                     </div>
                 `;
             }
             if (internal.tracking_code) {
+                const shipCarrier = internal.shipping_carrier || internal.carrier || 'Nam An Market';
                 internalInfoHtml += `
                     <div class="p-3 rounded-xl bg-purple-50 text-xs text-purple-900 space-y-0.5 border border-purple-200">
                         <div class="font-bold flex items-center space-x-1">
-                            <span>Vận đơn: <strong>${internal.tracking_code}</strong> (${internal.carrier || 'Nam An Market'})</span>
+                            <span>Vận đơn: <strong>${escapeHtml(internal.tracking_code)}</strong> (${escapeHtml(shipCarrier)})</span>
                         </div>
                     </div>
                 `;
@@ -1788,7 +1909,7 @@
             const subtotal = o.total_line_items_price || o.subtotal_price || o.total_price;
             const discount = o.total_discounts || 0;
             const shipping = (o.shipping_lines && o.shipping_lines[0] && o.shipping_lines[0].price) || 0;
-            const totalAmount = o.total_price || 0;
+            const totalAmount = Number(o.total_price || 0);
 
             // Card HTML (Option 3 Apple Card)
             html += `
@@ -1797,17 +1918,17 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <div onclick="openDetailsModal('${o.id}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
+                            <div onclick="openDetailsModal('${escapeHtml(o.id)}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
                                 <span class="text-sm font-extrabold text-slate-900 font-mono group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
-                                    ${o.order_number || ('#' + o.id)}
+                                    ${escapeHtml(o.order_number || ('#' + o.id))}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                                 </span>
-                                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${o.id}</span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-100 text-[11px] font-mono text-slate-600 font-bold">#${escapeHtml(o.id)}</span>
                             </div>
                             ${storeBadge}
                         </div>
                         <div class="flex items-center space-x-2">
-                            <span class="text-xs text-slate-400 font-medium">${timeAgo}</span>
+                            <span class="text-xs text-slate-400 font-medium">${escapeHtml(timeAgo)}</span>
                             ${statusBadge}
                         </div>
                     </div>
@@ -1819,10 +1940,10 @@
                             <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
                                 <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Thông Tin Khách Hàng</div>
                                 <div class="flex items-center justify-between">
-                                    <span class="text-xs font-bold text-slate-900">${custName}</span>
-                                    ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-xs text-emerald-700 font-bold hover:underline">${custPhone}</a>` : ''}
+                                    <span class="text-xs font-bold text-slate-900">${escapeHtml(custName)}</span>
+                                    ${custPhone !== '--' ? `<a href="tel:${escapeHtml(custPhone)}" class="text-xs text-emerald-700 font-bold hover:underline">${escapeHtml(custPhone)}</a>` : ''}
                                 </div>
-                                <div class="text-xs text-slate-600 leading-relaxed">${deliveryAddr}</div>
+                                <div class="text-xs text-slate-600 leading-relaxed">${escapeHtml(deliveryAddr)}</div>
                                 ${noteHtml}
                             </div>
                             ${internalInfoHtml}
@@ -1852,7 +1973,7 @@
                     <!-- Bottom Row: Action Buttons Follow PMDONHANG -->
                     <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-2">
-                            <button onclick="openDetailsModal('${o.id}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all flex items-center space-x-1.5 shadow-2xs">
+                            <button onclick="openDetailsModal('${escapeHtml(o.id)}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all flex items-center space-x-1.5 shadow-2xs">
                                 <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                 <span>Chi tiết & Lịch sử</span>
                             </button>
@@ -1861,43 +1982,43 @@
                         <!-- Status Action Buttons -->
                         <div class="flex flex-wrap items-center gap-2">
                             ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Phân Tuyến Cửa Hàng</span>
                                 </button>
                             ` : ''}
 
                             ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanAssignModal('${o.id}')" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all">
+                                <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all">
                                     Đổi Chi Nhánh
                                 </button>
                             ` : ''}
 
-                            ${!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanReassignModal('${o.id}', '${o.order_number || o.id}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                            ${!readOnlyUser && !isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                                <button onclick="openHaravanReassignModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Thiếu Hàng / Trả Đơn
                                 </button>
                             ` : ''}
 
-                            ${procStatus === 'Đã phân tuyến' ? `
-                                <button onclick="executeHaravanPack('${o.id}')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                            ${!readOnlyUser && procStatus === 'Đã phân tuyến' ? `
+                                <button onclick="executeHaravanPack('${escapeHtml(o.id)}')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Đã Đóng Gói Xong</span>
                                 </button>
                             ` : ''}
 
-                            ${procStatus === 'Đã đóng gói' ? `
-                                <button onclick="openHaravanShipModal('${o.id}', '${o.order_number || o.id}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                            ${!readOnlyUser && procStatus === 'Đã đóng gói' ? `
+                                <button onclick="openHaravanShipModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Gửi Vận Đơn</span>
                                 </button>
                             ` : ''}
 
-                            ${(procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
-                                <button onclick="openHaravanCompleteModal('${o.id}', '${o.order_number || o.id}', ${totalAmount})" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                            ${!readOnlyUser && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
+                                <button onclick="openHaravanCompleteModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}', ${totalAmount})" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Hoàn Tất Đơn</span>
                                 </button>
                             ` : ''}
 
-                            ${procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanCancelModal('${o.id}', '${o.order_number || o.id}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                            ${!readOnlyUser && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
+                                <button onclick="openHaravanCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
                             ` : ''}
@@ -2348,6 +2469,34 @@
         }
     }
 
+    async function downloadHaravanFile(orderId, fileType) {
+        const fileLabel = fileType === 'order' ? 'File đơn hàng' : 'File vận đơn';
+        try {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}/files/${encodeURIComponent(fileType)}/download`);
+            if (!res.ok) {
+                const errText = await res.text().catch(() => '');
+                showToast(`❌ Không thể tải ${fileLabel}: ${errText || ('HTTP ' + res.status)}`, 'error');
+                return;
+            }
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const win = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+            if (!win) {
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `${fileType}_${orderId}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+            }
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+        } catch (err) {
+            console.error('File download error:', err);
+            showToast(`❌ Lỗi kết nối khi tải ${fileLabel}: ${err.message}`, 'error');
+        }
+    }
+    window.downloadHaravanFile = downloadHaravanFile;
+
     async function triggerDeleteOrderFile(orderId, fileType) {
         const fileLabel = fileType === 'order' ? 'File đơn hàng' : 'File vận đơn';
         if (!confirm(`Bạn có chắc chắn muốn gỡ bỏ ${fileLabel} khỏi đơn hàng này không?`)) {
@@ -2480,10 +2629,12 @@
         const isUnassigned = !assignedStore;
 
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
+        const readOnlyUser = isReadOnly();
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
+        const canDispatch = !readOnlyUser && (isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
 
         // 1. Header Badges
-        document.getElementById('detail-modal-channel-badge').innerHTML = `<span>🌐</span><span>HARAVAN (${(order.source || 'Web').toUpperCase()})</span>`;
+        document.getElementById('detail-modal-channel-badge').innerHTML = `<span>🌐</span><span>HARAVAN (${escapeHtml((order.source || 'Web').toUpperCase())})</span>`;
         document.getElementById('detail-modal-channel-badge').className = "px-2 py-0.5 rounded text-[11px] font-semibold bg-[#E7F3F8] text-[#2F7EA6] inline-flex items-center space-x-1";
         document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_number || ('#' + order.id)}`;
         document.getElementById('detail-modal-id-badge').textContent = `#${order.id}`;
@@ -2569,13 +2720,15 @@
                     <!-- Admin Internal Note -->
                     <div>
                         <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú nội bộ Admin / Điều phối:</label>
-                        <textarea id="detail-admin-note-input" rows="2" class="w-full text-[12px] p-2 rounded border border-[rgba(55,53,47,0.15)] focus:border-[#2F3437] focus:outline-none bg-white text-[#37352F]" placeholder="Nhập ghi chú điều phối nội bộ...">${escapeHtml(internal.admin_notes || '')}</textarea>
+                        <textarea id="detail-admin-note-input" rows="2" ${readOnlyUser ? 'readonly' : ''} class="w-full text-[12px] p-2 rounded border border-[rgba(55,53,47,0.15)] focus:border-[#2F3437] focus:outline-none bg-white text-[#37352F]" placeholder="Nhập ghi chú điều phối nội bộ...">${escapeHtml(internal.admin_notes || '')}</textarea>
+                        ${!readOnlyUser ? `
                         <div class="flex justify-end mt-1.5">
-                            <button id="btn-save-admin-note" onclick="saveDetailAdminNote('${order.id}')" class="px-3 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                            <button id="btn-save-admin-note" onclick="saveDetailAdminNote('${escapeHtml(order.id)}')" class="px-3 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
                                 <span>💾</span>
                                 <span>Lưu Ghi Chú Nội Bộ</span>
                             </button>
                         </div>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -2584,12 +2737,12 @@
             <div class="p-3.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] space-y-2.5">
                 <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider">Thông Tin Đơn Hàng & Khách Hàng</div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-[12px]">
-                    <div><span class="text-[#787774]">Mã đơn Haravan:</span> <strong class="font-mono text-[#37352F]">${order.order_number || ('#' + order.id)}</strong></div>
-                    <div><span class="text-[#787774]">Nguồn đơn:</span> <span class="font-medium text-[#37352F]">${order.source || 'Website'}</span></div>
+                    <div><span class="text-[#787774]">Mã đơn Haravan:</span> <strong class="font-mono text-[#37352F]">${escapeHtml(order.order_number || ('#' + order.id))}</strong></div>
+                    <div><span class="text-[#787774]">Nguồn đơn:</span> <span class="font-medium text-[#37352F]">${escapeHtml(order.source || 'Website')}</span></div>
                     <div><span class="text-[#787774]">Ngày đặt:</span> <span class="text-[#37352F]">${formatDateTime(order.created_at)}</span></div>
                     <div><span class="text-[#787774]">Khách hàng:</span> <strong class="text-[#37352F]">${escapeHtml(custName)}</strong></div>
-                    <div><span class="text-[#787774]">Số điện thoại:</span> ${custPhone !== '--' ? `<a href="tel:${custPhone}" class="text-[#2F7EA6] font-medium hover:underline">📞 ${custPhone}</a>` : '<span class="text-[#9B9A97]">--</span>'}</div>
-                    <div><span class="text-[#787774]">Trạng thái thanh toán:</span> <span class="font-medium text-[#37352F]">${order.financial_status || 'Chưa thanh toán'}</span></div>
+                    <div><span class="text-[#787774]">Số điện thoại:</span> ${custPhone !== '--' ? `<a href="tel:${escapeHtml(custPhone)}" class="text-[#2F7EA6] font-medium hover:underline">📞 ${escapeHtml(custPhone)}</a>` : '<span class="text-[#9B9A97]">--</span>'}</div>
+                    <div><span class="text-[#787774]">Trạng thái thanh toán:</span> <span class="font-medium text-[#37352F]">${escapeHtml(order.financial_status || 'Chưa thanh toán')}</span></div>
                     <div class="md:col-span-2 lg:col-span-3"><span class="text-[#787774]">Địa chỉ giao hàng:</span> <span class="text-[#37352F]">${escapeHtml(deliveryAddr)}</span></div>
                 </div>
                 <div class="pt-2 border-t border-[rgba(55,53,47,0.06)] flex flex-wrap items-center justify-between text-[12px]">
@@ -2649,25 +2802,29 @@
                                 ${orderFileUploadedAt ? `<span>${formatDateTime(orderFileUploadedAt)}</span>` : ''}
                             </div>
                             <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
-                                <a href="/api/v1/haravan/orders/${order.id}/files/order/download" target="_blank" class="flex-1 py-1 px-2.5 rounded bg-[#E7F3F8] hover:bg-[#D3EBF5] text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                                <button type="button" onclick="downloadHaravanFile('${escapeHtml(order.id)}', 'order')" class="flex-1 py-1 px-2.5 rounded bg-[#E7F3F8] hover:bg-[#D3EBF5] text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
                                     <span>👁️</span>
                                     <span>Xem / Tải về</span>
-                                </a>
+                                </button>
+                                ${!readOnlyUser ? `
                                 <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'order')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'order')">
                                 </label>
-                                <button onclick="triggerDeleteOrderFile('${order.id}', 'order')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                <button type="button" onclick="triggerDeleteOrderFile('${escapeHtml(order.id)}', 'order')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
                                 </button>
+                                ` : ''}
                             </div>
                         ` : `
                             <div class="pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                                ${!readOnlyUser ? `
                                 <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#2383E2]/40 hover:border-[#2383E2] bg-[#E7F3F8]/30 hover:bg-[#E7F3F8]/60 text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Đơn Hàng (PDF/Ảnh)</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'order')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'order')">
                                 </label>
+                                ` : `<span class="text-[11px] text-[#9B9A97] italic">Chưa có tệp đính kèm</span>`}
                             </div>
                         `}
                     </div>
@@ -2693,31 +2850,41 @@
                                 ${trackingFileUploadedAt ? `<span>${formatDateTime(trackingFileUploadedAt)}</span>` : ''}
                             </div>
                             <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
-                                <a href="/api/v1/haravan/orders/${order.id}/files/tracking/download" target="_blank" class="flex-1 py-1 px-2.5 rounded bg-[#EDF3EC] hover:bg-[#DBEADB] text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                                <button type="button" onclick="downloadHaravanFile('${escapeHtml(order.id)}', 'tracking')" class="flex-1 py-1 px-2.5 rounded bg-[#EDF3EC] hover:bg-[#DBEADB] text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
                                     <span>👁️</span>
                                     <span>Xem / Tải về</span>
-                                </a>
+                                </button>
+                                ${!readOnlyUser ? `
                                 <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'tracking')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'tracking')">
                                 </label>
-                                <button onclick="triggerDeleteOrderFile('${order.id}', 'tracking')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                <button type="button" onclick="triggerDeleteOrderFile('${escapeHtml(order.id)}', 'tracking')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
                                 </button>
+                                ` : ''}
                             </div>
                         ` : `
                             <div class="pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                                ${!readOnlyUser ? `
                                 <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#448361]/40 hover:border-[#448361] bg-[#EDF3EC]/30 hover:bg-[#EDF3EC]/60 text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Vận Đơn (PDF/Ảnh)</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${order.id}', 'tracking')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'tracking')">
                                 </label>
+                                ` : `<span class="text-[11px] text-[#9B9A97] italic">Chưa có tệp đính kèm</span>`}
                             </div>
                         `}
                     </div>
                 </div>
             </div>
         `;
+
+        const compInfo = internal.completion_info || {};
+        const cancelInfo = internal.cancel_info || {};
+        const shipCarrier = internal.shipping_carrier ?? internal.carrier;
+        const reassignAt = internal.reassignment_requested_at ?? internal.reassigned_at;
+        const reassignBy = internal.reassignment_requested_by ?? internal.reassigned_by;
 
         basicHtml += `
             <!-- Store Assignment Info -->
@@ -2727,7 +2894,7 @@
                         <span>📍</span>
                         <span>Thông Tin Phân Tuyến Cửa Hàng</span>
                     </span>
-                    ${assignedStore ? `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#E7F3F8] text-[#2F7EA6]">Chi nhánh ${assignedStore}</span>` : `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#FBEDD6] text-[#CB912F]">⚠️ Chưa Phân Tuyến</span>`}
+                    ${assignedStore ? `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#E7F3F8] text-[#2F7EA6]">Chi nhánh ${escapeHtml(assignedStore)}</span>` : `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#FBEDD6] text-[#CB912F]">⚠️ Chưa Phân Tuyến</span>`}
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[#37352F]">
                     <div><span class="text-[#787774]">Lý do phân tuyến:</span> <strong>${escapeHtml(internal.assignment_reason || '--')}</strong></div>
@@ -2746,14 +2913,14 @@
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[#37352F]">
                         <div><span class="text-[#787774]">Lý do yêu cầu:</span> <strong class="text-[#D44C47]">${escapeHtml(internal.reassignment_reason)}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian:</span> ${internal.reassigned_at ? formatDateTime(internal.reassigned_at) : '--'} ${internal.reassigned_by ? `<span class="text-[#787774]">(${escapeHtml(internal.reassigned_by)})</span>` : ''}</div>
+                        <div><span class="text-[#787774]">Thời gian:</span> ${reassignAt ? formatDateTime(reassignAt) : '--'} ${reassignBy ? `<span class="text-[#787774]">(${escapeHtml(reassignBy)})</span>` : ''}</div>
                         <div class="md:col-span-2"><span class="text-[#787774]">Chi tiết ghi chú:</span> ${escapeHtml(internal.reassignment_note || 'Không có')}</div>
                     </div>
                 </div>
             `;
         }
 
-        if (internal.tracking_code || internal.carrier) {
+        if (internal.tracking_code || shipCarrier) {
             basicHtml += `
                 <div class="p-3.5 rounded-md bg-[#F4EFF7]/50 border border-[#E0D2E8] space-y-1 text-[12px]">
                     <div class="font-semibold text-[#9065B0] flex items-center space-x-1.5">
@@ -2761,7 +2928,7 @@
                         <span>Thông Tin Vận Đơn & Giao Hàng</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Đơn vị vận chuyển:</span> <strong>${escapeHtml(internal.carrier || 'Nam An Market')}</strong></div>
+                        <div><span class="text-[#787774]">Đơn vị vận chuyển:</span> <strong>${escapeHtml(shipCarrier || 'Nam An Market')}</strong></div>
                         <div><span class="text-[#787774]">Mã vận đơn:</span> <strong class="font-mono text-[#9065B0]">${escapeHtml(internal.tracking_code || 'Chưa phát hành')}</strong></div>
                         <div><span class="text-[#787774]">Thời gian gửi:</span> ${internal.shipped_at ? formatDateTime(internal.shipped_at) : '--'} ${internal.shipped_by ? `<span class="text-[#787774]">(${escapeHtml(internal.shipped_by)})</span>` : ''}</div>
                     </div>
@@ -2769,7 +2936,15 @@
             `;
         }
 
-        if (procStatus === 'Hoàn thành' || internal.actual_total) {
+        const compTotal = compInfo.actual_total ?? internal.actual_total;
+        const compShip = compInfo.actual_shipping ?? internal.actual_shipping ?? 0;
+        const compCarrier = compInfo.actual_carrier ?? internal.actual_carrier ?? shipCarrier ?? '--';
+        const compTracking = compInfo.tracking_code ?? internal.actual_tracking_code ?? internal.tracking_code ?? '--';
+        const compAt = compInfo.completed_at ?? internal.completed_at;
+        const compBy = compInfo.completed_by ?? internal.completed_by;
+        const compNote = compInfo.note ?? internal.completion_note ?? internal.note ?? '--';
+
+        if (procStatus === 'Hoàn thành' || compTotal !== undefined) {
             basicHtml += `
                 <div class="p-3.5 rounded-md bg-[#EDF3EC]/60 border border-[#C5DEC9] space-y-1 text-[12px]">
                     <div class="font-semibold text-[#448361] flex items-center space-x-1.5">
@@ -2777,18 +2952,23 @@
                         <span>Thông Tin Hoàn Thành Đơn Hàng</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Tổng tiền thực tế:</span> <strong class="font-mono">${formatVND(internal.actual_total || order.total_price)}</strong></div>
-                        <div><span class="text-[#787774]">Phí ship thực tế:</span> <strong class="font-mono">${formatVND(internal.actual_shipping || 0)}</strong></div>
-                        <div><span class="text-[#787774]">ĐVVC thực tế:</span> <strong>${escapeHtml(internal.actual_carrier || internal.carrier || '--')}</strong></div>
-                        <div><span class="text-[#787774]">Mã VĐ thực tế:</span> <strong class="font-mono">${escapeHtml(internal.actual_tracking_code || internal.tracking_code || '--')}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian hoàn tất:</span> ${internal.completed_at ? formatDateTime(internal.completed_at) : '--'} ${internal.completed_by ? `<span class="text-[#787774]">(${escapeHtml(internal.completed_by)})</span>` : ''}</div>
-                        <div><span class="text-[#787774]">Ghi chú:</span> ${escapeHtml(internal.completion_note || internal.note || '--')}</div>
+                        <div><span class="text-[#787774]">Tổng tiền thực tế:</span> <strong class="font-mono">${formatVND(Number(compTotal ?? order.total_price ?? 0))}</strong></div>
+                        <div><span class="text-[#787774]">Phí ship thực tế:</span> <strong class="font-mono">${formatVND(Number(compShip || 0))}</strong></div>
+                        <div><span class="text-[#787774]">ĐVVC thực tế:</span> <strong>${escapeHtml(compCarrier)}</strong></div>
+                        <div><span class="text-[#787774]">Mã VĐ thực tế:</span> <strong class="font-mono">${escapeHtml(compTracking)}</strong></div>
+                        <div><span class="text-[#787774]">Thời gian hoàn tất:</span> ${compAt ? formatDateTime(compAt) : '--'} ${compBy ? `<span class="text-[#787774]">(${escapeHtml(compBy)})</span>` : ''}</div>
+                        <div><span class="text-[#787774]">Ghi chú:</span> ${escapeHtml(compNote)}</div>
                     </div>
                 </div>
             `;
         }
 
-        if (procStatus === 'Đã hủy' || internal.cancel_reason) {
+        const cancelReason = cancelInfo.reason ?? internal.cancel_reason ?? internal.cancellation_reason;
+        const cancelAt = cancelInfo.cancelled_at ?? internal.cancelled_at;
+        const cancelBy = cancelInfo.cancelled_by ?? internal.cancelled_by;
+        const cancelNote = cancelInfo.note ?? internal.cancel_note ?? internal.note ?? 'Không có';
+
+        if (procStatus === 'Đã hủy' || cancelReason) {
             basicHtml += `
                 <div class="p-3.5 rounded-md bg-[#FDEBEC] border border-[#F5B5B3] space-y-1 text-[12px] text-[#D44C47]">
                     <div class="font-semibold flex items-center space-x-1.5">
@@ -2796,9 +2976,9 @@
                         <span>Thông Tin Hủy Đơn Hàng</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Lý do hủy:</span> <strong class="text-[#D44C47]">${escapeHtml(internal.cancel_reason || internal.cancellation_reason || '--')}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian hủy:</span> ${internal.cancelled_at ? formatDateTime(internal.cancelled_at) : '--'} ${internal.cancelled_by ? `<span class="text-[#787774]">(${escapeHtml(internal.cancelled_by)})</span>` : ''}</div>
-                        <div class="md:col-span-2"><span class="text-[#787774]">Ghi chú hủy:</span> ${escapeHtml(internal.cancel_note || internal.note || 'Không có')}</div>
+                        <div><span class="text-[#787774]">Lý do hủy:</span> <strong class="text-[#D44C47]">${escapeHtml(cancelReason || '--')}</strong></div>
+                        <div><span class="text-[#787774]">Thời gian hủy:</span> ${cancelAt ? formatDateTime(cancelAt) : '--'} ${cancelBy ? `<span class="text-[#787774]">(${escapeHtml(cancelBy)})</span>` : ''}</div>
+                        <div class="md:col-span-2"><span class="text-[#787774]">Ghi chú hủy:</span> ${escapeHtml(cancelNote)}</div>
                     </div>
                 </div>
             `;
@@ -2818,7 +2998,7 @@
         let productsRowsHtml = '';
         let totalItemsQty = 0;
         const liveStock = order.arito_live_stock || null;
-        const snapshotStock = internal.snapshot_stock || null;
+        const snapshotStock = internal.assignment_stock || internal.snapshot_stock || null;
 
         (order.line_items || []).forEach((item, idx) => {
             const reqQty = Number(item.quantity || 1);
@@ -2918,48 +3098,48 @@
                 </div>
 
             <div class="flex flex-wrap items-center gap-2">
-                ${(isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                    <button onclick="openHaravanAssignModal('${order.id}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
+                    <button onclick="openHaravanAssignModal('${escapeHtml(order.id)}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>⚡</span>
                         <span>Phân Tuyến Cửa Hàng</span>
                     </button>
                 ` : ''}
 
-                ${(!isUnassigned && isSuperAdmin && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button onclick="openHaravanAssignModal('${order.id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[12px] font-medium transition-colors">
+                ${(!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
+                    <button onclick="openHaravanAssignModal('${escapeHtml(order.id)}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[12px] font-medium transition-colors">
                         Đổi Chi Nhánh
                     </button>
                 ` : ''}
 
-                ${(!isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button onclick="openHaravanReassignModal('${order.id}', '${order.order_number || order.id}')" class="px-2.5 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                ${(!readOnlyUser && !isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
+                    <button onclick="openHaravanReassignModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}')" class="px-2.5 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         ⚠️ Yêu Cầu PT Lại
                     </button>
                 ` : ''}
 
-                ${procStatus === 'Đã phân tuyến' ? `
-                    <button onclick="executeHaravanPack('${order.id}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                ${!readOnlyUser && procStatus === 'Đã phân tuyến' ? `
+                    <button onclick="executeHaravanPack('${escapeHtml(order.id)}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>📦</span>
                         <span>Đã Đóng Gói Xong</span>
                     </button>
                 ` : ''}
 
-                ${procStatus === 'Đã đóng gói' ? `
-                    <button onclick="openHaravanShipModal('${order.id}', '${order.order_number || order.id}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                ${!readOnlyUser && procStatus === 'Đã đóng gói' ? `
+                    <button onclick="openHaravanShipModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>🚚</span>
                         <span>Gửi Vận Đơn</span>
                     </button>
                 ` : ''}
 
-                ${(procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
-                    <button onclick="openHaravanCompleteModal('${order.id}', '${order.order_number || order.id}', ${totalAmount})" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                ${!readOnlyUser && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
+                    <button onclick="openHaravanCompleteModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}', ${Number(totalAmount || 0)})" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>✅</span>
                         <span>Hoàn Tất Đơn</span>
                     </button>
                 ` : ''}
 
-                ${(procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button onclick="openHaravanCancelModal('${order.id}', '${order.order_number || order.id}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                ${(!readOnlyUser && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
+                    <button onclick="openHaravanCancelModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn Hàng
                     </button>
                 ` : ''}
@@ -2974,6 +3154,7 @@
 
     // Render Platform Order Detail Dialog (GrabMart, ShopeeFood, ShopeeMart)
     function renderPlatformDetailModal(order) {
+        const readOnlyUser = isReadOnly();
         document.getElementById('detail-modal-channel-badge').innerHTML = getChannelBadge(order.channel_code);
         document.getElementById('detail-modal-channel-badge').className = "inline-flex items-center";
         document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_code}`;
@@ -3027,12 +3208,12 @@
             <div class="p-3.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] space-y-2.5">
                 <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider">Thông Tin Đơn Sàn</div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-[12px]">
-                    <div><span class="text-[#787774]">Mã đơn nội bộ:</span> <strong class="font-mono text-[#37352F]">${order.order_code}</strong></div>
-                    <div><span class="text-[#787774]">Mã sàn:</span> <strong class="font-mono text-[#37352F]">${order.channel_order_id}</strong></div>
-                    <div><span class="text-[#787774]">Chi nhánh:</span> <span class="font-medium text-[#37352F]">${order.store_name || order.store_code}</span></div>
+                    <div><span class="text-[#787774]">Mã đơn nội bộ:</span> <strong class="font-mono text-[#37352F]">${escapeHtml(order.order_code)}</strong></div>
+                    <div><span class="text-[#787774]">Mã sàn:</span> <strong class="font-mono text-[#37352F]">${escapeHtml(order.channel_order_id)}</strong></div>
+                    <div><span class="text-[#787774]">Chi nhánh:</span> <span class="font-medium text-[#37352F]">${escapeHtml(order.store_name || order.store_code)}</span></div>
                     <div><span class="text-[#787774]">Khách hàng:</span> <strong class="text-[#37352F]">${escapeHtml(order.customer_name || 'Khách vãng lai')}</strong></div>
-                    <div><span class="text-[#787774]">SĐT khách:</span> ${order.customer_phone ? `<a href="tel:${order.customer_phone}" class="text-[#2F7EA6] font-medium hover:underline">📞 ${order.customer_phone}</a>` : '--'}</div>
-                    <div><span class="text-[#787774]">Tài xế nhận:</span> ${order.driver_name ? `<strong>${escapeHtml(order.driver_name)}</strong> (${order.driver_phone || ''})` : '<span class="text-[#9B9A97] italic">Chưa có tài xế</span>'}</div>
+                    <div><span class="text-[#787774]">SĐT khách:</span> ${order.customer_phone ? `<a href="tel:${escapeHtml(order.customer_phone)}" class="text-[#2F7EA6] font-medium hover:underline">📞 ${escapeHtml(order.customer_phone)}</a>` : '--'}</div>
+                    <div><span class="text-[#787774]">Tài xế nhận:</span> ${order.driver_name ? `<strong>${escapeHtml(order.driver_name)}</strong> (${escapeHtml(order.driver_phone || '')})` : '<span class="text-[#9B9A97] italic">Chưa có tài xế</span>'}</div>
                     <div class="md:col-span-2 lg:col-span-3"><span class="text-[#787774]">Địa chỉ giao hàng:</span> <span class="text-[#37352F]">${escapeHtml(order.delivery_address || '--')}</span></div>
                 </div>
                 <div class="pt-2 border-t border-[rgba(55,53,47,0.06)] flex flex-wrap items-center justify-between text-[12px]">
@@ -3062,7 +3243,7 @@
                     <td class="py-2.5 px-3 font-medium text-[#37352F]">
                         <div>${escapeHtml(it.item_name || it.name || it.title || 'Sản phẩm')}</div>
                         ${it.sku ? `<div class="text-[10.5px] font-mono text-[#787774] mt-0.5">SKU: ${escapeHtml(it.sku)}</div>` : ''}
-                        ${it.modifiers && it.modifiers.length ? `<div class="text-[11px] text-[#787774] mt-0.5">${it.modifiers.map(m => `+ ${m.name}`).join(', ')}</div>` : ''}
+                        ${it.modifiers && it.modifiers.length ? `<div class="text-[11px] text-[#787774] mt-0.5">${it.modifiers.map(m => `+ ${escapeHtml(m.name)}`).join(', ')}</div>` : ''}
                     </td>
                     <td class="py-2.5 px-2 text-center font-bold font-mono text-[#37352F]">${qty}</td>
                     <td class="py-2.5 px-3 text-right font-mono text-[#787774]">${formatVND(price)}</td>
@@ -3093,36 +3274,42 @@
         // TAB 3: History
         renderHistoryTabPane(order);
 
+        const safeSn = escapeHtml(order.channel_order_id || order.display_order_id);
+        const safeId = escapeHtml(order.id);
+        const safeCode = escapeHtml(order.order_code);
+
         // FOOTER ACTIONS
         let footerHtml = `
             <div class="flex items-center space-x-2">
                 ${order.channel_code === 'SHOPEEMART' ? `
-                    <button onclick="openShopeeAwbModal('${order.channel_order_id || order.display_order_id}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
+                    <button onclick="openShopeeAwbModal('${safeSn}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
                         <span>📄</span>
                         <span>Vận Đơn AWB</span></button>
-                    <button onclick="downloadShopeeAwbPdf('${order.channel_order_id || order.display_order_id}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
-                    <button onclick="handleShopeeBuyerCancellation('${order.channel_order_id || order.display_order_id}', 'ACCEPT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#EDF3EC] text-[11px] font-medium text-[#448361] transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
-                    <button onclick="handleShopeeBuyerCancellation('${order.channel_order_id || order.display_order_id}', 'REJECT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#FDEBEC] text-[11px] font-medium text-[#D44C47] transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
+                    <button onclick="downloadShopeeAwbPdf('${safeSn}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
+                    ${!readOnlyUser ? `
+                    <button onclick="handleShopeeBuyerCancellation('${safeSn}', 'ACCEPT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#EDF3EC] text-[11px] font-medium text-[#448361] transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
+                    <button onclick="handleShopeeBuyerCancellation('${safeSn}', 'REJECT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#FDEBEC] text-[11px] font-medium text-[#D44C47] transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
                     </button>
+                    ` : ''}
                 ` : ''}
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
-                ${order.status === 'PENDING' ? `
-                    <button onclick="openCancelModal('${order.id}', '${order.order_code}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                ${(!readOnlyUser && order.status === 'PENDING') ? `
+                    <button onclick="openCancelModal('${safeId}', '${safeCode}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn
                     </button>
-                    <button onclick="transitionOrderStatus('${order.id}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                    <button onclick="transitionOrderStatus('${safeId}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
                         <span>✓</span>
                         <span>Xác Nhận Đơn</span>
                     </button>
                 ` : ''}
 
-                ${(order.status === 'ACCEPTED' || order.status === 'PREPARING') ? `
-                    <button onclick="openCancelModal('${order.id}', '${order.order_code}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                ${(!readOnlyUser && (order.status === 'ACCEPTED' || order.status === 'PREPARING')) ? `
+                    <button onclick="openCancelModal('${safeId}', '${safeCode}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn
                     </button>
-                    <button onclick="transitionOrderStatus('${order.id}', 'READY', 'Món ăn đã đóng gói xong'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                    <button onclick="transitionOrderStatus('${safeId}', 'READY', 'Món ăn đã đóng gói xong'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
                         <span>📦</span>
                         <span>Báo Sẵn Sàng</span>
                     </button>
@@ -3261,11 +3448,11 @@
             const addr = o.shipping_address ? (o.shipping_address.address1 + (o.shipping_address.city ? ', ' + o.shipping_address.city : '')) : 'Nhận tại quầy';
 
             summary.innerHTML = `
-                <div><span class="text-[#787774]">Khách hàng:</span> <strong class="text-[#37352F]">${custName}</strong></div>
-                <div><span class="text-[#787774]">SĐT:</span> <strong class="text-[#37352F]">${custPhone}</strong></div>
+                <div><span class="text-[#787774]">Khách hàng:</span> <strong class="text-[#37352F]">${escapeHtml(custName)}</strong></div>
+                <div><span class="text-[#787774]">SĐT:</span> <strong class="text-[#37352F]">${escapeHtml(custPhone)}</strong></div>
                 <div><span class="text-[#787774]">Tổng tiền:</span> <span class="font-bold font-mono text-[#37352F]">${formatVND(o.total_price)}</span></div>
-                <div class="col-span-1 sm:col-span-3"><span class="text-[#787774]">Địa chỉ nhận hàng:</span> <span class="text-[#37352F]">${addr}</span></div>
-                ${o.note ? `<div class="col-span-1 sm:col-span-3 text-[#CB912F]"><strong>Ghi chú khách:</strong> ${o.note}</div>` : ''}
+                <div class="col-span-1 sm:col-span-3"><span class="text-[#787774]">Địa chỉ nhận hàng:</span> <span class="text-[#37352F]">${escapeHtml(addr)}</span></div>
+                ${o.note ? `<div class="col-span-1 sm:col-span-3 text-[#CB912F]"><strong>Ghi chú khách:</strong> ${escapeHtml(o.note)}</div>` : ''}
             `;
 
             // Render Arito Stock Table
@@ -3290,8 +3477,8 @@
                 tbodyHtml += `
                     <tr>
                         <td class="px-3 py-1.5">
-                            <div class="font-medium text-[#37352F] text-[12px]">${it.title || it.name}</div>
-                            <span class="text-[10px] text-[#787774] font-mono">SKU: ${sku || 'Chưa gán SKU'}</span>
+                            <div class="font-medium text-[#37352F] text-[12px]">${escapeHtml(it.title || it.name)}</div>
+                            <span class="text-[10px] text-[#787774] font-mono">SKU: ${escapeHtml(sku || 'Chưa gán SKU')}</span>
                         </td>
                         <td class="px-2 py-1.5 text-center font-bold text-[#37352F]">${reqQty}</td>
                         ${getCell(b10001)}
@@ -3316,12 +3503,13 @@
                 if (recRes.ok && recJson.success && recJson.data) {
                     const rec = recJson.data;
                     if (rec.recommended_store) {
+                        const safeRecStore = escapeHtml(rec.recommended_store);
                         recBox.innerHTML = `
                             <div class="flex items-center space-x-2">
                                 <span class="text-base">💡</span>
-                                <span>Gợi ý hệ thống: Chi nhánh <strong>${rec.store_name} (${rec.recommended_store})</strong> có đủ <strong>${rec.fulfilled_items_count}/${rec.total_items_count}</strong> sản phẩm theo tồn Arito.</span>
+                                <span>Gợi ý hệ thống: Chi nhánh <strong>${escapeHtml(rec.store_name)} (${safeRecStore})</strong> có đủ <strong>${rec.fulfilled_items_count}/${rec.total_items_count}</strong> sản phẩm theo tồn Arito.</span>
                             </div>
-                            <button onclick="selectAssignStore('${rec.recommended_store}')" class="px-2.5 py-1 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium text-[11px] shrink-0 transition-colors">
+                            <button onclick="selectAssignStore('${safeRecStore}')" class="px-2.5 py-1 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium text-[11px] shrink-0 transition-colors">
                                 ⚡ Chọn chi nhánh này
                             </button>
                         `;
@@ -3631,8 +3819,8 @@
 
         try {
             const [trackRes, awbRes] = await Promise.all([
-                authFetch(`/api/v1/shopeemart/orders/${orderSn}/tracking`),
-                authFetch(`/api/v1/shopeemart/orders/${orderSn}/create-awb`, {
+                authFetch(`/api/v1/shopeemart/orders/${encodeURIComponent(orderSn)}/tracking`),
+                authFetch(`/api/v1/shopeemart/orders/${encodeURIComponent(orderSn)}/create-awb`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ document_type: 'THERMAL_AIR_WAYBILL' })
@@ -3641,12 +3829,12 @@
             const trackData = await trackRes.json();
             const awbData = await awbRes.json();
 
-            const trackingNo = (trackData.data && (trackData.data.tracking_number || trackData.data.tracking_no)) || ('VN-SPX-' + orderSn.slice(-8));
+            const trackingNo = (trackData.data && (trackData.data.tracking_number || trackData.data.tracking_no)) || ('VN-SPX-' + String(orderSn || '').slice(-8));
             const orderObj = currentOrdersCache.find(x => x.channel_order_id === orderSn || x.display_order_id === orderSn) || {};
 
             let itemsListHtml = '';
             (orderObj.items || []).forEach(it => {
-                itemsListHtml += `<li class="flex justify-between py-0.5 border-b border-gray-100"><span>${it.quantity}x ${it.item_name}</span><span>${formatVND(it.total_price)}</span></li>`;
+                itemsListHtml += `<li class="flex justify-between py-0.5 border-b border-gray-100"><span>${Number(it.quantity || 1)}x ${escapeHtml(it.item_name)}</span><span>${formatVND(it.total_price)}</span></li>`;
             });
 
             container.innerHTML = `
@@ -3661,7 +3849,7 @@
 
                     <!-- Tracking Barcode Simulation -->
                     <div class="text-center py-2.5 border-y border-dashed border-gray-300 bg-gray-50/50 rounded-lg">
-                        <div class="text-xl sm:text-2xl tracking-[4px] font-black font-mono text-charcoal">${trackingNo}</div>
+                        <div class="text-xl sm:text-2xl tracking-[4px] font-black font-mono text-charcoal">${escapeHtml(trackingNo)}</div>
                         <div class="text-[10px] text-gray-400 mt-1 uppercase font-semibold">Mã Vận Đơn 3PL (Tracking Code)</div>
                     </div>
 
@@ -3669,14 +3857,14 @@
                     <div class="grid grid-cols-2 gap-3 text-[11px]">
                         <div class="p-2.5 rounded-lg bg-surface-low space-y-1">
                             <div class="font-bold text-gray-500 uppercase text-[9px] tracking-wider">NGƯỜI GỬI:</div>
-                            <div class="font-bold text-charcoal">Nam An Market (${orderObj.store_name || 'Chi nhánh ' + (orderObj.store_code || '10001')})</div>
-                            <div class="text-gray-600">${orderObj.store_address || 'TP. Hồ Chí Minh'}</div>
+                            <div class="font-bold text-charcoal">Nam An Market (${escapeHtml(orderObj.store_name || 'Chi nhánh ' + (orderObj.store_code || '10001'))})</div>
+                            <div class="text-gray-600">${escapeHtml(orderObj.store_address || 'TP. Hồ Chí Minh')}</div>
                         </div>
                         <div class="p-2.5 rounded-lg bg-surface-low space-y-1">
                             <div class="font-bold text-gray-500 uppercase text-[9px] tracking-wider">NGƯỜI NHẬN:</div>
-                            <div class="font-bold text-charcoal">${orderObj.customer_name || 'Khách Hàng Shopee'}</div>
-                            <div class="text-gray-600 font-bold">${orderObj.customer_phone || ''}</div>
-                            <div class="text-gray-600">${orderObj.delivery_address || 'Theo địa chỉ ứng dụng Shopee'}</div>
+                            <div class="font-bold text-charcoal">${escapeHtml(orderObj.customer_name || 'Khách Hàng Shopee')}</div>
+                            <div class="text-gray-600 font-bold">${escapeHtml(orderObj.customer_phone || '')}</div>
+                            <div class="text-gray-600">${escapeHtml(orderObj.delivery_address || 'Theo địa chỉ ứng dụng Shopee')}</div>
                         </div>
                     </div>
 
@@ -3691,8 +3879,8 @@
                     <!-- Order Details Summary -->
                     <div class="p-2.5 rounded-lg bg-surface-low text-[11px] flex justify-between items-center">
                         <div>
-                            <div><strong>Mã Đơn Shopee:</strong> ${orderSn}</div>
-                            <div><strong>Trạng thái tạo:</strong> ${awbData.data ? (awbData.data.status || 'READY') : 'READY'}</div>
+                            <div><strong>Mã Đơn Shopee:</strong> ${escapeHtml(orderSn)}</div>
+                            <div><strong>Trạng thái tạo:</strong> ${escapeHtml(awbData.data ? (awbData.data.status || 'READY') : 'READY')}</div>
                         </div>
                         <div class="text-right">
                             <div class="text-[10px] text-gray-400 uppercase font-semibold">TỔNG THU (COD):</div>
@@ -3702,7 +3890,7 @@
                 </div>
             `;
         } catch(e) {
-            container.innerHTML = `<div class="p-6 text-center text-rose-600 font-bold">Lỗi khi khởi tạo phiếu AWB: ${e.message}</div>`;
+            container.innerHTML = `<div class="p-6 text-center text-rose-600 font-bold">Lỗi khi khởi tạo phiếu AWB: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -3778,6 +3966,20 @@
         try {
             showToast(`Đang tải dữ liệu phiếu vận đơn AWB cho đơn #${orderSn}...`, 'info');
             const res = await authFetch(`/api/v1/shopeemart/orders/${encodeURIComponent(orderSn)}/download-awb`);
+            const contentType = (res.headers.get('content-type') || '').toLowerCase();
+            if (res.ok && (contentType.includes('application/pdf') || contentType.includes('application/octet-stream'))) {
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `AWB_${orderSn}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+                showToast(`Đã tải file PDF vận đơn AWB cho đơn #${orderSn}!`, 'success');
+                return;
+            }
             const data = await res.json();
             if (res.ok && data.success) {
                 showToast(`Đã tải phiếu vận đơn AWB cho đơn #${orderSn}! Mở bản xem trước để in.`, 'success');
@@ -3819,7 +4021,10 @@
             autoRefreshTimer = null;
         }
         if (enabled) {
-            autoRefreshTimer = setInterval(() => loadOrdersFeed(false), 8000);
+            autoRefreshTimer = setInterval(() => {
+                if (document.hidden || _isLoadingFeed) return;
+                loadOrdersFeed(false);
+            }, 8000);
         }
     }
 
@@ -3837,7 +4042,7 @@
                     if (selectEl) {
                         selectEl.innerHTML = '<option value="">Tất cả chi nhánh</option>';
                         availableStores.forEach(s => {
-                            selectEl.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`;
+                            selectEl.innerHTML += `<option value="${escapeHtml(s.code)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
                         });
                         if (!availableStores.some(s => String(s.code) === '10008')) {
                             selectEl.innerHTML += '<option value="10008">Kho Online Ecom (10008)</option>';
@@ -3853,13 +4058,24 @@
     // Apply Store Scoping based on User Profile
     function setupUserStoreScoping(user) {
         user = user || TokenManager.getUser();
-        if (!user || !user.role) return;
+        if (!user || !user.role) return false;
 
+        const prevStore = currentFilter.store_code;
         const isSuperAdmin = (user.role === 'SUPER_ADMIN' || user.is_superuser);
         const bannerEl = document.getElementById('branch-isolation-banner');
         const branchLabelEl = document.getElementById('current-branch-label');
         const storeSelectEl = document.getElementById('filter-store-code');
         const unassignedBtnEl = document.getElementById('btn-unassigned-filter');
+        const btnSyncHaravan = document.getElementById('btn-sync-haravan');
+        const btnPollShopee = document.getElementById('btn-poll-shopeemart');
+
+        if (isReadOnly()) {
+            if (btnSyncHaravan) btnSyncHaravan.classList.add('hidden');
+            if (btnPollShopee) btnPollShopee.classList.add('hidden');
+        } else {
+            if (btnSyncHaravan) btnSyncHaravan.classList.remove('hidden');
+            if (btnPollShopee) btnPollShopee.classList.remove('hidden');
+        }
 
         if (!isSuperAdmin && user.store_code) {
             // Branch staff/manager (CH10001..CH10006): strictly lock to assigned branch
@@ -3885,12 +4101,15 @@
                 storeSelectEl.classList.remove('opacity-80', 'cursor-not-allowed');
             }
         }
+        return prevStore !== currentFilter.store_code;
     }
 
     // React to live user profile changes
     window.addEventListener('currentUserLoaded', (e) => {
-        setupUserStoreScoping(e.detail);
-        loadOrdersFeed(true);
+        const scopeChanged = setupUserStoreScoping(e.detail);
+        if (scopeChanged || (Date.now() - _lastFeedLoadTime > 1500)) {
+            loadOrdersFeed(true);
+        }
     });
 
     // Initialize Page

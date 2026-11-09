@@ -79,7 +79,7 @@ class UnifiedOrder(Base, TimestampMixin):
 
     # Delivery timings
     order_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True
     )
     estimated_ready_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     picked_up_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -122,7 +122,7 @@ class OrderItem(Base, TimestampMixin):
     __tablename__ = "order_items"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    order_id: Mapped[str] = mapped_column(String(36), ForeignKey("unified_orders.id"), nullable=False)
+    order_id: Mapped[str] = mapped_column(String(36), ForeignKey("unified_orders.id"), nullable=False, index=True)
     product_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("products.id"), nullable=True)
     
     sku: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -142,7 +142,7 @@ class OrderStatusHistory(Base, TimestampMixin):
     __tablename__ = "order_status_history"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    order_id: Mapped[str] = mapped_column(String(36), ForeignKey("unified_orders.id"), nullable=False)
+    order_id: Mapped[str] = mapped_column(String(36), ForeignKey("unified_orders.id"), nullable=False, index=True)
     from_status: Mapped[Optional[UnifiedOrderStatus]] = mapped_column(Enum(UnifiedOrderStatus), nullable=True)
     to_status: Mapped[UnifiedOrderStatus] = mapped_column(Enum(UnifiedOrderStatus), nullable=False)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

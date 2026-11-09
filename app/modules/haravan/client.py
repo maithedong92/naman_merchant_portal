@@ -77,6 +77,8 @@ class HaravanClient:
         page = 1
         page_size = 50
         max_pages = (limit + page_size - 1) // page_size
+        retries = 0
+        max_retries = 3
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             while page <= max_pages and len(all_orders) < limit:
@@ -93,6 +95,7 @@ class HaravanClient:
                     break
 
                 if res.status_code == 200:
+                    retries = 0
                     data = res.json()
                     orders = data.get("orders", [])
                     if not orders:
@@ -103,8 +106,15 @@ class HaravanClient:
                     page += 1
                     await asyncio.sleep(0.2)  # Delay nhẹ giữa các trang tránh burst rate limit
                 elif res.status_code == 429:
-                    retry_after = int(res.headers.get("Retry-After", 10))
-                    logger.warning(f"Haravan Rate Limit (429), chờ {retry_after}s...")
+                    retries += 1
+                    if retries > max_retries:
+                        logger.error(f"Haravan Rate Limit (429) vượt quá {max_retries} lần thử lại, dừng chu kỳ.")
+                        break
+                    try:
+                        retry_after = min(30, max(1, int(res.headers.get("Retry-After", 2))))
+                    except (ValueError, TypeError):
+                        retry_after = 2
+                    logger.warning(f"Haravan Rate Limit (429), chờ {retry_after}s (lần thử {retries}/{max_retries})...")
                     await asyncio.sleep(retry_after)
                 elif res.status_code == 401:
                     logger.error("Haravan Bearer Token hết hạn hoặc không có quyền truy cập.")

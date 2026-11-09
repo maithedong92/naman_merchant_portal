@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.core.config import get_settings
-from app.core.security import generate_hmac_sha256
+from app.core.security import generate_hmac_sha256, verify_hmac_sha256
 
 logger = logging.getLogger("naman_portal.modules.shopeefood.service")
 settings = get_settings()
@@ -31,6 +31,43 @@ class ShopeeFoodClient:
         """
         base_string = f"{method.upper()}|{full_url}|{body_str}"
         return generate_hmac_sha256(self.app_key, base_string, is_hex_key=True)
+
+    def verify_hmac_sha256(
+        self,
+        raw_body: Any,
+        signature: str,
+        method: str = "POST",
+        full_url: Optional[str] = None,
+        public_url: Optional[str] = None,
+    ) -> bool:
+        """
+        Verify inbound ShopeeFood / Foody webhook HMAC-SHA256 signature.
+        Supports both raw body signing and Foody canonical base_string (METHOD|URL|BODY).
+        """
+        if not signature:
+            return False
+        sig_clean = signature.replace("Signature ", "").strip()
+        if not sig_clean:
+            return False
+        if not self.app_key or "your_" in str(self.app_key):
+            return True
+
+        body_str = (
+            raw_body.decode("utf-8", errors="ignore")
+            if isinstance(raw_body, (bytes, bytearray))
+            else str(raw_body or "")
+        )
+        candidates = [body_str]
+        for url_candidate in (full_url, public_url):
+            if url_candidate:
+                candidates.append(f"{method.upper()}|{url_candidate}|{body_str}")
+
+        for msg in candidates:
+            if verify_hmac_sha256(self.app_key, msg, sig_clean, is_hex_key=True):
+                return True
+            if verify_hmac_sha256(self.app_key, msg, sig_clean, is_hex_key=False):
+                return True
+        return False
 
     def build_headers(self, method: str, full_url: str, body_json_str: str) -> Dict[str, str]:
         """Build standard Foody S2S request headers with Authorization signature."""

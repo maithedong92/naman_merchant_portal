@@ -105,22 +105,22 @@
                     </summary>
                     <div class="mt-2.5 p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
                         <p class="text-[11px] text-slate-500 leading-relaxed font-medium">
-                            Chọn tài khoản để tự động điền form:
+                            Chọn tài khoản để điền nhanh username (nhập mật khẩu được cấp):
                         </p>
                         <div class="space-y-1.5">
-                            <button type="button" onclick="selectDemoAccount('admin', 'phhthtnkhk')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                            <button type="button" onclick="selectDemoAccount('admin')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
                                 <div class="font-bold text-rose-600 text-xs">Super Admin</div>
                                 <div class="text-[11px] text-slate-500 font-mono">admin (Toàn chuỗi)</div>
                             </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10001', 'NamAn@2026')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                            <button type="button" onclick="selectDemoAccount('manager_10001')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
                                 <div class="font-bold text-blue-600 text-xs">CHT Thảo Điền</div>
                                 <div class="text-[11px] text-slate-500 font-mono">manager_10001</div>
                             </button>
-                            <button type="button" onclick="selectDemoAccount('staff_10001', 'NamAn@2026')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                            <button type="button" onclick="selectDemoAccount('staff_10001')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
                                 <div class="font-bold text-emerald-600 text-xs">NV Thảo Điền</div>
                                 <div class="text-[11px] text-slate-500 font-mono">staff_10001</div>
                             </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10004', 'NamAn@2026')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
+                            <button type="button" onclick="selectDemoAccount('manager_10004')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
                                 <div class="font-bold text-purple-600 text-xs">CHT Phú Mỹ Hưng</div>
                                 <div class="text-[11px] text-slate-500 font-mono">manager_10004</div>
                             </button>
@@ -144,9 +144,13 @@
     </div>
 
     <script>
-        function selectDemoAccount(username, password) {
+        function selectDemoAccount(username, password = '') {
             document.getElementById('username').value = username;
-            document.getElementById('password').value = password;
+            const pwdEl = document.getElementById('password');
+            if (pwdEl) {
+                pwdEl.value = password || '';
+                if (!password) pwdEl.focus();
+            }
             const errEl = document.getElementById('error-alert');
             if (errEl) errEl.classList.add('hidden');
         }
@@ -183,12 +187,13 @@
                 localStorage.setItem("naman_refresh_token", data.data.refresh_token);
                 localStorage.setItem("naman_user_profile", JSON.stringify(data.data.user));
 
-                // Redirect: Super Admin -> /admin, Store/MKT/Staff -> /admin/orders
+                // Redirect: Super Admin -> /admin, Store/MKT/Staff -> /admin/orders (Validate local path to block Open Redirect)
                 const urlParams = new URLSearchParams(window.location.search);
                 const userObj = (data.data && data.data.user) || {};
                 const defaultTarget = (userObj.role === 'SUPER_ADMIN' || userObj.is_superuser) ? '/admin' : '/admin/orders';
-                const redirect = urlParams.get('redirect') || defaultTarget;
-                window.location.href = redirect;
+                const redirect = urlParams.get('redirect');
+                const safeRedirect = (redirect && redirect.startsWith('/') && !redirect.startsWith('//') && !redirect.startsWith('/\\')) ? redirect : defaultTarget;
+                window.location.href = safeRedirect;
             } catch (err) {
                 errEl.textContent = err.message;
                 errEl.classList.remove('hidden');

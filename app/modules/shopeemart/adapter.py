@@ -25,6 +25,30 @@ from app.modules.shopeemart.service import shopeemart_client
 
 logger = logging.getLogger("naman_portal.modules.shopeemart.adapter")
 
+VALID_SHOPEE_CANCEL_REASONS = {
+    "OUT_OF_STOCK",
+    "CUSTOMER_REQUEST",
+    "UNDELIVERABLE_AREA",
+    "COD_NOT_SUPPORTED",
+}
+
+
+def normalize_shopee_cancel_reason(reason: Optional[str]) -> str:
+    """Normalize arbitrary or Vietnamese cancellation reason to valid Shopee Open Platform v2 enum."""
+    if not reason:
+        return "OUT_OF_STOCK"
+    cleaned = str(reason).strip().upper()
+    if cleaned in VALID_SHOPEE_CANCEL_REASONS:
+        return cleaned
+    lower_r = str(reason).strip().lower()
+    if "khu vực" in lower_r or "giao" in lower_r or "undeliverable" in lower_r:
+        return "UNDELIVERABLE_AREA"
+    if "khách" in lower_r or "customer" in lower_r or "buyer" in lower_r:
+        return "CUSTOMER_REQUEST"
+    if "cod" in lower_r:
+        return "COD_NOT_SUPPORTED"
+    return "OUT_OF_STOCK"
+
 
 class ShopeeMartChannelAdapter(BaseChannelAdapter):
     """
@@ -412,27 +436,18 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             combined_addr = ", ".join([p for p in addr_parts if p])
             full_addr = combined_addr if combined_addr else None
 
-        order_data = {
-            "display_order_id": order_sn[-8:] if len(order_sn) >= 8 else order_sn,
-            "initial_status": order_status,
-            "subtotal_amount": float(data.get("total_amount", 0.0)),
-            "discount_amount": float(data.get("seller_discount", 0.0)),
-            "delivery_fee": float(data.get("actual_shipping_fee", 0.0)),
-            "total_amount": float(data.get("total_amount", 0.0)),
-            "customer_name": customer_name,
-            "customer_phone": customer_phone,
-            "delivery_address": full_addr,
-            "order_time": datetime.now(timezone.utc),
-            "raw_payload": payload
-        }
-
         items_data = []
         raw_items = data.get("item_list", [])
         for itm in raw_items:
             qty = int(itm.get("model_quantity_purchased", itm.get("quantity", 1)))
             price = float(itm.get("model_discounted_price", itm.get("price", 0.0)))
-            sku = str(itm.get("item_sku") or itm.get("model_sku") or itm.get("item_id") or "")
-            name = str(itm.get("item_name") or itm.get("model_name") or "")
+            sku = str(itm.get("model_sku") or itm.get("item_sku") or itm.get("item_id") or "")
+            base_item_name = str(itm.get("item_name") or "").strip()
+            model_name = str(itm.get("model_name") or "").strip()
+            if base_item_name and model_name and model_name not in base_item_name:
+                name = f"{base_item_name} ({model_name})"
+            else:
+                name = base_item_name or model_name
             items_data.append({
                 "sku": sku,
                 "item_name": name,
@@ -440,6 +455,36 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                 "unit_price": price,
                 "total_price": price * qty
             })
+
+        raw_create_time = data.get("create_time") or payload.get("create_time")
+        order_time = datetime.now(timezone.utc)
+        if raw_create_time is not None:
+            try:
+                order_time = datetime.fromtimestamp(float(raw_create_time), tz=timezone.utc)
+            except (ValueError, TypeError, OSError):
+                order_time = datetime.now(timezone.utc)
+
+        items_subtotal = sum(float(it.get("total_price", 0.0)) for it in items_data)
+        total_amt = float(data.get("total_amount", 0.0))
+        subtotal_amt = items_subtotal if items_subtotal > 0 else float(data.get("subtotal_amount") or total_amt)
+
+        raw_payload_to_store = dict(payload) if isinstance(payload, dict) else {"raw": payload}
+        if raw_items and "item_list" not in raw_payload_to_store:
+            raw_payload_to_store["item_list"] = raw_items
+
+        order_data = {
+            "display_order_id": order_sn[-8:] if len(order_sn) >= 8 else order_sn,
+            "initial_status": order_status,
+            "subtotal_amount": subtotal_amt,
+            "discount_amount": float(data.get("seller_discount", 0.0)),
+            "delivery_fee": float(data.get("actual_shipping_fee", 0.0)),
+            "total_amount": total_amt,
+            "customer_name": customer_name,
+            "customer_phone": customer_phone,
+            "delivery_address": full_addr,
+            "order_time": order_time,
+            "raw_payload": raw_payload_to_store
+        }
 
         try:
             order, created = await OrderService.create_or_get_inbound_order(
@@ -494,12 +539,14 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         partner_store_id: str,
         new_status: UnifiedOrderStatus,
         db: AsyncSession,
-        reason: Optional[str] = None
+        reason: Optional[str] = None,
+        order: Optional[UnifiedOrder] = None,
+        item_list: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
-        """Call Shopee API to transition order state (e.g., ship order or cancel)."""
+        """Call Shopee API to transition order state (e.g., ship order when READY or cancel)."""
         try:
-            if new_status in (UnifiedOrderStatus.READY, UnifiedOrderStatus.PREPARING):
-                # Ready to ship: call /api/v2/logistics/ship_order
+            if new_status == UnifiedOrderStatus.READY:
+                # Ready to ship: ONLY call /api/v2/logistics/ship_order when order is packed and READY
                 await shopeemart_client.ship_order(
                     order_sn=channel_order_id,
                     shop_id=partner_store_id
@@ -508,13 +555,55 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                 return True
 
             elif new_status == UnifiedOrderStatus.CANCELLED:
+                cancel_reason = normalize_shopee_cancel_reason(reason)
+                extracted_items: List[Dict[str, Any]] = list(item_list or [])
+
+                if cancel_reason == "OUT_OF_STOCK" and not extracted_items:
+                    ord_obj = order
+                    if ord_obj is None and db is not None:
+                        try:
+                            ord_res = await db.execute(
+                                select(UnifiedOrder).where(UnifiedOrder.channel_order_id == channel_order_id)
+                            )
+                            ord_obj = ord_res.scalar_one_or_none()
+                            if inspect.iscoroutine(ord_obj):
+                                ord_obj = await ord_obj
+                        except Exception:
+                            ord_obj = None
+
+                    raw_payload = (
+                        ord_obj.raw_payload
+                        if (ord_obj is not None and isinstance(getattr(ord_obj, "raw_payload", None), dict))
+                        else {}
+                    )
+                    source_items = (
+                        raw_payload.get("cancel_item_list")
+                        or raw_payload.get("item_list")
+                        or (raw_payload.get("data", {}).get("item_list") if isinstance(raw_payload.get("data"), dict) else None)
+                        or []
+                    )
+                    for it in source_items:
+                        if isinstance(it, dict) and it.get("item_id") is not None:
+                            extracted_items.append({
+                                "item_id": it.get("item_id"),
+                                "model_id": it.get("model_id", 0) or 0,
+                            })
+
                 # Cancel order: call /api/v2/order/cancel_order
-                await shopeemart_client.cancel_order(
-                    order_sn=channel_order_id,
-                    shop_id=partner_store_id,
-                    cancel_reason=reason or "OUT_OF_STOCK"
-                )
-                logger.info(f"Đã gọi Shopee cancel_order cho đơn {channel_order_id} shop {partner_store_id}")
+                if extracted_items:
+                    await shopeemart_client.cancel_order(
+                        order_sn=channel_order_id,
+                        shop_id=partner_store_id,
+                        cancel_reason=cancel_reason,
+                        item_list=extracted_items,
+                    )
+                else:
+                    await shopeemart_client.cancel_order(
+                        order_sn=channel_order_id,
+                        shop_id=partner_store_id,
+                        cancel_reason=cancel_reason,
+                    )
+                logger.info(f"Đã gọi Shopee cancel_order cho đơn {channel_order_id} shop {partner_store_id} ({cancel_reason})")
                 return True
 
             return True
@@ -570,12 +659,22 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
 
         for s_id in target_shops:
             try:
-                list_resp = await shopeemart_client.get_order_list(
-                    time_from=time_from,
-                    time_to=now_ts,
-                    page_size=50,
-                    shop_id=s_id
-                )
+                try:
+                    list_resp = await shopeemart_client.get_order_list(
+                        time_from=time_from,
+                        time_to=now_ts,
+                        page_size=50,
+                        shop_id=s_id,
+                        time_range_field="update_time",
+                    )
+                except Exception:
+                    list_resp = await shopeemart_client.get_order_list(
+                        time_from=time_from,
+                        time_to=now_ts,
+                        page_size=50,
+                        shop_id=s_id,
+                        time_range_field="create_time",
+                    )
                 order_entries = (list_resp.get("response") or {}).get("order_list") or []
                 for entry in order_entries:
                     o_sn = str(entry.get("order_sn") or "").strip()
@@ -621,6 +720,11 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
     ):
         """Record operational error to database for real-time visibility in /system-status."""
         try:
+            if db is not None:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
             await error_service.log_error(
                 db=db,
                 error_code=error_code,

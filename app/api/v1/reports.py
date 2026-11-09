@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.responses import APIResponse
 from app.models.user import User, UserRole
 from app.schemas.common import PaginatedResponse, PaginationMeta
-from app.schemas.report import FullAnalyticsReport, ReconciliationOrderItem
+from app.schemas.report import FinancialSummary, FullAnalyticsReport, ReconciliationOrderItem
 from app.services.report_service import report_service
 
 router = APIRouter(prefix="/reports", tags=["Reports & Reconciliation"])
@@ -29,19 +29,21 @@ async def get_analytics_report(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
+    )
+    if not has_global_access:
         if not current_user.store_code:
             return APIResponse.ok(
                 data=FullAnalyticsReport(
-                    from_date=from_date,
-                    to_date=to_date,
-                    gross_revenue=0.0,
-                    net_revenue=0.0,
-                    total_orders=0,
-                    cancelled_orders=0,
-                    cancellation_rate=0.0,
-                    channel_distribution=[],
-                    store_performance=[]
+                    filter_from=from_date.isoformat() if from_date else None,
+                    filter_to=to_date.isoformat() if to_date else None,
+                    summary=FinancialSummary(),
+                    channels=[],
+                    stores=[],
+                    daily_trends=[],
                 ),
                 message="Người dùng chưa được phân công chi nhánh."
             )
@@ -78,7 +80,12 @@ async def get_reconciliation_orders(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
+    )
+    if not has_global_access:
         if not current_user.store_code:
             return APIResponse.ok(
                 data=PaginatedResponse(items=[], meta=PaginationMeta.create(page=page, page_size=page_size, total_items=0)),
@@ -120,7 +127,12 @@ async def export_reconciliation_csv(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
+    )
+    if not has_global_access:
         if not current_user.store_code:
             return Response(content="\ufeffMã Đơn,Thời Gian,Kênh Bán,Chi Nhánh,Doanh Thu\n", media_type="text/csv")
         effective_store_code = current_user.store_code

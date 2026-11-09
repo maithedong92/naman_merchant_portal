@@ -6,13 +6,19 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.api.deps import check_store_access, get_current_active_user
 from app.core.database import get_db
+from app.core.exceptions import ForbiddenError
 from app.core.security import verify_hmac_sha256
 from app.core.config import get_settings
+from app.models.channel import Channel
 from app.models.operational_error import ErrorSeverity
-from app.models.store import Store
+from app.models.store import Store, StoreChannelMapping
+from app.models.user import User, UserRole
 from app.modules.shopeefood.adapter import ShopeeFoodChannelAdapter
+from app.modules.shopeefood.service import shopeefood_client
 from app.services.error_service import error_service
 import traceback
 
@@ -22,6 +28,12 @@ adapter = ShopeeFoodChannelAdapter()
 settings = get_settings()
 
 security = HTTPBasic(auto_error=False)
+
+
+def _reject_read_only(current_user: User) -> None:
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if role_val == UserRole.READ_ONLY.value and not getattr(current_user, "is_superuser", False):
+        raise ForbiddenError("Tài khoản chỉ xem không có quyền thực hiện thao tác này.")
 
 
 # ==============================================================================
@@ -43,14 +55,52 @@ async def receive_shopeefood_order_webhook(
     raw_body = await request.body()
     headers = dict(request.headers)
 
-    # Optional signature check if Authorization header is provided
-    if authorization and authorization.startswith("Signature "):
-        sig = authorization.replace("Signature ", "").strip()
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    public_url = f"{proto}://{host}{request.url.path}"
+    if request.url.query:
+        public_url = f"{public_url}?{request.url.query}"
+
+    # Enforce signature check when Authorization header is provided, or when request arrives via reverse proxy
+    if authorization:
+        sig = (
+            authorization.replace("Signature ", "").strip()
+            if authorization.startswith("Signature ")
+            else authorization.strip()
+        )
         full_url = str(request.url)
-        body_str = raw_body.decode("utf-8") if raw_body else ""
-        base_string = f"{request.method.upper()}|{full_url}|{body_str}"
-        # If signature verification is strictly required in production:
-        # valid = verify_hmac_sha256(settings.SHOPEEFOOD_APP_KEY, base_string, sig, is_hex_key=True)
+        try:
+            valid = shopeefood_client.verify_hmac_sha256(
+                raw_body,
+                sig,
+                method=request.method,
+                full_url=full_url,
+                public_url=public_url,
+            )
+        except TypeError:
+            valid = shopeefood_client.verify_hmac_sha256(raw_body, sig)
+
+        if not valid:
+            body_str = raw_body.decode("utf-8", errors="ignore") if raw_body else ""
+            base_string = f"{request.method.upper()}|{full_url}|{body_str}"
+            valid = verify_hmac_sha256(settings.SHOPEEFOOD_APP_KEY, base_string, sig, is_hex_key=True)
+
+        if not valid:
+            logger.warning("ShopeeFood webhook signature verification failed.")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="ShopeeFood webhook signature verification failed",
+            )
+    elif request.headers.get("x-forwarded-proto") or request.headers.get("x-real-ip"):
+        logger.warning("ShopeeFood webhook rejected: missing Authorization signature header from external proxy.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing ShopeeFood Authorization signature header",
+        )
 
     try:
         response = await adapter.handle_order_webhook(headers, raw_body, db)
@@ -58,6 +108,10 @@ async def receive_shopeefood_order_webhook(
     except Exception as ex:
         logger.error(f"Lỗi khi xử lý webhook đơn hàng ShopeeFood: {str(ex)}")
         try:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
             await error_service.log_error(
                 db=db,
                 error_code="SHOPEEFOOD_WEBHOOK_ORDER_ERROR",
@@ -65,7 +119,7 @@ async def receive_shopeefood_order_webhook(
                 severity=ErrorSeverity.CRITICAL,
                 module="SHOPEEFOOD",
                 stack_trace=traceback.format_exc(),
-                endpoint="/shopeefood/webhooks/order",
+                endpoint=str(request.url.path),
                 http_method="POST",
                 request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
             )
@@ -146,12 +200,50 @@ async def get_shopeefood_store_menu_json(
 @router.post("/shopeefood/sync/menu/{partner_store_id}")
 async def trigger_shopeefood_menu_sync(
     partner_store_id: str,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Trigger manual menu synchronization for a ShopeeFood outlet."""
+    _reject_read_only(current_user)
+
+    resolved_store_id = partner_store_id
+    resolved_partner_store_id = partner_store_id
+    try:
+        mapping_stmt = (
+            select(StoreChannelMapping)
+            .join(Channel)
+            .options(selectinload(StoreChannelMapping.store))
+            .where(
+                Channel.code.in_(["SHOPEEFOOD", "SHOPEE_FOOD", "FOODY"]),
+                (StoreChannelMapping.partner_store_id == partner_store_id)
+                | (StoreChannelMapping.store_id == partner_store_id),
+            )
+        )
+        mapping_res = await db.execute(mapping_stmt)
+        mapping = mapping_res.scalars().first()
+        if mapping and getattr(mapping, "store_id", None) and isinstance(mapping.store_id, str):
+            resolved_store_id = mapping.store_id
+            if getattr(mapping, "partner_store_id", None) and isinstance(mapping.partner_store_id, str):
+                resolved_partner_store_id = mapping.partner_store_id
+        else:
+            store_stmt = select(Store).where(
+                (Store.code == partner_store_id) | (Store.id == partner_store_id)
+            )
+            store_res = await db.execute(store_stmt)
+            store_obj = store_res.scalars().first()
+            if store_obj and getattr(store_obj, "id", None) and isinstance(store_obj.id, str):
+                resolved_store_id = store_obj.id
+                if getattr(store_obj, "code", None) and isinstance(store_obj.code, str):
+                    resolved_partner_store_id = store_obj.code
+    except Exception as ex:
+        logger.warning(f"Could not resolve store for ShopeeFood menu sync ({partner_store_id}): {ex}")
+
+    if getattr(current_user, "store_id", None):
+        check_store_access(current_user, resolved_store_id)
+
     res = await adapter.sync_menu(
-        store_id=partner_store_id,
-        partner_store_id=partner_store_id,
-        db=db
+        store_id=resolved_store_id,
+        partner_store_id=resolved_partner_store_id,
+        db=db,
     )
     return res

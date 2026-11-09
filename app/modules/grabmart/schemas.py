@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ==============================================================================
@@ -176,6 +176,7 @@ class GrabReceiver(BaseModel):
 
 class GrabOrderItemModifier(BaseModel):
     id: str
+    name: Optional[str] = None
     price: int = 0
     quantity: int = 1
 
@@ -222,6 +223,7 @@ class GrabSubmitOrderWebhook(BaseModel):
     scheduledTime: Optional[str] = None
     currency: Optional[GrabCurrency] = Field(default_factory=GrabCurrency)
     featureFlags: Optional[GrabFeatureFlags] = None
+    orderAcceptedType: Optional[str] = None
     items: Optional[List[GrabOrderItem]] = Field(default_factory=list)
     price: Optional[GrabOrderPrice] = Field(default_factory=GrabOrderPrice)
     receiver: Optional[GrabReceiver] = None
@@ -230,6 +232,16 @@ class GrabSubmitOrderWebhook(BaseModel):
     @classmethod
     def set_items_default(cls, v):
         return v if v is not None else []
+
+    @model_validator(mode="after")
+    def sync_order_accepted_type(self):
+        if not self.orderAcceptedType:
+            self.orderAcceptedType = (
+                self.featureFlags.orderAcceptedType
+                if self.featureFlags and self.featureFlags.orderAcceptedType
+                else "AUTO"
+            )
+        return self
 
 
 # ==============================================================================

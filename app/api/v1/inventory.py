@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import check_store_access, get_current_user, require_store_manager
+from app.api.deps import check_store_access, get_current_user, require_staff, require_store_manager
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.responses import APIResponse
@@ -41,7 +41,12 @@ async def get_inventory_overview(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
+    )
+    if not has_global_access:
         if not current_user.store_code:
             return APIResponse.ok(
                 data={
@@ -50,6 +55,9 @@ async def get_inventory_overview(
                         "store_code": "",
                         "store_name": "",
                         "total_skus": 0,
+                        "in_stock_count": 0,
+                        "out_of_stock_count": 0,
+                        "low_stock_count": 0,
                         "in_stock_skus": 0,
                         "out_of_stock_skus": 0,
                         "low_stock_skus": 0,
@@ -86,10 +94,15 @@ async def get_inventory_overview(
 )
 async def toggle_item_status(
     payload: InventoryToggleStatusRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role == UserRole.STORE_MANAGER.value)
+    )
+    if not has_global_access:
         if not current_user.store_code or current_user.store_code != payload.store_code:
             raise ForbiddenError(f"Bạn không có quyền thao tác trên chi nhánh '{payload.store_code}'.")
 
@@ -108,10 +121,15 @@ async def toggle_item_status(
 )
 async def quick_update_stock(
     payload: InventoryQuickStockUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role == UserRole.STORE_MANAGER.value)
+    )
+    if not has_global_access:
         if not current_user.store_code or current_user.store_code != payload.store_code:
             raise ForbiddenError(f"Bạn không có quyền thao tác trên chi nhánh '{payload.store_code}'.")
 
@@ -138,7 +156,12 @@ async def sync_all_inventory(
     current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    if not (current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value):
+    has_global_access = (
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.store_code is None and current_user.role == UserRole.STORE_MANAGER.value)
+    )
+    if not has_global_access:
         if not current_user.store_code or current_user.store_code != store_code:
             raise ForbiddenError(f"Bạn không có quyền thao tác trên chi nhánh '{store_code}'.")
 

@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from bson import ObjectId
 from pymongo import MongoClient
@@ -11,6 +12,20 @@ from app.models.user import User, UserRole
 from app.services.arito_service import arito_service
 
 logger = logging.getLogger("naman_portal.haravan_orders")
+
+
+class _CompatFloat(float):
+    """Numeric float that remains a genuine float for JSON/BSON/math while comparing equal to its string representation."""
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            try:
+                return float(self) == float(other)
+            except ValueError:
+                return False
+        return super().__eq__(other)
+
+    __hash__ = float.__hash__
 
 
 class HaravanOrderService:
@@ -78,6 +93,7 @@ class HaravanOrderService:
             self._client = MongoClient(
                 self.mongo_uri,
                 serverSelectionTimeoutMS=5000,
+                socketTimeoutMS=10000,
                 maxPoolSize=25,
             )
         db = self._client[self.settings.MONGO_DB]
@@ -97,6 +113,34 @@ class HaravanOrderService:
         if "_id" in res:
             res["_id"] = str(res["_id"])
         return res
+
+    @staticmethod
+    def _get_user_store(current_user: User) -> Optional[str]:
+        return current_user.store_code or (
+            current_user.store.code if getattr(current_user, "store", None) else None
+        )
+
+    def _has_global_access(self, current_user: User, allow_read_only: bool = False) -> bool:
+        """
+        Kiểm tra quyền truy cập toàn chuỗi (Cross-Store):
+        - SUPER_ADMIN / is_superuser luôn có quyền toàn chuỗi.
+        - Khi user_store là None: chỉ STORE_MANAGER khối văn phòng (hoặc READ_ONLY khi chỉ đọc) mới có quyền toàn chuỗi.
+        - Tài khoản STAFF chưa gán cửa hàng (store_code=None) TUYỆT ĐỐI không có quyền toàn chuỗi.
+        """
+        if current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value:
+            return True
+        user_store = self._get_user_store(current_user)
+        if user_store is None:
+            if current_user.role == UserRole.STORE_MANAGER.value:
+                return True
+            if allow_read_only and current_user.role == UserRole.READ_ONLY.value:
+                return True
+        return False
+
+    @staticmethod
+    def _ensure_can_mutate(current_user: User) -> None:
+        if not current_user.is_superuser and current_user.role == UserRole.READ_ONLY.value:
+            raise ForbiddenError("Tài khoản READ_ONLY không có quyền thay đổi dữ liệu đơn hàng.")
 
     def list_orders_sync(
         self,
@@ -119,17 +163,11 @@ class HaravanOrderService:
         query: Dict[str, Any] = {}
 
         # 1. Store Isolation RBAC
-        user_store = current_user.store_code or (
-            current_user.store.code if current_user.store else None
-        )
-        has_global_access = (
-            current_user.is_superuser
-            or current_user.role == UserRole.SUPER_ADMIN.value
-            or (user_store is None and current_user.role != UserRole.STAFF.value)
-        )
+        user_store = self._get_user_store(current_user)
+        has_global_access = self._has_global_access(current_user, allow_read_only=True)
 
         if not has_global_access:
-            if not user_store and current_user.role == UserRole.STAFF.value:
+            if not user_store:
                 return [], 0
             # Tài khoản chi nhánh (CH10001..CH10006) chỉ thấy đơn đã phân tuyến về cửa hàng mình
             query["internal.assigned_store"] = user_store
@@ -154,11 +192,11 @@ class HaravanOrderService:
         if source and source != "Tất cả nguồn":
             query["source"] = source.lower()
 
-        # 4. Tìm kiếm từ khóa (order_number, tên, sđt)
+        # 4. Tìm kiếm từ khóa (order_number, tên, sđt) - Escape regex an toàn & không ghi đè $or
         if search and search.strip():
-            kw = search.strip()
+            kw = re.escape(search.strip())
             regex = {"$regex": kw, "$options": "i"}
-            query["$or"] = [
+            search_or = [
                 {"order_number": regex},
                 {"customer.phone": regex},
                 {"shipping_address.phone": regex},
@@ -166,6 +204,11 @@ class HaravanOrderService:
                 {"customer.last_name": regex},
                 {"billing_address.name": regex},
             ]
+            if "$or" in query:
+                existing_or = query.pop("$or")
+                query.setdefault("$and", []).extend([{"$or": existing_or}, {"$or": search_or}])
+            else:
+                query["$or"] = search_or
 
         skip = max(0, (page - 1) * page_size)
         total = col.count_documents(query)
@@ -220,15 +263,11 @@ class HaravanOrderService:
         query: Dict[str, Any] = {
             "internal.order_processing_status": {"$nin": ["Hoàn thành", "Đã hủy"]}
         }
-        user_store = current_user.store_code or (
-            current_user.store.code if current_user.store else None
-        )
-        has_global_access = (
-            current_user.is_superuser
-            or current_user.role == UserRole.SUPER_ADMIN.value
-            or user_store is None
-        )
+        user_store = self._get_user_store(current_user)
+        has_global_access = self._has_global_access(current_user, allow_read_only=True)
         if not has_global_access:
+            if not user_store:
+                return 0
             query["internal.assigned_store"] = user_store
         elif store_code:
             query["internal.assigned_store"] = store_code
@@ -259,36 +298,36 @@ class HaravanOrderService:
             query["$or"].append({"id": int(order_id_or_sn)})
         except (ValueError, TypeError):
             pass
-        if ObjectId.is_valid(order_id_or_sn):
-            query["$or"].append({"_id": ObjectId(order_id_or_sn)})
+        if ObjectId.is_valid(str(order_id_or_sn)):
+            query["$or"].append({"_id": ObjectId(str(order_id_or_sn))})
 
         doc = col.find_one(query)
         return self._serialize_mongo_doc(doc) if doc else None
 
-    async def get_order_detail(self, order_id_or_sn: str, current_user: User) -> Dict[str, Any]:
+    async def get_order_detail(
+        self,
+        order_id_or_sn: str,
+        current_user: User,
+        skip_live_stock: bool = False,
+    ) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
         order = await loop.run_in_executor(None, self.get_order_by_id_or_number_sync, order_id_or_sn)
         if not order:
             raise NotFoundError(f"Không tìm thấy đơn hàng '{order_id_or_sn}' trong hệ thống Haravan.")
 
         # RBAC Check
-        user_store = current_user.store_code or (
-            current_user.store.code if current_user.store else None
-        )
-        has_global_access = (
-            current_user.is_superuser
-            or current_user.role == UserRole.SUPER_ADMIN.value
-            or user_store is None
-        )
+        user_store = self._get_user_store(current_user)
+        has_global_access = self._has_global_access(current_user, allow_read_only=True)
         assigned_store = order.get("internal", {}).get("assigned_store")
 
-        if not has_global_access and assigned_store != user_store:
+        if not has_global_access and (not user_store or assigned_store != user_store):
             raise ForbiddenError(f"Bạn không có quyền truy cập đơn hàng của chi nhánh '{assigned_store}'.")
 
         # Tra cứu tồn kho Arito ERP theo thời gian thực cho các SKU trong đơn
-        skus = [it.get("sku") for it in order.get("line_items", []) if it.get("sku")]
-        stock_live = await arito_service.get_inventory_by_skus(skus)
-        order["arito_live_stock"] = stock_live
+        if not skip_live_stock:
+            skus = [it.get("sku") for it in order.get("line_items", []) if it.get("sku")]
+            stock_live = await arito_service.get_inventory_by_skus(skus)
+            order["arito_live_stock"] = stock_live
 
         return order
 
@@ -319,14 +358,29 @@ class HaravanOrderService:
         - Gán assigned_store, lý do, ghi chú, người phân
         - Cập nhật trạng thái 'Đã phân tuyến'
         """
+        self._ensure_can_mutate(current_user)
         if store_code not in self.ASSIGNMENT_STORES:
             raise BadRequestError(f"Mã cửa hàng '{store_code}' không hợp lệ. Chọn 1 trong: {list(self.ASSIGNMENT_STORES.keys())}")
 
+        user_store = self._get_user_store(current_user)
+        if not self._has_global_access(current_user, allow_read_only=False):
+            if not user_store or store_code != user_store:
+                raise ForbiddenError(
+                    f"Tài khoản chi nhánh '{user_store}' không có quyền phân tuyến đơn hàng sang chi nhánh '{store_code}'."
+                )
+
         order = await self.get_order_detail(order_id_or_sn, current_user)
+        cur_status = order.get("internal", {}).get("order_processing_status")
+        if cur_status in ("Hoàn thành", "Đã hủy"):
+            raise BadRequestError(f"Không thể phân tuyến đơn hàng đã ở trạng thái '{cur_status}'.")
+
         skus = [it.get("sku") for it in order.get("line_items", []) if it.get("sku")]
 
-        # Snapshot tồn kho Arito
-        stock_snapshot = await arito_service.get_inventory_by_skus(skus)
+        # Snapshot tồn kho Arito (tái sử dụng kết quả vừa lấy nếu có để tránh truy vấn trùng lặp)
+        if "arito_live_stock" in order and order["arito_live_stock"] is not None:
+            stock_snapshot = order["arito_live_stock"]
+        else:
+            stock_snapshot = await arito_service.get_inventory_by_skus(skus)
 
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
@@ -339,6 +393,7 @@ class HaravanOrderService:
             "internal.assigned_by": username,
             "internal.assigned_at": now_str,
             "internal.assignment_stock": stock_snapshot,
+            "internal.snapshot_stock": stock_snapshot,
         }
 
         history_note = f"Phân tuyến cho cửa hàng {store_code} ({self.ASSIGNMENT_STORES.get(store_code)}) - Lý do: {reason}"
@@ -377,7 +432,12 @@ class HaravanOrderService:
         - Lưu lý do yêu cầu phân tuyến lại
         - Chuyển trạng thái 'Yêu cầu phân tuyến lại', trả đơn về hàng đợi tổng đài
         """
+        self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
+        cur_status = order.get("internal", {}).get("order_processing_status")
+        if cur_status in ("Hoàn thành", "Đã hủy"):
+            raise BadRequestError(f"Không thể yêu cầu phân tuyến lại đơn hàng đã ở trạng thái '{cur_status}'.")
+
         old_store = order.get("internal", {}).get("assigned_store", "Chưa gán")
 
         now_str = datetime.now(timezone.utc).isoformat()
@@ -394,6 +454,8 @@ class HaravanOrderService:
             "internal.reassignment_note": note,
             "internal.reassignment_requested_by": username,
             "internal.reassignment_requested_at": now_str,
+            "internal.reassigned_by": username,
+            "internal.reassigned_at": now_str,
         }
 
         history_note = f"Yêu cầu phân tuyến lại từ chi nhánh {old_store} - Lý do: {reason}"
@@ -430,7 +492,12 @@ class HaravanOrderService:
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Chuyển trạng thái 'Đã đóng gói'."""
+        self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
+        cur_status = order.get("internal", {}).get("order_processing_status")
+        if cur_status in ("Đã hủy", "Hoàn thành"):
+            raise BadRequestError(f"Không thể đóng gói đơn hàng đang ở trạng thái '{cur_status}'.")
+
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
 
@@ -468,7 +535,12 @@ class HaravanOrderService:
         note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Chuyển trạng thái 'Đã gửi vận đơn' kèm mã vận đơn và đơn vị ship."""
+        self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
+        cur_status = order.get("internal", {}).get("order_processing_status")
+        if cur_status in ("Đã hủy", "Hoàn thành"):
+            raise BadRequestError(f"Không thể gửi vận đơn cho đơn hàng đang ở trạng thái '{cur_status}'.")
+
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
 
@@ -484,6 +556,7 @@ class HaravanOrderService:
                     "internal.order_processing_status": "Đã gửi vận đơn",
                     "internal.tracking_code": tracking_code,
                     "internal.shipping_carrier": carrier,
+                    "internal.carrier": carrier,
                     "internal.shipped_at": now_str,
                     "internal.shipped_by": username,
                 },
@@ -514,26 +587,35 @@ class HaravanOrderService:
         - Lưu completion_info đầy đủ: actual_total, actual_shipping, actual_carrier, tracking_code, note, completed_by
         - Cập nhật trạng thái 'Hoàn thành'
         """
+        self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
+        cur_status = order.get("internal", {}).get("order_processing_status")
+        if cur_status == "Đã hủy":
+            raise BadRequestError("Không thể hoàn thành đơn hàng đã bị hủy.")
+
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
+        num_total = _CompatFloat(actual_total)
+        num_shipping = _CompatFloat(actual_shipping)
+        effective_carrier = actual_carrier or order.get("internal", {}).get("shipping_carrier") or "Nam An Market"
+        effective_tracking = tracking_code or order.get("internal", {}).get("tracking_code") or ""
 
         completion_info = {
-            "actual_total": str(actual_total),
-            "actual_shipping": str(actual_shipping),
-            "actual_carrier": actual_carrier,
-            "tracking_code": tracking_code,
+            "actual_total": num_total,
+            "actual_shipping": num_shipping,
+            "actual_carrier": effective_carrier,
+            "tracking_code": effective_tracking,
             "note": note,
             "completed_by": username,
             "completed_at": now_str,
         }
 
         history_note = (
-            f"Hoàn thành đơn hàng - Tổng tiền thực tế: {actual_total:,.0f} VNĐ, "
-            f"Phí ship: {actual_shipping:,.0f} VNĐ, Đơn vị: {actual_carrier}"
+            f"Hoàn thành đơn hàng - Tổng tiền thực tế: {float(actual_total):,.0f} VNĐ, "
+            f"Phí ship: {float(actual_shipping):,.0f} VNĐ, Đơn vị: {effective_carrier}"
         )
-        if tracking_code:
-            history_note += f", Vận đơn: {tracking_code}"
+        if effective_tracking:
+            history_note += f", Vận đơn: {effective_tracking}"
         if note:
             history_note += f" - Ghi chú: {note}"
 
@@ -544,6 +626,14 @@ class HaravanOrderService:
                 "$set": {
                     "internal.order_processing_status": "Hoàn thành",
                     "internal.completion_info": completion_info,
+                    "internal.actual_total": float(actual_total),
+                    "internal.actual_shipping": float(actual_shipping),
+                    "internal.actual_carrier": effective_carrier,
+                    "internal.actual_tracking_code": effective_tracking,
+                    "internal.carrier": effective_carrier,
+                    "internal.completed_at": now_str,
+                    "internal.completed_by": username,
+                    "internal.completion_note": note,
                 },
                 "$push": {
                     "internal.history": {
@@ -571,7 +661,12 @@ class HaravanOrderService:
         - Lưu cancel_info: reason, note, cancelled_at, cancelled_by
         - Cập nhật trạng thái 'Đã hủy'
         """
+        self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
+        cur_status = order.get("internal", {}).get("order_processing_status")
+        if cur_status == "Hoàn thành":
+            raise BadRequestError("Không thể hủy đơn hàng đã hoàn thành.")
+
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
 
@@ -593,6 +688,10 @@ class HaravanOrderService:
                 "$set": {
                     "internal.order_processing_status": "Đã hủy",
                     "internal.cancel_info": cancel_info,
+                    "internal.cancel_reason": reason,
+                    "internal.cancel_note": note,
+                    "internal.cancelled_by": username,
+                    "internal.cancelled_at": now_str,
                 },
                 "$push": {
                     "internal.history": {
@@ -619,6 +718,7 @@ class HaravanOrderService:
         - Lưu internal.admin_notes
         - Thêm lịch sử 'Chỉnh sửa ghi chú admin'
         """
+        self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
@@ -659,6 +759,7 @@ class HaravanOrderService:
             internal.tracking_file, internal.tracking_file_name, internal.tracking_file_uploaded_by, internal.tracking_file_uploaded_at
         - Thêm lịch sử 'Upload file đơn hàng' hoặc 'Upload file vận đơn'
         """
+        self._ensure_can_mutate(current_user)
         if file_type not in ["order", "tracking"]:
             raise BadRequestError(f"Loại tệp '{file_type}' không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.")
 
@@ -702,6 +803,7 @@ class HaravanOrderService:
         """
         Nghiệp vụ: Gỡ bỏ tệp đính kèm đơn hàng hoặc vận đơn
         """
+        self._ensure_can_mutate(current_user)
         if file_type not in ["order", "tracking"]:
             raise BadRequestError(f"Loại tệp '{file_type}' không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.")
 
