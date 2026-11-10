@@ -323,27 +323,8 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
         start_time = datetime.now(timezone.utc)
         logger.info(f"Starting real-time CTTK stock sync for store={store_code}")
 
-        stores_stmt = select(Store).order_by(Store.code)
-        stores_res = await db.execute(stores_stmt)
-        all_stores = stores_res.scalars().all()
-        store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
-
-        prod_by_sku: Dict[str, Product] = {}
-        if create_missing_inventories:
-            prod_res = await db.execute(
-                select(Product).options(
-                    defer(Product.metadata_json),
-                    defer(Product.description),
-                    defer(Product.image_url),
-                )
-            )
-            prod_by_sku = {p.sku: p for p in prod_res.scalars().all()}
-
-        inv_res_all = await db.execute(select(StoreInventory))
-        inv_by_store_sku: Dict[Tuple[str, str], StoreInventory] = {
-            (str(i.store_id), i.sku): i for i in inv_res_all.scalars().all()
-        }
-
+        # Fetch all CTTK HTTP pages FIRST before opening a DB read/write transaction
+        # so PostgreSQL never hits idle_in_transaction_session_timeout during pagination.
         limit = max(100, int(batch_size or 5000))
         offset = 0
         total_records_processed = 0
@@ -379,6 +360,27 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
             if len(items) < limit:
                 break
             offset += len(items)
+
+        stores_stmt = select(Store).order_by(Store.code)
+        stores_res = await db.execute(stores_stmt)
+        all_stores = stores_res.scalars().all()
+        store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
+
+        prod_by_sku: Dict[str, Product] = {}
+        if create_missing_inventories:
+            prod_res = await db.execute(
+                select(Product).options(
+                    defer(Product.metadata_json),
+                    defer(Product.description),
+                    defer(Product.image_url),
+                )
+            )
+            prod_by_sku = {p.sku: p for p in prod_res.scalars().all()}
+
+        inv_res_all = await db.execute(select(StoreInventory))
+        inv_by_store_sku: Dict[Tuple[str, str], StoreInventory] = {
+            (str(i.store_id), i.sku): i for i in inv_res_all.scalars().all()
+        }
 
         if prod_by_sku and unit_by_sku:
             for sku_k, u_val in unit_by_sku.items():

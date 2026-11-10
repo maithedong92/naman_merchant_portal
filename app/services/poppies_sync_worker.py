@@ -132,6 +132,7 @@ class PoppiesSyncWorker:
                         synced_channels[ch_code] = {"error": str(ch_ex)}
                     await asyncio.sleep(0.15)
 
+                await db.commit()
                 cttk_res = await poppies_service.sync_stock_cttk_realtime(
                     db=db, create_missing_inventories=False, batch_size=10000
                 )
