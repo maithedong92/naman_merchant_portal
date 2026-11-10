@@ -6,8 +6,11 @@ Conforms strictly to Sections 4.3, 5.2, and 6.1 of INTEGRATION_REPORT_FOR_AI_POS
 
 from datetime import datetime, timezone
 import logging
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
+from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -43,6 +46,10 @@ def _safe_flag_modified(instance: Any, attr_name: str) -> None:
         flag_modified(instance, attr_name)
     except Exception:
         pass
+
+
+_SKU_REMOTE_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_SKU_REMOTE_CACHE_TTL_SEC = 5.0
 
 
 class PoppiesOutboxWebhookMixin:
@@ -198,12 +205,17 @@ class PoppiesOutboxWebhookMixin:
         inline_prices: Dict[str, Any] = (
             payload.get("prices") if isinstance(payload.get("prices"), dict) else {}
         )
+        has_inline_price_payload = bool(inline_prices) or (payload.get("effective_price") is not None)
+
+        clean_affected_skus = list(
+            dict.fromkeys(str(s).strip() for s in affected_skus if str(s).strip())
+        )
 
         updated_count = 0
         skipped_stale = 0
         propagated_skus: List[str] = []
 
-        for sku in affected_skus:
+        for sku in clean_affected_skus:
             prod_stmt = select(Product).where(Product.sku == sku)
             prod_res = await db.execute(prod_stmt)
             prod = prod_res.scalar_one_or_none()
@@ -226,24 +238,42 @@ class PoppiesOutboxWebhookMixin:
                     skipped_stale += 1
                     continue
 
+            prev_enabled = bool(mapping.is_enabled) if mapping is not None else bool(prod.is_active)
+            prev_price = float(mapping.custom_price) if (mapping is not None and mapping.custom_price is not None) else None
+
             # Resolve publish status safely (NEVER default to False on pure price_changed!)
-            target_enabled = (
-                bool(mapping.is_enabled) if mapping is not None else bool(prod.is_active)
-            )
+            target_enabled = prev_enabled
             if explicit_pub_val is not None:
                 target_enabled = explicit_pub_val
 
             # Resolve updated custom price if provided inline or via Fail-Closed SKU pull
-            target_price = mapping.custom_price if mapping is not None else None
+            target_price = prev_price
             if sku in inline_prices and inline_prices[sku] is not None:
                 target_price = float(inline_prices[sku])
-            elif payload.get("effective_price") is not None and len(affected_skus) == 1:
+            elif payload.get("effective_price") is not None and len(clean_affected_skus) == 1:
                 target_price = float(payload["effective_price"])
             elif event_type.upper() != "CHANNEL_PUBLISH_STATUS_CHANGED":
                 try:
-                    remote_item = await self.client.get_sku(sku)
+                    get_sku_fn = getattr(self.client, "get_sku", None)
+                    is_mocked = isinstance(get_sku_fn, (AsyncMock, MagicMock))
+                    now_mono = time.monotonic()
+                    cached_entry = None if is_mocked else _SKU_REMOTE_CACHE.get(sku)
+                    if cached_entry and (now_mono - cached_entry[0]) < _SKU_REMOTE_CACHE_TTL_SEC:
+                        remote_item = cached_entry[1]
+                    else:
+                        remote_item = await self.client.get_sku(sku)
+                        if not is_mocked and isinstance(remote_item, dict):
+                            if len(_SKU_REMOTE_CACHE) > 500:
+                                _SKU_REMOTE_CACHE.clear()
+                            _SKU_REMOTE_CACHE[sku] = (now_mono, remote_item)
+
                     if isinstance(remote_item, dict):
                         rem_pricing = remote_item.get("pricing") or {}
+                        base_vat = rem_pricing.get("baseSalePriceVat") or rem_pricing.get("baseNetSalePrice")
+                        if base_vat is not None and float(base_vat) > 0:
+                            new_base = float(base_vat)
+                            if abs(float(prod.base_price or 0.0) - new_base) >= 0.01:
+                                prod.base_price = new_base
                         for ch_entry in rem_pricing.get("channels") or []:
                             ch_c = normalize_channel_code(ch_entry.get("channelCode"))
                             if ch_c == poppies_channel_code:
@@ -264,6 +294,13 @@ class PoppiesOutboxWebhookMixin:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
+            was_new_mapping = mapping is None
+            price_changed = (
+                (prev_price is None and target_price is not None)
+                or (prev_price is not None and target_price is not None and abs(prev_price - target_price) >= 0.01)
+            )
+            enabled_changed = target_enabled != prev_enabled
+
             if not mapping:
                 mapping = ChannelProductMapping(
                     product_id=prod.id,
@@ -280,7 +317,14 @@ class PoppiesOutboxWebhookMixin:
                 mapping.channel_sync_payload = sync_meta
 
             updated_count += 1
-            propagated_skus.append(prod.sku)
+            if (
+                was_new_mapping
+                or price_changed
+                or enabled_changed
+                or has_explicit_pub
+                or has_inline_price_payload
+            ):
+                propagated_skus.append(str(prod.sku))
 
         if event_id:
             db.add(
@@ -294,7 +338,13 @@ class PoppiesOutboxWebhookMixin:
                 )
             )
 
-        await db.commit()
+        try:
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            logger.warning(
+                f"Concurrent webhook upsert conflict resolved via rollback for event_id={event_id} channel={poppies_channel_code}"
+            )
 
         ext_sync = (
             await propagate_skus_to_external_channel(

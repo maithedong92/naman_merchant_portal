@@ -576,17 +576,27 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 details={"api_response": response, "grab_merchant_id": grab_merchant_id},
             )
         except Exception as ex:
-            logger.error(f"Lỗi khi cập nhật tồn kho GrabMart: {str(ex)}")
+            err_str = str(ex)
+            if "404 Not Found" in err_str or "409 Conflict" in err_str:
+                logger.warning(
+                    f"GrabMart item update skipped ({'SKU chưa có trên menu Grab' if '404' in err_str else 'GrabMart đang xử lý bản cập nhật trước (409)'}) "
+                    f"cho Store {store_id}: {err_str}"
+                )
+                return SyncResult(
+                    channel_code=self.channel_code,
+                    store_id=store_id,
+                    sync_type="STOCK",
+                    success=True,
+                    total_synced=0,
+                    message=f"GrabMart bỏ qua cập nhật tức thời ({'404 SKU không thuộc menu' if '404' in err_str else '409 đang đồng bộ'}).",
+                )
+            logger.error(f"Lỗi khi cập nhật tồn kho GrabMart: {err_str}")
             if db is not None:
                 try:
-                    try:
-                        await db.rollback()
-                    except Exception:
-                        pass
                     await error_service.log_error(
                         db=db,
                         error_code="GRABMART_SYNC_STOCK_ERROR",
-                        message=f"Lỗi khi cập nhật tồn kho GrabMart (Store {store_id}): {str(ex)}",
+                        message=f"Lỗi khi cập nhật tồn kho GrabMart (Store {store_id}): {err_str}",
                         severity=ErrorSeverity.ERROR,
                         module="GRABMART",
                         stack_trace=traceback.format_exc(),
@@ -600,7 +610,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 store_id=store_id,
                 sync_type="STOCK",
                 success=False,
-                message=f"Lỗi cập nhật tồn kho GrabMart: {str(ex)}",
+                message=f"Lỗi cập nhật tồn kho GrabMart: {err_str}",
             )
 
     # ==========================================================================

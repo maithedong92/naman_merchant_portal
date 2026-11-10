@@ -253,7 +253,18 @@ async def propagate_skus_to_external_channel(
     if not prods:
         return []
 
-    prod_ids = [str(p.id) for p in prods]
+    # Snapshot plain Python primitives before any adapter.sync_inventory call
+    # so a session rollback inside one outlet's adapter never causes MissingGreenlet on the next outlet.
+    prod_snapshots: List[Dict[str, Any]] = [
+        {
+            "id": str(p.id),
+            "sku": str(p.sku),
+            "is_active": bool(p.is_active),
+            "base_price": float(p.base_price or 0.0),
+        }
+        for p in prods
+    ]
+    prod_ids = [ps["id"] for ps in prod_snapshots]
     store_ids = list({st_id for st_id, _ in outlets})
 
     is_ch_active, has_partner_pricing, map_by_pid = await load_channel_governance_for_products(
@@ -261,44 +272,55 @@ async def propagate_skus_to_external_channel(
         raw_channel_code=canon_code,
         product_ids=prod_ids,
     )
+    map_snapshots: Dict[str, Dict[str, Any]] = {
+        pid: {
+            "is_enabled": bool(m.is_enabled),
+            "custom_price": float(m.custom_price) if m.custom_price is not None else None,
+        }
+        for pid, m in map_by_pid.items()
+    }
 
     inv_stmt = select(StoreInventory).where(
         StoreInventory.store_id.in_(store_ids),
         StoreInventory.product_id.in_(prod_ids),
     )
     inv_rows = await _extract_orm_scalars(await _safe_execute(db, inv_stmt), StoreInventory)
-    inv_by_store_prod: Dict[Tuple[str, str], StoreInventory] = {
-        (str(inv.store_id), str(inv.product_id)): inv for inv in inv_rows
+    inv_by_store_prod: Dict[Tuple[str, str], Dict[str, Any]] = {
+        (str(inv.store_id), str(inv.product_id)): {
+            "available_stock": float(inv.available_stock or 0.0),
+            "is_out_of_stock": bool(inv.is_out_of_stock),
+        }
+        for inv in inv_rows
     }
 
     sync_summaries: List[Dict[str, Any]] = []
     for store_id, partner_store_id in outlets:
         stock_items: List[Dict[str, Any]] = []
-        for prod in prods:
-            pid = str(prod.id)
-            mapping = map_by_pid.get(pid)
+        for ps in prod_snapshots:
+            pid = ps["id"]
+            mapping = map_snapshots.get(pid)
             is_allowed = bool(
-                prod.is_active
+                ps["is_active"]
                 and is_ch_active
-                and (mapping.is_enabled if mapping is not None else True)
+                and (mapping["is_enabled"] if mapping is not None else True)
             )
             inv = inv_by_store_prod.get((store_id, pid))
             phys_avail = (
-                float(inv.available_stock)
-                if (inv and not inv.is_out_of_stock and float(inv.available_stock or 0) > 0)
+                inv["available_stock"]
+                if (inv and not inv["is_out_of_stock"] and inv["available_stock"] > 0)
                 else 0.0
             )
             eff_avail = phys_avail if is_allowed else 0.0
             eff_oos = (not is_allowed) or (eff_avail <= 0.0)
             eff_price = (
-                float(mapping.custom_price)
-                if (has_partner_pricing and mapping and mapping.custom_price is not None)
-                else float(prod.base_price or 0.0)
+                float(mapping["custom_price"])
+                if (has_partner_pricing and mapping and mapping["custom_price"] is not None)
+                else ps["base_price"]
             )
 
             stock_items.append(
                 {
-                    "sku": prod.sku,
+                    "sku": ps["sku"],
                     "available_stock": eff_avail,
                     "is_out_of_stock": eff_oos,
                     "price": eff_price if eff_price > 0 else None,

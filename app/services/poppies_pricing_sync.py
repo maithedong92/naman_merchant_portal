@@ -504,13 +504,23 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
         channel.config = cfg
         _safe_flag_modified(channel, "config")
 
-        prod_res = await db.execute(
-            select(Product).options(
-                defer(Product.metadata_json),
-                defer(Product.description),
-                defer(Product.image_url),
-            )
+        delta_target_skus = (set(price_map.keys()) | blocked_set) if is_delta else set()
+        use_scoped_delta_query = bool(
+            is_delta
+            and delta_target_skus
+            and len(delta_target_skus) <= 2000
+            and (has_partner_pricing or canon_code == "STORE")
         )
+
+        prod_stmt = select(Product).options(
+            defer(Product.metadata_json),
+            defer(Product.description),
+            defer(Product.image_url),
+        )
+        if use_scoped_delta_query:
+            prod_stmt = prod_stmt.where(Product.sku.in_(list(delta_target_skus)))
+
+        prod_res = await db.execute(prod_stmt)
         products_by_sku: Dict[str, Product] = {
             p.sku: p for p in prod_res.scalars().all()
         }
@@ -523,11 +533,14 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
                 if local_sku not in price_map:
                     blocked_set.add(local_sku)
 
-        map_res = await db.execute(
-            select(ChannelProductMapping).where(
-                ChannelProductMapping.channel_id == channel.id
-            )
+        map_stmt = select(ChannelProductMapping).where(
+            ChannelProductMapping.channel_id == channel.id
         )
+        if use_scoped_delta_query and id_to_sku:
+            map_stmt = map_stmt.where(
+                ChannelProductMapping.product_id.in_(list(id_to_sku.keys()))
+            )
+        map_res = await db.execute(map_stmt)
         existing_mappings: Dict[str, ChannelProductMapping] = {
             str(m.product_id): m for m in map_res.scalars().all()
         }

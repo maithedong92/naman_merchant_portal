@@ -23,7 +23,7 @@ from app.services.poppies_service import poppies_service
 logger = logging.getLogger("naman_portal.poppies.worker")
 
 ADVISORY_LOCK_KEY = 20261107
-FULL_RECONCILE_EVERY_N_CYCLES = 12
+FULL_RECONCILE_EVERY_N_CYCLES = 144
 
 
 class PoppiesSyncWorker:
@@ -78,6 +78,28 @@ class PoppiesSyncWorker:
                         select(Channel).where(Channel.code.in_(target_channels))
                     )
                 ).scalars().all()
+
+                if not force_full:
+                    store_ch = next((c for c in ch_rows if c.code == "STORE"), None)
+                    last_at_raw = (store_ch.config or {}).get("last_snapshot_at") if store_ch else None
+                    if isinstance(last_at_raw, str) and last_at_raw:
+                        try:
+                            last_dt = datetime.fromisoformat(last_at_raw.replace("Z", "+00:00"))
+                            if last_dt.tzinfo is None:
+                                last_dt = last_dt.replace(tzinfo=timezone.utc)
+                            interval_sec = max(60, int(getattr(self.settings, "POPPIES_SYNC_INTERVAL_SECONDS", 300)))
+                            cooldown_sec = min(240, max(30, interval_sec - 45))
+                            age_sec = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                            if 0 <= age_sec < cooldown_sec:
+                                return {
+                                    "success": True,
+                                    "skipped": True,
+                                    "reason": "recently_synced_by_peer_worker",
+                                    "age_seconds": round(age_sec, 1),
+                                }
+                        except Exception:
+                            pass
+
                 last_ver_by_code: Dict[str, Optional[str]] = {
                     c.code: (c.config or {}).get("last_snapshot_version")
                     for c in ch_rows
@@ -149,6 +171,10 @@ class PoppiesSyncWorker:
                         text("SELECT pg_advisory_unlock(:key)"),
                         {"key": ADVISORY_LOCK_KEY},
                     )
+                except Exception:
+                    pass
+                try:
+                    db.expunge_all()
                 except Exception:
                     pass
                 gc.collect()
