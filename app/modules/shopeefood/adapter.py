@@ -81,9 +81,39 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             product_ids=[str(r[0].id) for r in rows] if rows else None,
         )
 
+        # Match GrabMart's curated online SKU selection & 2,800-item cap
+        MAX_SHOPEEFOOD_MENU_ITEMS = 2800
+        sorted_rows = sorted(
+            rows,
+            key=lambda r: (
+                0 if (is_ch_active and (map_by_pid.get(str(r[0].id)).is_enabled if map_by_pid.get(str(r[0].id)) is not None else True)) else 1,
+                0 if (r[0].image_url or "").strip() else 1,
+                0 if (r[1] and not r[1].is_out_of_stock and float(r[1].available_stock or 0) >= 1) else 1,
+                str(r[0].sku),
+            ),
+        )
+
         # Group items into categories
         category_map: Dict[str, Dict[str, Any]] = {}
-        for product, inv in rows:
+        total_added = 0
+        for product, inv in sorted_rows:
+            if total_added >= MAX_SHOPEEFOOD_MENU_ITEMS:
+                break
+
+            ch_map = map_by_pid.get(str(product.id))
+            item_price = (
+                float(ch_map.custom_price)
+                if (
+                    has_partner_pricing
+                    and ch_map is not None
+                    and ch_map.custom_price is not None
+                    and float(ch_map.custom_price) > 0
+                )
+                else float(product.base_price or 0)
+            )
+            if item_price <= 0:
+                continue
+
             cate_name = product.category.name if product.category else "Bách Hóa Tổng Hợp"
             cate_id = product.category.code if product.category else "general"
 
@@ -97,7 +127,6 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                     "items": [],
                 }
 
-            ch_map = map_by_pid.get(str(product.id))
             is_enabled_on_channel = bool(
                 is_ch_active and (ch_map.is_enabled if ch_map is not None else True)
             )
@@ -111,16 +140,6 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 )
                 else "UNAVAILABLE"
             )
-            item_price = (
-                float(ch_map.custom_price)
-                if (
-                    has_partner_pricing
-                    and ch_map is not None
-                    and ch_map.custom_price is not None
-                    and float(ch_map.custom_price) > 0
-                )
-                else float(product.base_price)
-            )
 
             category_map[cate_id]["items"].append({
                 "id": str(product.sku),
@@ -130,6 +149,7 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 "availableStatus": is_available,
                 "photos": [product.image_url] if product.image_url else [],
             })
+            total_added += 1
 
         categories_list = list(category_map.values())
         categories_list.sort(key=lambda x: x["sequence"])
