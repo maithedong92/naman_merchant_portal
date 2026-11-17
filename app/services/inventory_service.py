@@ -758,16 +758,21 @@ class InventoryService:
         ).options(selectinload(StoreChannelMapping.channel))
         mappings_res = await db.execute(mappings_stmt)
         mappings = mappings_res.scalars().all()
+        mapping_targets = [
+            (m.channel.code, m.partner_store_id)
+            for m in mappings
+            if m.channel
+        ]
 
         results: List[SyncResult] = []
-        for mapping in mappings:
-            adapter = channel_registry.get(mapping.channel.code)
+        for ch_code, partner_store_id in mapping_targets:
+            adapter = channel_registry.get(ch_code)
             if not adapter:
                 continue
             try:
                 res = await adapter.sync_inventory(
                     store_id=store_id,
-                    partner_store_id=mapping.partner_store_id,
+                    partner_store_id=partner_store_id,
                     stock_items=stock_items,
                     db=db,
                 )
