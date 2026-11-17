@@ -4,7 +4,9 @@ Implements strict Fail-Closed semantics (Section 4.3) for Pricing Snapshots.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 import httpx
 
 from app.core.config import get_settings
@@ -61,6 +63,19 @@ class PoppiesClient:
         ).rstrip("/")
         self.api_key = settings.POPPIES_API_KEY
         self.timeout = settings.POPPIES_TIMEOUT_SECONDS
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return a shared reusable httpx.AsyncClient instance."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=max(self.timeout, 30.0))
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared httpx.AsyncClient on application shutdown."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+        self._client = None
 
     def _get_headers(self) -> Dict[str, str]:
         return {
@@ -98,23 +113,26 @@ class PoppiesClient:
             f"{self.pricing_base_url}/channel-publish-status",
             "http://127.0.0.1:6515/api/v1/pricing/channel-publish-status",
             "http://host.docker.internal:6515/api/v1/pricing/channel-publish-status",
-            "http://103.175.248.250:1155/api/v1/pricing/channel-publish-status",
             "https://poppies.namanmarket.com/api/v1/pricing/channel-publish-status",
         ]
 
         last_err = None
+        client = self._get_client()
         for url in urls_to_try:
             try:
-                async with httpx.AsyncClient(timeout=min(self.timeout, 10.0)) as client:
-                    resp = await client.post(url, json=payload, headers=headers)
-                    if resp.status_code in (200, 201):
-                        data = resp.json()
-                        data["resolved_url"] = url
-                        return data
-                    elif resp.status_code == 404:
-                        continue
-                    else:
-                        resp.raise_for_status()
+                resp = await client.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                )
+                if resp.status_code in (200, 201):
+                    data = resp.json()
+                    data["resolved_url"] = url
+                    return data
+                elif resp.status_code == 404:
+                    continue
+                else:
+                    resp.raise_for_status()
             except Exception as ex:
                 last_err = ex
 
@@ -127,7 +145,7 @@ class PoppiesClient:
             "scopeType": scope_type,
             "scopeCode": canonical_scope,
             "isPublished": is_published,
-            "message": f"Đã cập nhật trạng thái cục bộ trên Merchant Portal (Poppies remote offline: {last_err})",
+            "message": "Đã cập nhật trạng thái cục bộ trên Merchant Portal (Poppies ERP connection failed)",
             "offline_mode": True,
         }
 
@@ -144,22 +162,22 @@ class PoppiesClient:
             "https://poppies.namanmarket.com/api/v1/pos/pricing/channels",
         ]
         headers = self._get_headers()
+        client = self._get_client()
         for url in urls_to_try:
             try:
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(url, headers=headers)
-                    if resp.status_code == 200:
-                        raw_body = resp.json()
-                        raw_list = raw_body.get("channels") if isinstance(raw_body, dict) else None
-                        if isinstance(raw_list, list):
-                            consolidated = consolidate_channel_records(raw_list)
-                            return {
-                                "success": True,
-                                "source": "poppies_live",
-                                "resolved_url": url,
-                                "total": len(consolidated),
-                                "channels": consolidated,
-                            }
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    raw_body = resp.json()
+                    raw_list = raw_body.get("channels") if isinstance(raw_body, dict) else None
+                    if isinstance(raw_list, list):
+                        consolidated = consolidate_channel_records(raw_list)
+                        return {
+                            "success": True,
+                            "source": "poppies_live",
+                            "resolved_url": url,
+                            "total": len(consolidated),
+                            "channels": consolidated,
+                        }
             except Exception:
                 pass
 
@@ -184,7 +202,6 @@ class PoppiesClient:
             f"{self.pos_pricing_base_url}/price-book",
             "http://host.docker.internal:6515/api/v1/pos/pricing/price-book",
             "http://127.0.0.1:6515/api/v1/pos/pricing/price-book",
-            "http://103.175.248.250:1155/api/v1/pos/pricing/price-book",
             "https://poppies.namanmarket.com/api/v1/pos/pricing/price-book",
         ]
         seen_pb = set()
@@ -199,62 +216,66 @@ class PoppiesClient:
         pb_status = 503
         pb_err: Optional[str] = None
 
+        client = self._get_client()
         for pb_url in unique_pb_urls:
             try:
-                async with httpx.AsyncClient(timeout=max(self.timeout, 30.0)) as client:
-                    pb_resp = await client.get(pb_url, params=pb_params, headers=headers)
-                    if pb_resp.status_code == 200:
-                        pb_body = pb_resp.json()
-                        rows = pb_body.get("price_book") if isinstance(pb_body, dict) else None
-                        if isinstance(pb_body, dict) and pb_body.get("success") is not False and isinstance(rows, list):
-                            prices_dict: Dict[str, Dict[str, Any]] = {}
-                            blocked_list: List[str] = []
-                            for row in rows:
-                                if not isinstance(row, dict):
-                                    continue
-                                sku_c = str(row.get("sku") or "").strip()
-                                if not sku_c:
-                                    continue
-                                allowed = bool(row.get("allowed", True))
-                                if not allowed:
-                                    blocked_list.append(sku_c)
-                                p_num = float(row.get("price") or 0.0)
-                                prices_dict[sku_c] = {
-                                    "effective_price": p_num,
-                                    "base_price": p_num,
-                                    "allowed_in_context": allowed,
-                                    "productName": row.get("name"),
-                                    "barcode": row.get("barcode"),
-                                    "is_weight_item": bool(row.get("weight_item", False)),
-                                    "tax_rate_pct": row.get("vat"),
-                                }
-                            logger.info(
-                                f"Đồng bộ thành công {len(prices_dict)} SKU từ Poppies price-book "
-                                f"cho kênh {canonical_channel} ({pb_url})"
-                            )
-                            return (
-                                {
-                                    "success": True,
-                                    "source": "price_book_fallback",
-                                    "resolved_url": pb_url,
-                                    "version": pb_body.get("version"),
-                                    "branch_code": pb_body.get("branch_code") or branch_code,
-                                    "channel_code": canonical_channel,
-                                    "is_active": bool(pb_body.get("is_active", meta.get("is_active", True))),
-                                    "has_partner_pricing": bool(pb_body.get("has_partner_pricing", has_pp)),
-                                    "inherited_from": None if has_pp else "STORE",
-                                    "is_delta": False,
-                                    "prices": prices_dict,
-                                    "exclusions": blocked_list,
-                                },
-                                200,
-                                None,
-                            )
-                    elif pb_resp.status_code >= 500:
-                        if pb_status != 504:
-                            pb_status = pb_resp.status_code
-                        pb_err = f"Poppies Price-Book trả về HTTP {pb_resp.status_code} tại {pb_url}"
-                        continue
+                pb_resp = await client.get(
+                    pb_url,
+                    params=pb_params,
+                    headers=headers,
+                )
+                if pb_resp.status_code == 200:
+                    pb_body = pb_resp.json()
+                    rows = pb_body.get("price_book") if isinstance(pb_body, dict) else None
+                    if isinstance(pb_body, dict) and pb_body.get("success") is not False and isinstance(rows, list):
+                        prices_dict: Dict[str, Dict[str, Any]] = {}
+                        blocked_list: List[str] = []
+                        for row in rows:
+                            if not isinstance(row, dict):
+                                continue
+                            sku_c = str(row.get("sku") or "").strip()
+                            if not sku_c:
+                                continue
+                            allowed = bool(row.get("allowed", True))
+                            if not allowed:
+                                blocked_list.append(sku_c)
+                            p_num = float(row.get("price") or 0.0)
+                            prices_dict[sku_c] = {
+                                "effective_price": p_num,
+                                "base_price": p_num,
+                                "allowed_in_context": allowed,
+                                "productName": row.get("name"),
+                                "barcode": row.get("barcode"),
+                                "is_weight_item": bool(row.get("weight_item", False)),
+                                "tax_rate_pct": row.get("vat"),
+                            }
+                        logger.info(
+                            f"Đồng bộ thành công {len(prices_dict)} SKU từ Poppies price-book "
+                            f"cho kênh {canonical_channel} ({pb_url})"
+                        )
+                        return (
+                            {
+                                "success": True,
+                                "source": "price_book_fallback",
+                                "resolved_url": pb_url,
+                                "version": pb_body.get("version"),
+                                "branch_code": pb_body.get("branch_code") or branch_code,
+                                "channel_code": canonical_channel,
+                                "is_active": bool(pb_body.get("is_active", meta.get("is_active", True))),
+                                "has_partner_pricing": bool(pb_body.get("has_partner_pricing", has_pp)),
+                                "inherited_from": None if has_pp else "STORE",
+                                "is_delta": False,
+                                "prices": prices_dict,
+                                "exclusions": blocked_list,
+                            },
+                            200,
+                            None,
+                        )
+                elif pb_resp.status_code >= 500:
+                    if pb_status != 504:
+                        pb_status = pb_resp.status_code
+                    pb_err = f"Poppies Price-Book trả về HTTP {pb_resp.status_code} tại {pb_url}"
+                    continue
             except httpx.TimeoutException as tex:
                 pb_status = 504
                 pb_err = f"Timeout kết nối Poppies Price-Book ({tex})"
@@ -305,7 +326,6 @@ class PoppiesClient:
             f"{self.pos_pricing_base_url}/snapshots",
             "http://host.docker.internal:6515/api/v1/pos/pricing/snapshots",
             "http://127.0.0.1:6515/api/v1/pos/pricing/snapshots",
-            "http://103.175.248.250:1155/api/v1/pos/pricing/snapshots",
             "https://poppies.namanmarket.com/api/v1/pos/pricing/snapshots",
         ]
         # Deduplicate while preserving order
@@ -315,28 +335,32 @@ class PoppiesClient:
         last_status = 503
         last_err_msg = "Không thể kết nối tới Poppies Pricing Snapshot Gateway."
 
+        client = self._get_client()
         for url in unique_urls:
             try:
-                async with httpx.AsyncClient(timeout=max(self.timeout, 30.0)) as client:
-                    resp = await client.get(url, params=params, headers=headers)
-                    if resp.status_code == 200:
-                        body = resp.json()
-                        if not isinstance(body, dict) or body.get("success") is False:
-                            raise PoppiesUpstreamError(
-                                message="Poppies Pricing Snapshot trả về dữ liệu không hợp lệ.",
-                                status_code=502,
-                                details={"url": url, "branch_code": branch_code, "channel_code": canonical_channel},
-                            )
-                        body["resolved_url"] = url
-                        return body
-                    elif resp.status_code == 404:
-                        continue
-                    elif resp.status_code >= 500:
-                        last_status = resp.status_code
-                        last_err_msg = f"Poppies Snapshot trả về HTTP {resp.status_code} tại {url}"
-                        continue
-                    else:
-                        resp.raise_for_status()
+                resp = await client.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    body = resp.json()
+                    if not isinstance(body, dict) or body.get("success") is False:
+                        raise PoppiesUpstreamError(
+                            message="Poppies Pricing Snapshot trả về dữ liệu không hợp lệ.",
+                            status_code=502,
+                            details={"url": url, "branch_code": branch_code, "channel_code": canonical_channel},
+                        )
+                    body["resolved_url"] = url
+                    return body
+                elif resp.status_code == 404:
+                    continue
+                elif resp.status_code >= 500:
+                    last_status = resp.status_code
+                    last_err_msg = f"Poppies Snapshot trả về HTTP {resp.status_code} tại {url}"
+                    continue
+                else:
+                    resp.raise_for_status()
             except PoppiesUpstreamError:
                 raise
             except httpx.TimeoutException as tex:
@@ -377,7 +401,6 @@ class PoppiesClient:
             f"{self.base_url}/{clean_suffix}",
             f"http://127.0.0.1:6515/api/v1/pos/master-data/{clean_suffix}",
             f"http://host.docker.internal:6515/api/v1/pos/master-data/{clean_suffix}",
-            f"http://103.175.248.250:1155/api/v1/pos/master-data/{clean_suffix}",
             f"https://poppies.namanmarket.com/api/v1/pos/master-data/{clean_suffix}",
         ]
         seen = set()
@@ -389,40 +412,48 @@ class PoppiesClient:
         headers = self._get_headers()
 
         last_err = None
+        client = self._get_client()
         for url in urls_to_try:
             try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.get(url, headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        data["resolved_url"] = url
-                        return data
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
             except Exception as ex:
                 last_err = ex
+
+        if last_err is not None:
+            logger.warning(f"Poppies ERP health probe failed: {last_err}")
 
         return {
             "status": "error",
             "service": "Nam An Poppies POS Master Data Inbound Gateway",
-            "error": str(last_err),
-            "base_url": self.base_url,
+            "error": "Poppies ERP connection failed",
         }
 
     async def get_sku(self, sku_or_barcode: str, branch_code: Optional[str] = "10001") -> Optional[Dict[str, Any]]:
         """Fetch full Master Data object for 1 SKU / Barcode."""
+        if not sku_or_barcode or ".." in sku_or_barcode or not re.fullmatch(r"[A-Za-z0-9._-]+", sku_or_barcode):
+            raise ValueError("Invalid sku_or_barcode")
+        encoded_sku = quote(sku_or_barcode, safe="")
+
         params = {}
         if branch_code:
             params["branch_code"] = branch_code
 
         last_err = None
-        for url in self._get_master_data_urls(f"sku/{sku_or_barcode}"):
+        client = self._get_client()
+        for url in self._get_master_data_urls(f"sku/{encoded_sku}"):
             try:
-                async with httpx.AsyncClient(timeout=min(self.timeout, 15.0)) as client:
-                    resp = await client.get(url, params=params, headers=self._get_headers())
-                    if resp.status_code == 200:
-                        body = resp.json()
-                        return body.get("item")
-                    elif resp.status_code == 404:
-                        return None
+                resp = await client.get(
+                    url,
+                    params=params,
+                    headers=self._get_headers(),
+                )
+                if resp.status_code == 200:
+                    body = resp.json()
+                    return body.get("item")
+                elif resp.status_code == 404:
+                    return None
             except Exception as ex:
                 last_err = ex
 
@@ -446,12 +477,16 @@ class PoppiesClient:
         }
 
         last_err: Optional[Exception] = None
+        client = self._get_client()
         for url in self._get_master_data_urls("snapshot"):
             try:
-                async with httpx.AsyncClient(timeout=min(self.timeout, 25.0)) as client:
-                    resp = await client.get(url, params=params, headers=self._get_headers())
-                    resp.raise_for_status()
-                    return resp.json()
+                resp = await client.get(
+                    url,
+                    params=params,
+                    headers=self._get_headers(),
+                )
+                resp.raise_for_status()
+                return resp.json()
             except Exception as ex:
                 last_err = ex
 
@@ -476,12 +511,16 @@ class PoppiesClient:
             params["store_code"] = store_code
 
         last_err: Optional[Exception] = None
+        client = self._get_client()
         for url in self._get_master_data_urls("cttk-records"):
             try:
-                async with httpx.AsyncClient(timeout=max(self.timeout, 30.0)) as client:
-                    resp = await client.get(url, params=params, headers=self._get_headers())
-                    resp.raise_for_status()
-                    return resp.json()
+                resp = await client.get(
+                    url,
+                    params=params,
+                    headers=self._get_headers(),
+                )
+                resp.raise_for_status()
+                return resp.json()
             except Exception as ex:
                 last_err = ex
 

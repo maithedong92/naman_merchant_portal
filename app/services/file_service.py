@@ -37,6 +37,19 @@ class FileService:
         self.download_order_url = f"{self.base_url}/orders/"
         self.download_image_url = f"{self.base_url}/images/"
         self.download_file_url = f"{self.base_url}/files/"
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return a shared reusable httpx.AsyncClient instance."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(verify=True, timeout=60.0)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared httpx.AsyncClient on application shutdown."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+        self._client = None
 
     def clean_file_url(self, file_url: Optional[str]) -> str:
         """
@@ -145,37 +158,34 @@ class FileService:
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-                logger.info(f"Đang tải lên tệp '{filename}' ({len(file_bytes)} bytes) loại '{file_type}'...")
-                response = await client.post(
-                    self.upload_order_url,
-                    files=files,
-                    data=data,
-                )
+            client = self._get_client()
+            logger.info(f"Đang tải lên tệp '{filename}' ({len(file_bytes)} bytes) loại '{file_type}'...")
+            response = await client.post(
+                self.upload_order_url,
+                files=files,
+                data=data,
+            )
 
-                if response.status_code == 200:
-                    resp_json = response.json()
-                    server_url = resp_json.get("order_url") or resp_json.get("image_url") or resp_json.get("file_url")
-                    if server_url:
-                        cleaned_url = self.clean_file_url(server_url)
-                        logger.info(f"✅ Tải lên tệp '{filename}' thành công: {cleaned_url}")
-                        return True, cleaned_url, ""
-                    else:
-                        logger.error(f"Response thiếu trường URL: {resp_json}")
-                        return False, "", f"Máy chủ không trả về đường dẫn tệp: {resp_json}"
+            if response.status_code == 200:
+                resp_json = response.json()
+                server_url = resp_json.get("order_url") or resp_json.get("image_url") or resp_json.get("file_url")
+                if server_url:
+                    cleaned_url = self.clean_file_url(server_url)
+                    logger.info(f"✅ Tải lên tệp '{filename}' thành công: {cleaned_url}")
+                    return True, cleaned_url, ""
                 else:
-                    err_msg = f"Máy chủ lưu trữ báo lỗi (HTTP {response.status_code}): {response.text[:200]}"
-                    logger.error(err_msg)
-                    return False, "", err_msg
+                    logger.error(f"Response thiếu trường URL: {resp_json}")
+                    return False, "", "Máy chủ lưu trữ không trả về đường dẫn tệp."
+            else:
+                logger.error(f"Máy chủ lưu trữ báo lỗi (HTTP {response.status_code}): {response.text[:200]}")
+                return False, "", f"Máy chủ lưu trữ báo lỗi (HTTP {response.status_code})."
 
         except httpx.RequestError as exc:
-            err_msg = f"Lỗi kết nối tới máy chủ lưu trữ file: {exc}"
-            logger.error(err_msg)
-            return False, "", err_msg
+            logger.error(f"Lỗi kết nối tới máy chủ lưu trữ file: {exc}")
+            return False, "", "Không thể kết nối tới máy chủ lưu trữ file."
         except Exception as exc:
-            err_msg = f"Lỗi không xác định khi upload file: {exc}"
-            logger.exception(err_msg)
-            return False, "", err_msg
+            logger.exception(f"Lỗi không xác định khi upload file: {exc}")
+            return False, "", "Lỗi nội bộ khi upload file."
 
     async def download_file_bytes(self, file_url: str) -> Tuple[bool, bytes, str, str]:
         """
@@ -188,17 +198,17 @@ class FileService:
             return False, b"", "", "URL không hợp lệ"
 
         try:
-            async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-                res = await client.get(target_url)
-                if res.status_code == 200:
-                    content_type = res.headers.get("content-type", "application/octet-stream")
-                    filename = os.path.basename(target_url.split("?")[0]) or "downloaded_file"
-                    return True, res.content, content_type, filename
-                else:
-                    return False, b"", "", f"HTTP {res.status_code}"
+            client = self._get_client()
+            res = await client.get(target_url)
+            if res.status_code == 200:
+                content_type = res.headers.get("content-type", "application/octet-stream")
+                filename = os.path.basename(target_url.split("?")[0]) or "downloaded_file"
+                return True, res.content, content_type, filename
+            else:
+                return False, b"", "", f"HTTP {res.status_code}"
         except Exception as exc:
             logger.error(f"Lỗi khi tải file từ URL '{target_url}': {exc}")
-            return False, b"", "", str(exc)
+            return False, b"", "", "Không thể tải tệp từ máy chủ lưu trữ."
 
 
 # Singleton instance

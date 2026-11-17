@@ -24,19 +24,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy python packages from builder
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=builder /root/.local /usr/local
+ENV PATH=/usr/local/bin:$PATH
 
 # Copy application source code
 COPY app ./app
 COPY pyproject.toml .
+
+# Run as non-root user
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+    && mkdir -p /app/data && chown -R appuser:appgroup /app
+
+USER appuser
 
 # Expose FastAPI custom internal port (3002)
 EXPOSE 3002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3002/api/v1/health || exit 1
+    CMD curl -f http://localhost:3002/api/v1/health/db || exit 1
 
 # Start FastAPI application via Uvicorn on custom port 3002
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3002", "--workers", "2"]

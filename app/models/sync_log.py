@@ -19,7 +19,7 @@ class SyncLog(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     channel_code: Mapped[str] = mapped_column(String(50), nullable=False)
-    store_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    store_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     sync_type: Mapped[str] = mapped_column(String(50), nullable=False)  # MENU, STOCK, ORDER
     status: Mapped[str] = mapped_column(String(50), nullable=False)     # SUCCESS, FAILED, PARTIAL
     total_items: Mapped[int] = mapped_column(Integer, default=0)

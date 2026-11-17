@@ -118,7 +118,7 @@
                             <span>Báo cáo</span>
                         </a>
 
-                        <a href="/system-status" class="px-3.5 py-2 rounded-xl text-xs font-semibold transition-all relative flex items-center space-x-1.5 {% if active_page == 'system_status' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
+                        <a href="/system-status" id="nav-system-status-link" class="hidden px-3.5 py-2 rounded-xl text-xs font-semibold transition-all relative flex items-center space-x-1.5 {% if active_page == 'system_status' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100/80{% endif %}">
                             <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                             <span>Hệ thống</span>
                             <span id="nav-error-badge" class="hidden px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-rose-500 text-white ml-1">0</span>
@@ -155,10 +155,56 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                             </svg>
                         </button>
+
+                        <!-- Mobile Navigation Toggle (< 768px) -->
+                        <button id="mobile-menu-toggle" type="button" aria-label="Mở menu điều hướng" aria-expanded="false" aria-controls="mobile-nav-drawer" class="md:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+                            <svg id="mobile-menu-icon-open" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
+                            <svg id="mobile-menu-icon-close" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
             </div>
+        </div>
+
+        <!-- Mobile Navigation Drawer (< 768px) -->
+        <div id="mobile-nav-drawer" class="hidden md:hidden border-t border-slate-200/80 bg-white/95 backdrop-blur-md">
+            <nav class="max-w-7xl mx-auto px-4 py-3 space-y-1">
+                <a href="/admin" class="flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_page == 'dashboard' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100{% endif %}">
+                    <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    <span>Tổng quan</span>
+                </a>
+                <a href="/admin/orders" class="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_page == 'orders' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100{% endif %}">
+                    <span class="flex items-center space-x-2.5">
+                        <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                        <span>Điều phối đơn</span>
+                    </span>
+                    <span id="mobile-nav-pending-orders-badge" class="hidden px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-amber-400 text-slate-950">0</span>
+                </a>
+                <a href="/admin/inventory" class="flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_page == 'inventory' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100{% endif %}">
+                    <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    <span>Kho & Tồn ERP</span>
+                </a>
+                <a href="/admin/reports" class="flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_page == 'reports' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100{% endif %}">
+                    <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <span>Báo cáo</span>
+                </a>
+                <a href="/system-status" id="mobile-nav-system-status-link" class="hidden flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_page == 'system_status' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100{% endif %}">
+                    <span class="flex items-center space-x-2.5">
+                        <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span>Hệ thống</span>
+                    </span>
+                    <span id="mobile-nav-error-badge" class="hidden px-2 py-0.5 text-[10px] font-mono font-bold rounded-full bg-rose-500 text-white">0</span>
+                </a>
+                <a href="/admin/users" id="mobile-nav-users-link" class="hidden flex items-center space-x-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all {% if active_page == 'users' %}bg-slate-900 text-white shadow-sm{% else %}text-slate-600 hover:text-slate-900 hover:bg-slate-100{% endif %}">
+                    <svg class="w-4 h-4 opacity-75" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    <span>Phân quyền</span>
+                </a>
+            </nav>
         </div>
     </header>
 
@@ -172,22 +218,34 @@
 
     <!-- Global Client Scripts -->
     <script>
-        // API Base Token Manager
+        window.escapeHtml = function(val) {
+            if (val === null || val === undefined) return '';
+            return String(val)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        };
+
+        // API Base Session / Profile Manager (Auth relies on HttpOnly cookies)
         const TokenManager = {
             getToken() {
-                return localStorage.getItem("naman_access_token") || "";
+                const user = this.getUser();
+                return user && user.username ? "cookie-session" : "";
             },
             getRefreshToken() {
-                return localStorage.getItem("naman_refresh_token") || "";
+                return "";
             },
-            setTokens(access, refresh) {
-                localStorage.setItem("naman_access_token", access);
-                if (refresh) localStorage.setItem("naman_refresh_token", refresh);
+            setTokens() {
+                localStorage.removeItem("naman_access_token");
+                localStorage.removeItem("naman_refresh_token");
             },
             clear() {
                 localStorage.removeItem("naman_access_token");
                 localStorage.removeItem("naman_refresh_token");
                 localStorage.removeItem("naman_user_profile");
+                window.currentUser = {};
             },
             getUser() {
                 try {
@@ -198,7 +256,7 @@
             },
             setUser(user) {
                 window.currentUser = user || {};
-                localStorage.setItem("naman_user_profile", JSON.stringify(user));
+                localStorage.setItem("naman_user_profile", JSON.stringify(user || {}));
             }
         };
         window.currentUser = TokenManager.getUser();
@@ -259,26 +317,17 @@
             if (_refreshTokenPromise) {
                 return _refreshTokenPromise;
             }
-            const refresh = TokenManager.getRefreshToken();
-            if (!refresh) {
-                return null;
-            }
             _refreshTokenPromise = (async () => {
                 try {
                     const refreshRes = await fetch('/api/v1/auth/refresh', {
                         method: 'POST',
+                        credentials: 'same-origin',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ refresh_token: refresh })
+                        body: JSON.stringify({})
                     });
-                    if (refreshRes.ok) {
-                        const refData = await refreshRes.json();
-                        if (refData.success && refData.data && refData.data.access_token) {
-                            TokenManager.setTokens(refData.data.access_token, refData.data.refresh_token);
-                            return refData.data.access_token;
-                        }
-                    }
+                    return refreshRes.ok;
                 } catch(e) {}
-                return null;
+                return false;
             })();
             try {
                 return await _refreshTokenPromise;
@@ -287,23 +336,22 @@
             }
         }
 
-        // Authenticated Fetch wrapper
+        // Authenticated Fetch wrapper (uses HttpOnly cookies via credentials: 'same-origin')
         async function authFetch(url, options = {}) {
-            let token = TokenManager.getToken();
-            options.headers = { ...(options.headers || {}) };
-            if (token) {
-                options.headers['Authorization'] = `Bearer ${token}`;
-            }
-            if (options.body && typeof options.body === 'string' && !options.headers['Content-Type']) {
-                options.headers['Content-Type'] = 'application/json';
+            const fetchOptions = {
+                ...options,
+                credentials: 'same-origin',
+                headers: { ...(options.headers || {}) }
+            };
+            if (fetchOptions.body && typeof fetchOptions.body === 'string' && !fetchOptions.headers['Content-Type']) {
+                fetchOptions.headers['Content-Type'] = 'application/json';
             }
 
-            let res = await fetch(url, options);
+            let res = await fetch(url, fetchOptions);
             if (res.status === 401) {
-                const newAccessToken = await _performTokenRefresh();
-                if (newAccessToken) {
-                    options.headers['Authorization'] = `Bearer ${newAccessToken}`;
-                    return await fetch(url, options);
+                const refreshed = await _performTokenRefresh();
+                if (refreshed) {
+                    return await fetch(url, fetchOptions);
                 }
                 TokenManager.clear();
                 if (!window.location.pathname.includes('/login')) {
@@ -317,9 +365,11 @@
         // Logout
         async function logoutAdmin() {
             try {
-                await authFetch('/api/v1/auth/logout', {
+                await fetch('/api/v1/auth/logout', {
                     method: 'POST',
-                    body: JSON.stringify({ refresh_token: TokenManager.getRefreshToken() })
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({})
                 });
             } catch(e) {}
             TokenManager.clear();
@@ -332,6 +382,9 @@
             const roleEl = document.getElementById('user-role-badge');
             const storeEl = document.getElementById('user-store-badge');
             const navUsersLink = document.getElementById('nav-users-link');
+            const navSystemStatusLink = document.getElementById('nav-system-status-link');
+            const mobileNavUsersLink = document.getElementById('mobile-nav-users-link');
+            const mobileNavSystemStatusLink = document.getElementById('mobile-nav-system-status-link');
 
             if (nameEl && user.full_name) nameEl.textContent = user.full_name;
             if (roleEl && user.role) roleEl.textContent = user.role;
@@ -345,53 +398,104 @@
                     storeEl.classList.remove('hidden');
                 }
             }
-            if (navUsersLink) {
-                if (user.role === 'SUPER_ADMIN' || user.is_superuser) {
-                    navUsersLink.classList.remove('hidden');
+            const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+            [navUsersLink, navSystemStatusLink, mobileNavUsersLink, mobileNavSystemStatusLink].forEach((el) => {
+                if (!el) return;
+                if (isSuperAdmin) {
+                    el.classList.remove('hidden');
                 } else {
-                    navUsersLink.classList.add('hidden');
+                    el.classList.add('hidden');
                 }
-            }
+            });
         }
 
         async function refreshNavOrdersBadge() {
             const navBadge = document.getElementById('nav-pending-orders-badge');
-            if (!navBadge || !TokenManager.getToken()) return;
+            const mobileNavBadge = document.getElementById('mobile-nav-pending-orders-badge');
+            if (!navBadge && !mobileNavBadge) return;
             try {
                 const res = await authFetch('/api/v1/haravan/incomplete-count');
                 if (res.ok) {
                     const json = await res.json();
                     const count = (json.data && json.data.count) || 0;
-                    if (count > 0) {
-                        navBadge.textContent = count;
-                        navBadge.classList.remove('hidden');
-                    } else {
-                        navBadge.classList.add('hidden');
-                    }
+                    [navBadge, mobileNavBadge].forEach((badge) => {
+                        if (!badge) return;
+                        if (count > 0) {
+                            badge.textContent = count;
+                            badge.classList.remove('hidden');
+                        } else {
+                            badge.classList.add('hidden');
+                        }
+                    });
                 }
             } catch (e) {}
         }
 
-        // Auto load user profile
+        // Mobile drawer toggle
+        function setupMobileNavDrawer() {
+            const toggleBtn = document.getElementById('mobile-menu-toggle');
+            const drawer = document.getElementById('mobile-nav-drawer');
+            const iconOpen = document.getElementById('mobile-menu-icon-open');
+            const iconClose = document.getElementById('mobile-menu-icon-close');
+            if (!toggleBtn || !drawer) return;
+
+            const setOpen = (isOpen) => {
+                drawer.classList.toggle('hidden', !isOpen);
+                toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                if (iconOpen) iconOpen.classList.toggle('hidden', isOpen);
+                if (iconClose) iconClose.classList.toggle('hidden', !isOpen);
+            };
+
+            toggleBtn.addEventListener('click', () => {
+                const isCurrentlyOpen = !drawer.classList.contains('hidden');
+                setOpen(!isCurrentlyOpen);
+            });
+
+            drawer.querySelectorAll('a').forEach((link) => {
+                link.addEventListener('click', () => setOpen(false));
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !drawer.classList.contains('hidden')) {
+                    setOpen(false);
+                }
+            });
+        }
+
+        // Auto load user profile & auth guard (verified via HttpOnly cookie session)
         document.addEventListener('DOMContentLoaded', async () => {
+            setupMobileNavDrawer();
+            localStorage.removeItem("naman_access_token");
+            localStorage.removeItem("naman_refresh_token");
+
+            const path = window.location.pathname || '';
+            const isLoginPage = path === '/login' || path.startsWith('/admin/login');
+            if (isLoginPage) {
+                return;
+            }
+
             let user = TokenManager.getUser();
             if (user && user.username) {
                 renderHeaderUserInfo(user);
             }
-            if (TokenManager.getToken()) {
-                try {
-                    const res = await authFetch('/api/v1/auth/me');
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data.success && data.data) {
-                            TokenManager.setUser(data.data);
-                            renderHeaderUserInfo(data.data);
-                            window.dispatchEvent(new CustomEvent('currentUserLoaded', { detail: data.data }));
-                        }
+            try {
+                const res = await authFetch('/api/v1/auth/me');
+                if (res.status === 401) {
+                    TokenManager.clear();
+                    const currentPathAndQuery = path + (window.location.search || '');
+                    window.location.href = '/admin/login?redirect=' + encodeURIComponent(currentPathAndQuery);
+                    return;
+                }
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success && data.data) {
+                        TokenManager.setUser(data.data);
+                        renderHeaderUserInfo(data.data);
+                        window.dispatchEvent(new CustomEvent('currentUserLoaded', { detail: data.data }));
                     }
-                    refreshNavOrdersBadge();
-                } catch(e) {}
-            }
+                }
+                refreshNavOrdersBadge();
+            } catch(e) {}
         });
     </script>
     {% block extra_scripts %}{% endblock %}

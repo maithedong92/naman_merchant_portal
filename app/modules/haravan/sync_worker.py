@@ -215,9 +215,9 @@ class HaravanSyncWorker:
                         )
                     except Exception:
                         pass
-        except Exception:
-            # Fallback if PostgreSQL session is temporarily unavailable
-            return await self.sync_once()
+        except Exception as ex:
+            logger.warning(f"Haravan advisory lock unavailable, skipping sync cycle: {ex}")
+            return {"success": False, "skipped": True, "reason": "advisory_lock_db_error", "error": str(ex)}
 
     async def _background_loop(self):
         """Vòng lặp chạy nền định kỳ mỗi HARAVAN_SYNC_INTERVAL_SECONDS."""
@@ -256,6 +256,19 @@ class HaravanSyncWorker:
         self._is_running = False
         if self._background_task and not self._background_task.done():
             self._background_task.cancel()
+        self.close()
+
+    async def stop_and_wait(self, timeout: float = 5.0) -> None:
+        """Dừng worker an toàn và chờ task nền kết thúc trong giới hạn timeout."""
+        self._is_running = False
+        task = self._background_task
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=timeout)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+        await self.client.close()
         self.close()
 
     def get_status(self) -> Dict[str, Any]:

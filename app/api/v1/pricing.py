@@ -1,11 +1,13 @@
+import hmac
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_store_manager
+from app.api.deps import check_store_access, get_current_user, require_store_manager
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.responses import APIResponse
+from app.core.security import redact_sensitive_headers
 from app.models.user import User
 from app.schemas.product import (
     ChannelPublishToggleResult,
@@ -20,7 +22,9 @@ settings = get_settings()
 
 
 @router.get("/channels", response_model=APIResponse[Dict[str, Any]])
-async def get_pricing_channels():
+async def get_pricing_channels(
+    current_user: User = Depends(get_current_user),
+):
     """
     Get standardized 13 Canonical sales channels metadata conforming strictly to Poppies ERP spec.
     Includes Arito accounting mapping (`ma_kenh`), `has_partner_pricing`, `inherited_from`, and aliases.
@@ -76,6 +80,7 @@ async def sync_pricing_snapshot(
     Pull Multi-Channel Pricing & Exclusions Snapshot from Poppies ERP (`GET /api/v1/pos/pricing/snapshots`).
     Strictly Fail-Closed: on HTTP 5xx or timeout, returns HTTP 503/504 and retains Last-Known-Good cache.
     """
+    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     res = await poppies_service.sync_channel_pricing_snapshot(
         db=db,
         branch_code=branch_code,
@@ -100,6 +105,7 @@ async def sync_and_match_pricing_from_poppies(
     Đồng bộ & matching toàn bộ 14+ kênh bán hàng Canonical kèm Pricing & Exclusions Snapshots
     từ Poppies ERP về NAM-UMP.
     """
+    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     res = await poppies_service.sync_and_match_all_from_poppies(
         db=db,
         branch_code=branch_code,
@@ -126,8 +132,9 @@ async def poppies_price_change_webhook(
     Receives price_changed, CHANNEL_PUBLISH_STATUS_CHANGED, and CHANNEL_PRICING_STATUS_CHANGED events.
     Guarantees idempotency, out-of-order protection, and safe multi-channel cache synchronization.
     """
-    expected_key = getattr(settings, "POPPIES_WEBHOOK_KEY", None)
-    if expected_key and x_poppies_webhook_key and x_poppies_webhook_key != expected_key:
+    expected_key = (getattr(settings, "POPPIES_WEBHOOK_KEY", None) or "").strip()
+    provided_key = (x_poppies_webhook_key or "").strip()
+    if not expected_key or not provided_key or not hmac.compare_digest(provided_key, expected_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Mã xác thực Webhook không hợp lệ."
@@ -137,6 +144,6 @@ async def poppies_price_change_webhook(
         db=db,
         payload=payload,
         event_id_header=(x_event_id or idempotency_key),
-        headers=dict(request.headers),
+        headers=redact_sensitive_headers(dict(request.headers)),
     )
     return APIResponse.ok(data=res)

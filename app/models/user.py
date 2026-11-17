@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -71,6 +71,10 @@ class User(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True,
         comment="Thời điểm khóa tài khoản tạm thời nếu đăng nhập sai quá số lần quy định"
     )
+    token_version: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False,
+        comment="Phiên bản token dùng để thu hồi toàn bộ Access Token cũ khi đổi mật khẩu/logout"
+    )
 
     # Relationships
     store = relationship("Store", lazy="selectin")
@@ -105,7 +109,7 @@ class RefreshToken(Base, TimestampMixin):
         comment="SHA-256 hash của chuỗi refresh token"
     )
     expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
+        DateTime(timezone=True), nullable=False, index=True,
         comment="Thời hạn hết hạn của refresh token"
     )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
@@ -128,6 +132,9 @@ class RefreshToken(Base, TimestampMixin):
 class AuditSecurityLog(Base, TimestampMixin):
     """Security audit logs recording all authentication events."""
     __tablename__ = "audit_security_logs"
+    __table_args__ = (
+        Index("ix_audit_security_logs_created_at", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=generate_uuid

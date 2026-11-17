@@ -181,7 +181,16 @@ def test_grabmart_get_menu_webhook_pull(client):
         "categories": [],
     }
 
-    response = client.get("/api/v1/grabmart/menu?merchantID=GM-TEST-STORE&partnerMerchantID=10001")
+    # Missing Bearer token must fail closed with 401
+    unauth_resp = client.get("/api/v1/grabmart/menu?merchantID=GM-TEST-STORE&partnerMerchantID=10001")
+    assert unauth_resp.status_code == 401
+
+    from app.core.security import create_partner_token
+    token = create_partner_token("grabmart", "naman_grabmart_pos")
+    response = client.get(
+        "/api/v1/grabmart/menu?merchantID=GM-TEST-STORE&partnerMerchantID=10001",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["merchantID"] == "GM-TEST-STORE"

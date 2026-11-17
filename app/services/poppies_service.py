@@ -13,6 +13,7 @@ from sqlalchemy.orm import defer
 from app.models.inventory import StoreInventory
 from app.models.product import Category, Product
 from app.models.store import Store
+from app.services.inventory_service import InventoryService
 from app.services.poppies_channels import (
     CANONICAL_CHANNEL_META_MAP,
     CHANNEL_CODE_ALIASES,
@@ -249,13 +250,16 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                     qty = store_stock_sums.get(sc, 0.0)
                     is_branch_locked = bool(khoa_rieng_dict.get(sc, False))
 
-                    avail_qty = max(0.0, qty) if (not is_branch_locked and is_active) else 0.0
-                    is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
-
                     inv_key = (str(store_obj.id), str(product.id))
                     store_inv = inv_cache.get(inv_key)
 
                     if not store_inv:
+                        avail_qty = (
+                            InventoryService.compute_available_stock(qty, 0.0, 2.0)
+                            if (not is_branch_locked and is_active)
+                            else 0.0
+                        )
+                        is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
                         store_inv = StoreInventory(
                             store_id=store_obj.id,
                             product_id=product.id,
@@ -270,6 +274,16 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                         db.add(store_inv)
                         inv_cache[inv_key] = store_inv
                     else:
+                        avail_qty = (
+                            InventoryService.compute_available_stock(
+                                qty,
+                                float(store_inv.reserved_stock or 0.0),
+                                float(store_inv.safety_stock or 0.0),
+                            )
+                            if (not is_branch_locked and is_active)
+                            else 0.0
+                        )
+                        is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
                         store_inv.total_stock = max(0.0, qty)
                         store_inv.available_stock = avail_qty
                         store_inv.is_out_of_stock = is_oos
@@ -366,21 +380,44 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
         all_stores = stores_res.scalars().all()
         store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
 
-        prod_by_sku: Dict[str, Product] = {}
-        if create_missing_inventories:
-            prod_res = await db.execute(
-                select(Product).options(
-                    defer(Product.metadata_json),
-                    defer(Product.description),
-                    defer(Product.image_url),
-                )
-            )
-            prod_by_sku = {p.sku: p for p in prod_res.scalars().all()}
+        affected_skus = list({sku for (sku, _sc) in global_sums.keys()})
+        affected_store_ids = list({
+            store_map_by_code[sc].id
+            for (_sku, sc) in global_sums.keys()
+            if sc in store_map_by_code
+        })
 
-        inv_res_all = await db.execute(select(StoreInventory))
-        inv_by_store_sku: Dict[Tuple[str, str], StoreInventory] = {
-            (str(i.store_id), i.sku): i for i in inv_res_all.scalars().all()
-        }
+        prod_by_sku: Dict[str, Product] = {}
+        if create_missing_inventories and affected_skus:
+            for idx in range(0, len(affected_skus), 10000):
+                sku_chunk = affected_skus[idx : idx + 10000]
+                prod_res = await db.execute(
+                    select(Product)
+                    .where(Product.sku.in_(sku_chunk))
+                    .options(
+                        defer(Product.metadata_json),
+                        defer(Product.description),
+                        defer(Product.image_url),
+                    )
+                )
+                for p in prod_res.scalars().all():
+                    prod_by_sku[p.sku] = p
+
+        inv_by_store_sku: Dict[Tuple[str, str], StoreInventory] = {}
+        if affected_store_ids and affected_skus:
+            for idx in range(0, len(affected_skus), 10000):
+                sku_chunk = affected_skus[idx : idx + 10000]
+                inv_res = await db.execute(
+                    select(StoreInventory)
+                    .where(
+                        StoreInventory.store_id.in_(affected_store_ids),
+                        StoreInventory.sku.in_(sku_chunk),
+                    )
+                    .order_by(StoreInventory.store_id, StoreInventory.sku)
+                    .with_for_update()
+                )
+                for i in inv_res.scalars().all():
+                    inv_by_store_sku[(str(i.store_id), i.sku)] = i
 
         if prod_by_sku and unit_by_sku:
             for sku_k, u_val in unit_by_sku.items():
@@ -400,12 +437,17 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
             inv = inv_by_store_sku.get((str(store_obj.id), sku))
             if inv:
                 prev_oos = bool(inv.is_out_of_stock)
+                prev_avail = float(inv.available_stock or 0.0)
                 new_total = max(0.0, total_sl)
-                new_avail = max(0.0, total_sl - float(inv.reserved_stock or 0.0))
+                new_avail = InventoryService.compute_available_stock(
+                    new_total,
+                    float(inv.reserved_stock or 0.0),
+                    float(inv.safety_stock or 0.0),
+                )
                 new_oos = new_avail <= 0.0
                 if (
                     abs(new_total - float(inv.total_stock or 0.0)) >= 0.001
-                    or abs(new_avail - float(inv.available_stock or 0.0)) >= 0.001
+                    or abs(new_avail - prev_avail) >= 0.001
                     or new_oos != prev_oos
                 ):
                     inv.total_stock = new_total
@@ -413,20 +455,22 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                     inv.is_out_of_stock = new_oos
                     inv.last_synced_at = now_utc
                     stock_updated_count += 1
-                    if new_oos != prev_oos and sku not in seen_changed_skus:
+                    if (new_oos != prev_oos or abs(new_avail - prev_avail) >= 1.0) and sku not in seen_changed_skus:
                         seen_changed_skus.add(sku)
                         availability_changed_skus.append(sku)
             elif create_missing_inventories and sku in prod_by_sku:
                 p_obj = prod_by_sku[sku]
-                avail = max(0.0, total_sl)
+                new_total = max(0.0, total_sl)
+                safety = 2.0
+                avail = InventoryService.compute_available_stock(new_total, 0.0, safety)
                 new_inv = StoreInventory(
                     store_id=store_obj.id,
                     product_id=p_obj.id,
                     sku=sku,
-                    total_stock=avail,
+                    total_stock=new_total,
                     reserved_stock=0.0,
                     available_stock=avail,
-                    safety_stock=2.0,
+                    safety_stock=safety,
                     is_out_of_stock=(avail <= 0.0),
                     last_synced_at=now_utc,
                 )

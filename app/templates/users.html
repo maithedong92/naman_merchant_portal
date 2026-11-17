@@ -21,7 +21,7 @@
 
         <!-- Action Buttons -->
         <div class="flex flex-wrap items-center gap-2 text-[12px]">
-            <button onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium" title="Đồng bộ danh sách tài khoản nhân sự từ MongoDB naman_internal_app.user">
+            <button id="btn-seed-staff" onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] disabled:opacity-50 transition-colors flex items-center space-x-1 font-medium" title="Đồng bộ danh sách tài khoản nhân sự từ MongoDB naman_internal_app.user">
                 <span>🔄</span>
                 <span>Đồng Bộ Nhân Sự Nội Bộ</span>
             </button>
@@ -265,7 +265,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                     <label class="block font-semibold text-[#787774] mb-1">Vai Trò Hệ Thống <span class="text-[#D44C47]">*</span></label>
-                    <select id="edit-role" required class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] focus:bg-white focus:border-[#2383E2] text-[12px] font-medium text-[#37352F]">
+                    <select id="edit-role" required onchange="onEditRoleChange(this.value)" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] focus:bg-white focus:border-[#2383E2] text-[12px] font-medium text-[#37352F]">
                         <option value="STAFF">STAFF (Nhân viên cửa hàng)</option>
                         <option value="STORE_MANAGER">STORE_MANAGER (Cửa hàng trưởng)</option>
                         <option value="READ_ONLY">READ_ONLY (Chỉ xem báo cáo)</option>
@@ -401,7 +401,7 @@
             'READ_ONLY': { label: 'CHỈ XEM', class: 'bg-[#F1F1EF] text-[#787774]' },
         };
         const r = map[role] || { label: role, class: 'bg-[#F1F1EF] text-[#787774]' };
-        return `<span class="px-2 py-0.5 rounded text-[11px] font-medium ${r.class}">${r.label}</span>`;
+        return `<span class="px-2 py-0.5 rounded text-[11px] font-medium ${r.class}">${escapeHtml(r.label)}</span>`;
     }
 
     // Format Datetime
@@ -433,7 +433,7 @@
         if (filterEl) {
             filterEl.innerHTML = '<option value="">Tất cả chi nhánh</option>';
             storesList.forEach(s => {
-                filterEl.innerHTML += `<option value="${s.id}">${s.name} (${s.code})</option>`;
+                filterEl.innerHTML += `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
             });
         }
 
@@ -442,7 +442,7 @@
         if (createStoreEl) {
             createStoreEl.innerHTML = '<option value="">-- Toàn chuỗi / Không gán --</option>';
             storesList.forEach(s => {
-                createStoreEl.innerHTML += `<option value="${s.id}">${s.name} (${s.code})</option>`;
+                createStoreEl.innerHTML += `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
             });
         }
 
@@ -451,7 +451,7 @@
         if (editStoreEl) {
             editStoreEl.innerHTML = '<option value="">-- Toàn chuỗi / Không gán --</option>';
             storesList.forEach(s => {
-                editStoreEl.innerHTML += `<option value="${s.id}">${s.name} (${s.code})</option>`;
+                editStoreEl.innerHTML += `<option value="${escapeHtml(s.id)}">${escapeHtml(s.name)} (${escapeHtml(s.code)})</option>`;
             });
         }
     }
@@ -459,6 +459,9 @@
     // Load Users List from API
     async function loadUsers() {
         const tbody = document.getElementById('users-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" class="py-10 text-center text-[#787774] text-[12px]">Đang tải danh sách người dùng...</td></tr>';
+        }
         try {
             const params = new URLSearchParams();
             params.append('page', currentUserFilter.page);
@@ -478,11 +481,19 @@
                     updateStatsCounters(usersList, json.data.meta.total_items);
                 }
             } else if (res.status === 403) {
-                tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-rose-600 font-bold">Bạn không có quyền SuperAdmin để xem danh sách người dùng.</td></tr>`;
+                const msg = 'Bạn không có quyền SuperAdmin để xem danh sách người dùng.';
+                showToast(msg, 'error');
+                tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-rose-600 font-bold">${msg}</td></tr>`;
+            } else {
+                const errJson = await res.json().catch(() => ({}));
+                const errMsg = errJson.detail || errJson.message || `Không thể tải danh sách người dùng (HTTP ${res.status}).`;
+                showToast(errMsg, 'error');
+                tbody.innerHTML = `<tr><td colspan="7" class="py-10 text-center text-rose-600 font-bold space-y-2"><div>${escapeHtml(errMsg)}</div><button type="button" onclick="loadUsers()" class="px-3 py-1 rounded bg-white border border-rose-200 text-rose-700 text-xs font-medium hover:bg-rose-50">Thử lại</button></td></tr>`;
             }
         } catch(e) {
             console.error("Lỗi khi tải danh sách người dùng:", e);
-            tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-rose-500 font-bold">Lỗi khi tải dữ liệu người dùng.</td></tr>`;
+            showToast('Lỗi khi tải dữ liệu người dùng.', 'error');
+            tbody.innerHTML = `<tr><td colspan="7" class="py-10 text-center text-rose-500 font-bold space-y-2"><div>Lỗi khi tải dữ liệu người dùng.</div><button type="button" onclick="loadUsers()" class="px-3 py-1 rounded bg-white border border-rose-200 text-rose-700 text-xs font-medium hover:bg-rose-50">Thử lại</button></td></tr>`;
         }
     }
 
@@ -501,7 +512,9 @@
             // Store badge
             let storeBadge = `<span class="px-2 py-0.5 rounded bg-[#F1F1EF] text-[#787774] text-[11px] font-medium">Toàn chuỗi</span>`;
             if (u.store_code) {
-                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] text-[11px] font-medium inline-flex items-center space-x-1"><span>📍</span><span>${u.store_name || 'Chi nhánh ' + u.store_code} (${u.store_code})</span></span>`;
+                const safeStoreName = escapeHtml(u.store_name || ('Chi nhánh ' + (u.store_code || '')));
+                const safeStoreCode = escapeHtml(u.store_code);
+                storeBadge = `<span class="px-2 py-0.5 rounded bg-[#E7F3F8] text-[#2F7EA6] text-[11px] font-medium inline-flex items-center space-x-1"><span>📍</span><span>${safeStoreName} (${safeStoreCode})</span></span>`;
             }
 
             // Status badge
@@ -509,25 +522,31 @@
                 ? `<span class="inline-flex items-center space-x-1 text-[#448361] font-medium text-[11px]"><span class="w-1.5 h-1.5 rounded-full bg-[#448361]"></span><span>Hoạt động</span></span>`
                 : `<span class="inline-flex items-center space-x-1 text-[#D44C47] font-medium text-[11px]"><span class="w-1.5 h-1.5 rounded-full bg-[#D44C47]"></span><span>Đã khóa</span></span>`;
 
+            const safeId = escapeHtml(u.id);
+            const safeUsername = escapeHtml(u.username);
+            const safeFullName = escapeHtml(u.full_name);
+            const safeEmail = escapeHtml(u.email);
+            const safePhone = escapeHtml(u.phone_number || '--');
+
             html += `
                 <tr class="hover:bg-[#F7F6F3]/50 transition-colors">
                     <!-- User Info -->
                     <td class="py-2.5 px-3">
                         <div class="flex items-center space-x-2.5">
                             <div class="w-7 h-7 rounded-md bg-[#F1F1EF] text-[#37352F] font-semibold flex items-center justify-center shrink-0 text-[11px] border border-[rgba(55,53,47,0.06)]">
-                                ${initials}
+                                ${escapeHtml(initials)}
                             </div>
                             <div>
-                                <div class="font-medium text-[#37352F] text-[12px]">${u.full_name}</div>
-                                <div class="text-[11px] text-[#787774] font-mono">@${u.username}</div>
+                                <div class="font-medium text-[#37352F] text-[12px]">${safeFullName}</div>
+                                <div class="text-[11px] text-[#787774] font-mono">@${safeUsername}</div>
                             </div>
                         </div>
                     </td>
 
                     <!-- Contact -->
                     <td class="py-2.5 px-3">
-                        <div class="text-[#37352F] font-medium">${u.email}</div>
-                        <div class="text-[11px] text-[#787774]">${u.phone_number || '--'}</div>
+                        <div class="text-[#37352F] font-medium">${safeEmail}</div>
+                        <div class="text-[11px] text-[#787774]">${safePhone}</div>
                     </td>
 
                     <!-- Role -->
@@ -547,19 +566,19 @@
 
                     <!-- Last Login -->
                     <td class="py-2.5 px-3 text-[#787774] text-[11px]">
-                        ${formatDateTime(u.last_login_at)}
+                        ${escapeHtml(formatDateTime(u.last_login_at))}
                     </td>
 
                     <!-- Actions -->
                     <td class="py-2.5 px-3 text-right">
                         <div class="inline-flex items-center space-x-1">
-                            <button onclick="openEditUserModal('${u.id}')" title="Chỉnh sửa thông tin & phân quyền" class="p-1 rounded hover:bg-[rgba(55,53,47,0.08)] text-[#787774] hover:text-[#37352F] transition-colors">
+                            <button data-id="${safeId}" onclick="openEditUserModal(this.dataset.id)" title="Chỉnh sửa thông tin & phân quyền" class="p-1 rounded hover:bg-[rgba(55,53,47,0.08)] text-[#787774] hover:text-[#37352F] transition-colors">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                             </button>
-                            <button onclick="openResetPasswordModal('${u.id}', '${u.username}')" title="Đặt lại mật khẩu" class="p-1 rounded hover:bg-[rgba(55,53,47,0.08)] text-[#787774] hover:text-[#37352F] transition-colors">
+                            <button data-id="${safeId}" data-username="${safeUsername}" onclick="openResetPasswordModal(this.dataset.id, this.dataset.username)" title="Đặt lại mật khẩu" class="p-1 rounded hover:bg-[rgba(55,53,47,0.08)] text-[#787774] hover:text-[#37352F] transition-colors">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
                             </button>
-                            <button onclick="toggleUserStatus('${u.id}', ${u.is_active})" title="${u.is_active ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}" class="p-1 rounded hover:bg-[rgba(55,53,47,0.08)] ${u.is_active ? 'text-[#D44C47]' : 'text-[#448361]'} transition-colors">
+                            <button data-id="${safeId}" data-active="${Boolean(u.is_active)}" onclick="toggleUserStatus(this.dataset.id, this.dataset.active === 'true')" title="${u.is_active ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}" class="p-1 rounded hover:bg-[rgba(55,53,47,0.08)] ${u.is_active ? 'text-[#D44C47]' : 'text-[#448361]'} transition-colors">
                                 ${u.is_active 
                                     ? `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>`
                                     : `<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`
@@ -704,6 +723,7 @@
                     document.getElementById('edit-phone').value = u.phone_number || '';
                     document.getElementById('edit-role').value = u.role;
                     document.getElementById('edit-store-id').value = u.store_id || '';
+                    onEditRoleChange(u.role);
                     document.getElementById('edit-is-active').checked = u.is_active;
 
                     document.getElementById('edit-user-modal').classList.remove('hidden');
@@ -713,6 +733,19 @@
             }
         } catch(e) {
             showToast('Lỗi khi tải thông tin người dùng', 'error');
+        }
+    }
+
+    function onEditRoleChange(role) {
+        const storeSelect = document.getElementById('edit-store-id');
+        if (!storeSelect) return;
+        if (role === 'SUPER_ADMIN') {
+            storeSelect.value = '';
+            storeSelect.disabled = true;
+            storeSelect.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            storeSelect.disabled = false;
+            storeSelect.classList.remove('opacity-50', 'cursor-not-allowed');
         }
     }
 
@@ -863,7 +896,7 @@
 
         let html = '';
         logs.forEach(l => {
-            let eventBadge = `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 text-[10px] font-bold">${l.event_type}</span>`;
+            let eventBadge = `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 text-[10px] font-bold">${escapeHtml(l.event_type)}</span>`;
             if (l.event_type === 'LOGIN_SUCCESS') {
                 eventBadge = `<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">ĐĂNG NHẬP THÀNH CÔNG</span>`;
             } else if (l.event_type === 'LOGIN_FAILED') {
@@ -876,11 +909,11 @@
 
             html += `
                 <tr class="hover:bg-surface-low/50">
-                    <td class="py-2.5 px-4 text-gray-500 font-mono text-[11px]">${formatDateTime(l.created_at)}</td>
-                    <td class="py-2.5 px-4 font-bold text-charcoal">@${l.username || 'unknown'}</td>
+                    <td class="py-2.5 px-4 text-gray-500 font-mono text-[11px]">${escapeHtml(formatDateTime(l.created_at))}</td>
+                    <td class="py-2.5 px-4 font-bold text-charcoal">@${escapeHtml(l.username || 'unknown')}</td>
                     <td class="py-2.5 px-4">${eventBadge}</td>
-                    <td class="py-2.5 px-4 font-mono text-gray-500">${l.ip_address || '--'}</td>
-                    <td class="py-2.5 px-4 text-gray-600 truncate max-w-xs text-[11px]">${l.details || '--'}</td>
+                    <td class="py-2.5 px-4 font-mono text-gray-500">${escapeHtml(l.ip_address || '--')}</td>
+                    <td class="py-2.5 px-4 text-gray-600 truncate max-w-xs text-[11px]">${escapeHtml(l.details || '--')}</td>
                 </tr>
             `;
         });
@@ -889,6 +922,14 @@
 
     // Sync Staff from MongoDB naman_internal_app.user
     async function triggerSeedStaff() {
+        if (!confirm('Xác nhận đồng bộ danh sách tài khoản nhân sự từ MongoDB nội bộ (naman_internal_app.user)?')) return;
+
+        const btn = document.getElementById('btn-seed-staff');
+        const origHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-spin inline-block">⏳</span><span>Đang đồng bộ...</span>';
+        }
         try {
             const res = await authFetch('/api/v1/users/sync-mongo', {
                 method: 'POST'
@@ -902,6 +943,11 @@
             }
         } catch(e) {
             showToast("Lỗi kết nối máy chủ khi đồng bộ nhân sự", "error");
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
         }
     }
 

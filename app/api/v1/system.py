@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_store_manager, require_super_admin
+from app.api.deps import get_current_user, require_super_admin
 from app.core.database import get_db
 from app.core.responses import APIResponse
 from app.models.operational_error import ErrorSeverity, ErrorStatus
@@ -28,6 +28,7 @@ logger = logging.getLogger("naman_portal.system")
     description="Kiểm tra kết nối PostgreSQL, trạng thái các kênh bán lẻ (ShopeeFood, GrabMart, ShopeeMart) và tổng kết lỗi vận hành.",
 )
 async def get_system_health(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     health = await error_service.get_system_health(db)
@@ -50,7 +51,7 @@ async def list_operational_errors(
     search: Optional[str] = Query(None, description="Tìm kiếm theo mã lỗi, thông điệp hoặc endpoint"),
     page: int = Query(1, ge=1, description="Trang hiện tại"),
     page_size: int = Query(50, ge=1, le=100, description="Số bản ghi mỗi trang"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     errors, total = await error_service.list_errors(
@@ -81,7 +82,7 @@ async def list_operational_errors(
 )
 async def get_error_detail(
     error_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     error_log = await error_service.get_error_by_id(db, error_id)
@@ -100,10 +101,10 @@ async def get_error_detail(
 async def resolve_error_incident(
     error_id: str,
     payload: OperationalErrorResolveRequest,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    resolved_by = payload.resolved_by or current_user.full_name or current_user.username
+    resolved_by = current_user.username
     updated_log = await error_service.resolve_error(
         db=db,
         error_id=error_id,
@@ -124,7 +125,7 @@ async def resolve_error_incident(
 )
 async def reopen_error_incident(
     error_id: str,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     updated_log = await error_service.reopen_error(db=db, error_id=error_id)
@@ -145,7 +146,7 @@ async def trigger_test_error(
     severity: ErrorSeverity = Query(ErrorSeverity.ERROR, description="Mức độ nghiêm trọng của lỗi thử nghiệm"),
     module: str = Query("SHOPEEFOOD", description="Phân hệ phát sinh lỗi"),
     message: str = Query("Lỗi đồng bộ menu: Đối tác ShopeeFood phản hồi timeout sau 15 giây", description="Mô tả lỗi"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     try:

@@ -2,17 +2,22 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import desc, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import get_settings
 from app.core.exceptions import AppException, ConflictError, NotFoundError, ValidationError
 from app.models.channel import Channel
 from app.models.inventory import InventoryStockLog, StoreInventory
+from app.models.operational_error import ErrorSeverity
 from app.models.order import OrderItem, OrderStatusHistory, UnifiedOrder, UnifiedOrderStatus
 from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
 from app.schemas.order import OrderFilterParams, OrderStatusUpdateSchema
 from app.services.channel_registry import channel_registry
+from app.services.error_service import error_service
+from app.services.inventory_service import InventoryService
 from app.services.poppies_channels import (
     get_channel_family_codes,
     resolve_channel_from_db_result,
@@ -61,6 +66,26 @@ VALID_STATUS_TRANSITIONS: Dict[UnifiedOrderStatus, List[UnifiedOrderStatus]] = {
 
 class OrderService:
     """Core Service managing omnichannel Unified Orders and State Transitions."""
+
+    @staticmethod
+    async def _lock_inventories_sorted(
+        store_id: str,
+        sorted_skus: List[str],
+        db: AsyncSession,
+    ) -> Dict[str, StoreInventory]:
+        """Lock StoreInventory rows for a store in lexicographical SKU order to prevent deadlocks."""
+        if not sorted_skus:
+            return {}
+        inv_res = await db.execute(
+            select(StoreInventory)
+            .where(
+                StoreInventory.store_id == store_id,
+                StoreInventory.sku.in_(sorted_skus),
+            )
+            .order_by(StoreInventory.sku.asc())
+            .with_for_update()
+        )
+        return {inv.sku: inv for inv in inv_res.scalars().all()}
 
     @staticmethod
     async def create_or_get_inbound_order(
@@ -119,22 +144,35 @@ class OrderService:
             matched_exact_store = store is not None
 
             if not store:
-                # Check any fallback store
-                fallback_stmt = select(Store).where(Store.is_active == True).order_by(Store.code).limit(1)
-                fallback_res = await db.execute(fallback_stmt)
-                store = fallback_res.scalars().first()
-
-            if not store:
-                # Auto-create store if database is completely fresh
-                store = Store(
-                    code=str(partner_store_id),
-                    name=f"Nam An Chi Nhánh {partner_store_id}",
-                    address="Hồ Chí Minh, Việt Nam",
-                    is_active=True
+                msg = (
+                    f"Không thể định tuyến đơn hàng {channel_order_id} ({channel_code}): "
+                    f"partner_store_id '{partner_store_id}' không khớp StoreChannelMapping hay Store.code nào."
                 )
-                db.add(store)
-                await db.flush()
-                matched_exact_store = True
+                logger.critical(msg)
+                try:
+                    await error_service.log_error(
+                        db=db,
+                        error_code="UNMAPPED_STORE_ORDER",
+                        message=msg,
+                        severity=ErrorSeverity.CRITICAL,
+                        module=str(channel_code).upper(),
+                        request_payload={
+                            "channel_code": channel_code,
+                            "channel_order_id": str(channel_order_id),
+                            "partner_store_id": str(partner_store_id),
+                            "candidate_partner_ids": candidate_partner_ids,
+                        },
+                    )
+                except Exception as log_ex:
+                    logger.error(f"Failed to record OperationalErrorLog for unmapped store order: {log_ex}")
+                raise ValidationError(
+                    msg,
+                    details={
+                        "channel_code": channel_code,
+                        "channel_order_id": str(channel_order_id),
+                        "partner_store_id": str(partner_store_id),
+                    },
+                )
 
             store_id = store.id
             # Create mapping for future orders ONLY if store matched explicitly by code (never bind unknown partner_store_id to fallback store)
@@ -176,108 +214,199 @@ class OrderService:
         today_str = datetime.now(VN_TZ).strftime("%Y%m%d")
         order_code = f"NAM-{ch_prefix}-{today_str}-{str(channel_order_id)[-6:]}"
 
-        # 5. Construct Unified Order
-        order = UnifiedOrder(
-            order_code=order_code,
-            channel_id=channel.id,
-            store_id=store_id,
-            channel_order_id=str(channel_order_id),
-            display_order_id=order_data.get("display_order_id") or channel_order_id[-4:],
-            status=order_data.get("initial_status", UnifiedOrderStatus.PENDING),
-            subtotal_amount=order_data.get("subtotal_amount", 0.0),
-            discount_amount=order_data.get("discount_amount", 0.0),
-            delivery_fee=order_data.get("delivery_fee", 0.0),
-            total_amount=order_data.get("total_amount", 0.0),
-            customer_name=order_data.get("customer_name"),
-            customer_phone=order_data.get("customer_phone"),
-            delivery_address=order_data.get("delivery_address"),
-            driver_name=order_data.get("driver_name"),
-            driver_phone=order_data.get("driver_phone"),
-            driver_license_plate=order_data.get("driver_license_plate"),
-            order_time=order_data.get("order_time", datetime.now(timezone.utc)),
-            estimated_ready_time=order_data.get("estimated_ready_time"),
-            raw_payload=order_data.get("raw_payload")
-        )
-        db.add(order)
-        await db.flush()
-
-        # 6. Add Items & Automatically Reserve Store Inventory Stock
+        # 5. Construct Unified Order & Reserve Virtual Stock atomically
         depleted_stock_items: List[Dict[str, Any]] = []
-        for item in items_data:
-            sku_val = str(item.get("sku") or "UNKNOWN").strip()
-            qty_val = int(item.get("quantity", 1))
-            prod_id_val = item.get("product_id")
-
-            if not prod_id_val and sku_val and sku_val != "UNKNOWN":
-                p_res = await db.execute(select(Product).where(Product.sku == sku_val))
-                p_obj = p_res.scalar_one_or_none()
-                if p_obj:
-                    prod_id_val = p_obj.id
-
-            order_item = OrderItem(
-                order_id=order.id,
-                product_id=prod_id_val,
-                sku=sku_val,
-                item_name=item.get("item_name", "Unknown Item"),
-                quantity=qty_val,
-                unit_price=float(item.get("unit_price", 0.0)),
-                total_price=float(item.get("total_price", 0.0)),
-                notes=item.get("notes"),
-                modifiers=item.get("modifiers")
+        stock_warnings: List[Dict[str, Any]] = []
+        try:
+            order = UnifiedOrder(
+                order_code=order_code,
+                channel_id=channel.id,
+                store_id=store_id,
+                channel_order_id=str(channel_order_id),
+                display_order_id=order_data.get("display_order_id") or channel_order_id[-4:],
+                status=order_data.get("initial_status", UnifiedOrderStatus.PENDING),
+                stock_reservation_status="NONE",
+                subtotal_amount=order_data.get("subtotal_amount", 0.0),
+                discount_amount=order_data.get("discount_amount", 0.0),
+                delivery_fee=order_data.get("delivery_fee", 0.0),
+                total_amount=order_data.get("total_amount", 0.0),
+                customer_name=order_data.get("customer_name"),
+                customer_phone=order_data.get("customer_phone"),
+                delivery_address=order_data.get("delivery_address"),
+                driver_name=order_data.get("driver_name"),
+                driver_phone=order_data.get("driver_phone"),
+                driver_license_plate=order_data.get("driver_license_plate"),
+                order_time=order_data.get("order_time", datetime.now(timezone.utc)),
+                estimated_ready_time=order_data.get("estimated_ready_time"),
+                raw_payload=order_data.get("raw_payload")
             )
-            db.add(order_item)
+            db.add(order)
+            await db.flush()
 
-            # Reserve physical inventory for active non-cancelled orders
-            if order.status != UnifiedOrderStatus.CANCELLED and sku_val and sku_val != "UNKNOWN":
-                inv_stmt = (
-                    select(StoreInventory)
-                    .where(
-                        StoreInventory.store_id == store_id,
-                        StoreInventory.sku == sku_val,
-                    )
-                    .with_for_update()
+            # 6. Add Items & Aggregate SKUs for Virtual Stock Reservation
+            sku_qty_map: Dict[str, int] = {}
+            for item in items_data:
+                sku_val = str(item.get("sku") or "UNKNOWN").strip()
+                qty_val = int(item.get("quantity", 1))
+                prod_id_val = item.get("product_id")
+
+                if not prod_id_val and sku_val and sku_val != "UNKNOWN":
+                    p_res = await db.execute(select(Product).where(Product.sku == sku_val))
+                    p_obj = p_res.scalar_one_or_none()
+                    if p_obj:
+                        prod_id_val = p_obj.id
+
+                order_item = OrderItem(
+                    order_id=order.id,
+                    product_id=prod_id_val,
+                    sku=sku_val,
+                    item_name=item.get("item_name", "Unknown Item"),
+                    quantity=qty_val,
+                    unit_price=float(item.get("unit_price", 0.0)),
+                    total_price=float(item.get("total_price", 0.0)),
+                    notes=item.get("notes"),
+                    modifiers=item.get("modifiers")
                 )
-                inv_res = await db.execute(inv_stmt)
-                inv_obj = inv_res.scalars().first()
-                if inv_obj:
-                    qty_before = float(inv_obj.available_stock or 0.0)
-                    inv_obj.reserved_stock = float(inv_obj.reserved_stock or 0.0) + qty_val
-                    inv_obj.available_stock = max(
-                        0.0,
-                        float(inv_obj.total_stock or 0.0)
-                        - float(inv_obj.reserved_stock)
-                        - float(inv_obj.safety_stock or 0.0),
-                    )
-                    inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
-                    if inv_obj.is_out_of_stock:
-                        depleted_stock_items.append({
-                            "sku": sku_val,
-                            "available_stock": 0,
-                            "is_out_of_stock": True
-                        })
-                    db.add(
-                        InventoryStockLog(
-                            store_id=store_id,
-                            sku=sku_val,
-                            change_type="ORDER_RESERVE",
-                            quantity_before=qty_before,
-                            quantity_delta=-float(qty_val),
-                            quantity_after=float(inv_obj.available_stock),
-                            reference_id=order.order_code,
-                            note=f"Giữ tồn đơn {channel_code} #{channel_order_id}",
-                        )
-                    )
+                db.add(order_item)
 
-        # 7. Add Initial History Log
-        history = OrderStatusHistory(
-            order_id=order.id,
-            from_status=None,
-            to_status=order.status,
-            note=f"Đơn hàng được tạo từ Webhook {channel_code}",
-            changed_by="WEBHOOK"
-        )
-        db.add(history)
-        await db.commit()
+                if sku_val and sku_val != "UNKNOWN" and qty_val > 0:
+                    sku_qty_map[sku_val] = sku_qty_map.get(sku_val, 0) + qty_val
+
+            # Reserve virtual inventory for active non-cancelled orders (idempotent via stock_reservation_status)
+            if order.status != UnifiedOrderStatus.CANCELLED and (order.stock_reservation_status or "NONE") == "NONE":
+                if sku_qty_map:
+                    sorted_skus = sorted(sku_qty_map.keys())
+                    inv_by_sku = await OrderService._lock_inventories_sorted(store_id, sorted_skus, db)
+                    settings = get_settings()
+
+                    for sku_val in sorted_skus:
+                        qty_needed = float(sku_qty_map[sku_val])
+                        inv_obj = inv_by_sku.get(sku_val)
+
+                        if inv_obj is None:
+                            msg = (
+                                f"Không tìm thấy tồn kho cửa hàng cho SKU '{sku_val}' "
+                                f"khi giữ tồn đơn {order.order_code} (store_id={store_id})."
+                            )
+                            if settings.VIRTUAL_STOCK_STRICT_MODE:
+                                await db.rollback()
+                                raise ValidationError(
+                                    msg,
+                                    details={
+                                        "sku": sku_val,
+                                        "store_id": store_id,
+                                        "required_qty": qty_needed,
+                                        "order_code": order.order_code,
+                                    },
+                                )
+                            stock_warnings.append({
+                                "error_code": "MISSING_STORE_INVENTORY",
+                                "message": msg,
+                                "payload": {
+                                    "sku": sku_val,
+                                    "store_id": store_id,
+                                    "required_qty": qty_needed,
+                                    "order_code": order.order_code,
+                                    "channel_code": channel_code,
+                                    "channel_order_id": str(channel_order_id),
+                                },
+                            })
+                            continue
+
+                        avail_before = float(inv_obj.available_stock or 0.0)
+                        if avail_before < qty_needed:
+                            msg = (
+                                f"Tồn kho khả dụng không đủ cho SKU '{sku_val}' "
+                                f"khi giữ tồn đơn {order.order_code}: cần {qty_needed}, còn {avail_before}."
+                            )
+                            if settings.VIRTUAL_STOCK_STRICT_MODE:
+                                await db.rollback()
+                                raise ValidationError(
+                                    msg,
+                                    details={
+                                        "sku": sku_val,
+                                        "store_id": store_id,
+                                        "required_qty": qty_needed,
+                                        "available_stock": avail_before,
+                                        "order_code": order.order_code,
+                                    },
+                                )
+                            stock_warnings.append({
+                                "error_code": "INSUFFICIENT_VIRTUAL_STOCK",
+                                "message": msg,
+                                "payload": {
+                                    "sku": sku_val,
+                                    "store_id": store_id,
+                                    "required_qty": qty_needed,
+                                    "available_stock": avail_before,
+                                    "order_code": order.order_code,
+                                    "channel_code": channel_code,
+                                    "channel_order_id": str(channel_order_id),
+                                },
+                            })
+
+                        inv_obj.reserved_stock = float(inv_obj.reserved_stock or 0.0) + qty_needed
+                        inv_obj.available_stock = InventoryService.compute_available_stock(
+                            float(inv_obj.total_stock or 0.0),
+                            float(inv_obj.reserved_stock),
+                            float(inv_obj.safety_stock or 0.0),
+                        )
+                        inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
+                        if inv_obj.is_out_of_stock:
+                            depleted_stock_items.append({
+                                "sku": sku_val,
+                                "available_stock": 0,
+                                "is_out_of_stock": True
+                            })
+                        db.add(
+                            InventoryStockLog(
+                                store_id=store_id,
+                                sku=sku_val,
+                                change_type="ORDER_RESERVE",
+                                quantity_before=avail_before,
+                                quantity_delta=-qty_needed,
+                                quantity_after=float(inv_obj.available_stock),
+                                reference_id=order.order_code,
+                                note=f"Giữ tồn ảo đơn {channel_code} #{channel_order_id}",
+                            )
+                        )
+
+                order.stock_reservation_status = "RESERVED"
+
+            # 7. Add Initial History Log
+            history = OrderStatusHistory(
+                order_id=order.id,
+                from_status=None,
+                to_status=order.status,
+                note=f"Đơn hàng được tạo từ Webhook {channel_code}",
+                changed_by="WEBHOOK"
+            )
+            db.add(history)
+            await db.commit()
+        except IntegrityError:
+            await db.rollback()
+            dup_res = await db.execute(existing_stmt)
+            dup_order = dup_res.scalar_one_or_none()
+            if dup_order:
+                logger.info(
+                    f"Concurrent duplicate order {channel_order_id} in channel {channel_code} caught by IntegrityError (Idempotent response)"
+                )
+                return dup_order, False
+            raise
+
+        # Log non-strict virtual stock warnings after commit so error_service's commit/rollback never interferes with the order txn
+        for warn in stock_warnings:
+            try:
+                await error_service.log_error(
+                    db=db,
+                    error_code=warn["error_code"],
+                    message=warn["message"],
+                    severity=ErrorSeverity.WARNING,
+                    module="INVENTORY",
+                    request_payload=warn["payload"],
+                )
+            except Exception as log_ex:
+                logger.warning(f"Failed to record OperationalErrorLog ({warn['error_code']}): {log_ex}")
 
         # Propagate out-of-stock signal across channels to prevent overselling
         if depleted_stock_items:
@@ -475,7 +604,21 @@ class OrderService:
         if db is None:
             raise ValidationError("Session cơ sở dữ liệu (db) không được để trống.")
 
-        order = await OrderService.get_order_by_id(order_id, db)
+        order_stmt = (
+            select(UnifiedOrder)
+            .where(UnifiedOrder.id == order_id)
+            .options(
+                selectinload(UnifiedOrder.items),
+                selectinload(UnifiedOrder.status_history),
+                selectinload(UnifiedOrder.store),
+                selectinload(UnifiedOrder.channel),
+            )
+            .with_for_update()
+        )
+        order = (await db.execute(order_stmt)).scalar_one_or_none()
+        if not order:
+            raise NotFoundError("Order", order_id)
+
         current_status = order.status
         target_status = data.new_status
 
@@ -504,93 +647,87 @@ class OrderService:
 
         restocked_items: List[Dict[str, Any]] = []
 
-        # Finalize stock deduction when order is handed over / delivered
+        sku_qty_map: Dict[str, int] = {}
+        for itm in (order.items or []):
+            if itm.sku and itm.sku != "UNKNOWN":
+                q = int(itm.quantity or 1)
+                if q > 0:
+                    sku_qty_map[itm.sku] = sku_qty_map.get(itm.sku, 0) + q
+        sorted_skus = sorted(sku_qty_map.keys())
+
+        # Release virtual reservation on PICKED_UP / DELIVERED (NEVER touch total_stock; Poppies CTTK is sole physical source)
         if target_status in (UnifiedOrderStatus.PICKED_UP, UnifiedOrderStatus.DELIVERED) and current_status not in (
             UnifiedOrderStatus.PICKED_UP,
             UnifiedOrderStatus.DELIVERED,
             UnifiedOrderStatus.CANCELLED,
         ):
-            for itm in (order.items or []):
-                if itm.sku and itm.sku != "UNKNOWN":
-                    inv_res = await db.execute(
-                        select(StoreInventory)
-                        .where(
-                            StoreInventory.store_id == order.store_id,
-                            StoreInventory.sku == itm.sku,
-                        )
-                        .with_for_update()
-                    )
-                    inv_obj = inv_res.scalars().first()
-                    if inv_obj:
-                        qty_val = float(itm.quantity or 1)
-                        qty_before = float(inv_obj.total_stock or 0.0)
-                        inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - qty_val)
-                        inv_obj.total_stock = max(0.0, float(inv_obj.total_stock or 0.0) - qty_val)
-                        inv_obj.available_stock = max(
-                            0.0,
-                            float(inv_obj.total_stock)
-                            - float(inv_obj.reserved_stock)
-                            - float(inv_obj.safety_stock or 0.0),
-                        )
-                        inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
-                        db.add(
-                            InventoryStockLog(
-                                store_id=order.store_id,
-                                sku=itm.sku,
-                                change_type="ORDER_COMPLETE",
-                                quantity_before=qty_before,
-                                quantity_delta=-qty_val,
-                                quantity_after=float(inv_obj.total_stock),
-                                reference_id=order.order_code,
-                                note=f"Xuất kho hoàn tất đơn {order.order_code}",
-                            )
-                        )
-        elif target_status == UnifiedOrderStatus.CANCELLED and current_status != UnifiedOrderStatus.CANCELLED:
-            order.cancellation_reason = data.cancellation_reason or data.note
-            order.cancelled_by = data.changed_by
-            # Only auto-restore shelf stock if order was NOT already picked up by driver
-            if current_status != UnifiedOrderStatus.PICKED_UP:
-                for itm in (order.items or []):
-                    if itm.sku and itm.sku != "UNKNOWN":
-                        inv_res = await db.execute(
-                            select(StoreInventory)
-                            .where(
-                                StoreInventory.store_id == order.store_id,
-                                StoreInventory.sku == itm.sku,
-                            )
-                            .with_for_update()
-                        )
-                        inv_obj = inv_res.scalars().first()
+            if order.stock_reservation_status == "RESERVED":
+                if sorted_skus:
+                    inv_by_sku = await OrderService._lock_inventories_sorted(order.store_id, sorted_skus, db)
+                    for sku_val in sorted_skus:
+                        inv_obj = inv_by_sku.get(sku_val)
                         if inv_obj:
-                            qty_val = float(itm.quantity or 1)
-                            qty_before = float(inv_obj.available_stock or 0.0)
-                            was_oos = bool(inv_obj.is_out_of_stock)
-                            inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - qty_val)
-                            inv_obj.available_stock = max(
-                                0.0,
-                                float(inv_obj.total_stock or 0.0)
-                                - float(inv_obj.reserved_stock)
-                                - float(inv_obj.safety_stock or 0.0),
+                            qty_val = float(sku_qty_map[sku_val])
+                            reserved_before = float(inv_obj.reserved_stock or 0.0)
+                            inv_obj.reserved_stock = max(0.0, reserved_before - qty_val)
+                            inv_obj.available_stock = InventoryService.compute_available_stock(
+                                float(inv_obj.total_stock or 0.0),
+                                float(inv_obj.reserved_stock),
+                                float(inv_obj.safety_stock or 0.0),
                             )
                             inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
                             db.add(
                                 InventoryStockLog(
                                     store_id=order.store_id,
-                                    sku=itm.sku,
+                                    sku=sku_val,
+                                    change_type="ORDER_COMPLETE",
+                                    quantity_before=reserved_before,
+                                    quantity_delta=-qty_val,
+                                    quantity_after=float(inv_obj.reserved_stock),
+                                    reference_id=order.order_code,
+                                    note=f"Giải phóng giữ tồn ảo hoàn tất đơn {order.order_code}",
+                                )
+                            )
+                order.stock_reservation_status = "CONSUMED"
+        elif target_status == UnifiedOrderStatus.CANCELLED and current_status != UnifiedOrderStatus.CANCELLED:
+            order.cancellation_reason = data.cancellation_reason or data.note
+            order.cancelled_by = data.changed_by
+            # Only auto-release virtual reservation if order was NOT already picked up and is still RESERVED
+            if current_status != UnifiedOrderStatus.PICKED_UP and order.stock_reservation_status == "RESERVED":
+                if sorted_skus:
+                    inv_by_sku = await OrderService._lock_inventories_sorted(order.store_id, sorted_skus, db)
+                    for sku_val in sorted_skus:
+                        inv_obj = inv_by_sku.get(sku_val)
+                        if inv_obj:
+                            qty_val = float(sku_qty_map[sku_val])
+                            qty_before = float(inv_obj.available_stock or 0.0)
+                            was_oos = bool(inv_obj.is_out_of_stock)
+                            inv_obj.reserved_stock = max(0.0, float(inv_obj.reserved_stock or 0.0) - qty_val)
+                            inv_obj.available_stock = InventoryService.compute_available_stock(
+                                float(inv_obj.total_stock or 0.0),
+                                float(inv_obj.reserved_stock),
+                                float(inv_obj.safety_stock or 0.0),
+                            )
+                            inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
+                            db.add(
+                                InventoryStockLog(
+                                    store_id=order.store_id,
+                                    sku=sku_val,
                                     change_type="ORDER_CANCEL",
                                     quantity_before=qty_before,
                                     quantity_delta=qty_val,
                                     quantity_after=float(inv_obj.available_stock),
                                     reference_id=order.order_code,
-                                    note=f"Hoàn tồn do hủy đơn {order.order_code}",
+                                    note=f"Hoàn tồn ảo do hủy đơn {order.order_code}",
                                 )
                             )
                             if was_oos and not inv_obj.is_out_of_stock:
                                 restocked_items.append({
-                                    "sku": itm.sku,
+                                    "sku": sku_val,
                                     "available_stock": int(inv_obj.available_stock),
                                     "is_out_of_stock": False,
                                 })
+                order.stock_reservation_status = "RELEASED"
 
         # Add history log
         history = OrderStatusHistory(

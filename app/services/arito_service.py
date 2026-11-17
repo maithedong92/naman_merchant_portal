@@ -73,7 +73,7 @@ class AritoInventoryService:
                 "database": self.settings.ARITO_DB,
                 "collection": self.settings.ARITO_INVENTORY_COLLECTION,
                 "total_records": 0,
-                "message": f"Không thể kết nối Arito ERP: {str(ex)}",
+                "message": "Không thể kết nối Arito ERP.",
             }
 
     def get_inventory_by_skus_sync(self, skus: List[str]) -> Dict[str, Dict[str, Any]]:

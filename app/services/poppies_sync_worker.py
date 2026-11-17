@@ -14,6 +14,7 @@ from sqlalchemy import select, text
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.models.channel import Channel
+from app.models.store import Store
 from app.services.poppies_channel_push import (
     propagate_channel_menu_to_external_channel,
     propagate_skus_to_external_channel,
@@ -105,6 +106,17 @@ class PoppiesSyncWorker:
                     for c in ch_rows
                 }
 
+                branch_codes = list(
+                    (
+                        await db.execute(
+                            select(Store.code).where(Store.is_active == True).order_by(Store.code)
+                        )
+                    ).scalars().all()
+                )
+                if not branch_codes:
+                    logger.warning("Poppies sync skipped: no active branches found.")
+                    return {"success": True, "skipped": True, "reason": "no_active_branches"}
+
                 synced_channels = {}
                 for ch_code in target_channels:
                     try:
@@ -113,19 +125,25 @@ class PoppiesSyncWorker:
                             if is_full_cycle
                             else last_ver_by_code.get(ch_code)
                         )
-                        res = await poppies_service.sync_channel_pricing_snapshot(
-                            db=db,
-                            branch_code="10001",
-                            channel_code=ch_code,
-                            since_version=since_ver,
-                            fmt="map",
-                            auto_propagate=True,
-                            prefer_price_book=(since_ver is None),
-                        )
+                        total_prices_updated = 0
+                        total_blocked_skus = 0
+                        for b_code in branch_codes:
+                            res = await poppies_service.sync_channel_pricing_snapshot(
+                                db=db,
+                                branch_code=b_code,
+                                channel_code=ch_code,
+                                since_version=since_ver,
+                                fmt="map",
+                                auto_propagate=True,
+                                prefer_price_book=(since_ver is None),
+                            )
+                            total_prices_updated += res.get("prices_updated", 0)
+                            total_blocked_skus += res.get("blocked_skus_count", 0)
                         synced_channels[ch_code] = {
                             "mode": "delta" if since_ver else "full_price_book",
-                            "prices_updated": res.get("prices_updated", 0),
-                            "blocked_skus_count": res.get("blocked_skus_count", 0),
+                            "branches_synced": len(branch_codes),
+                            "prices_updated": total_prices_updated,
+                            "blocked_skus_count": total_blocked_skus,
                         }
                     except Exception as ch_ex:
                         logger.warning(f"Poppies background pricing sync skipped {ch_code}: {ch_ex}")
@@ -138,7 +156,7 @@ class PoppiesSyncWorker:
                 )
                 flipped_skus = cttk_res.get("availability_changed_skus") or []
                 if flipped_skus:
-                    for ext_ch in ("GRAB", "SHOPEEFOOD"):
+                    for ext_ch in ("GRAB", "SHOPEEFOOD", "SHOPEEMART"):
                         if len(flipped_skus) > 100:
                             await propagate_channel_menu_to_external_channel(
                                 db=db, raw_channel_code=ext_ch
@@ -219,6 +237,18 @@ class PoppiesSyncWorker:
         self._is_running = False
         if self._background_task and not self._background_task.done():
             self._background_task.cancel()
+
+    async def stop_and_wait(self, timeout: float = 5.0) -> None:
+        """Stop the background worker and await task completion up to timeout seconds."""
+        self._is_running = False
+        task = self._background_task
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await asyncio.wait_for(task, timeout=timeout)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
 
 
 poppies_sync_worker = PoppiesSyncWorker()

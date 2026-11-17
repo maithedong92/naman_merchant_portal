@@ -60,6 +60,9 @@ class UnifiedOrder(Base, TimestampMixin):
     status: Mapped[UnifiedOrderStatus] = mapped_column(
         Enum(UnifiedOrderStatus), default=UnifiedOrderStatus.PENDING, nullable=False, index=True
     )
+    stock_reservation_status: Mapped[str] = mapped_column(
+        String(30), default="NONE", nullable=False
+    )
 
     # Financials
     subtotal_amount: Mapped[float] = mapped_column(Numeric(14, 2), default=0.0, nullable=False)
@@ -123,9 +126,9 @@ class OrderItem(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     order_id: Mapped[str] = mapped_column(String(36), ForeignKey("unified_orders.id"), nullable=False, index=True)
-    product_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("products.id"), nullable=True)
+    product_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("products.id"), nullable=True, index=True)
     
-    sku: Mapped[str] = mapped_column(String(100), nullable=False)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     item_name: Mapped[str] = mapped_column(String(255), nullable=False)
     quantity: Mapped[int] = mapped_column(default=1, nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)

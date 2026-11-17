@@ -176,7 +176,10 @@ def test_api_upload_order_file_endpoint(mock_admin_user):
         "internal": {},
     }
 
-    with patch.object(file_service, "upload_file", new_callable=AsyncMock) as mock_upload:
+    with (
+        patch.object(haravan_order_service, "get_order_detail", new_callable=AsyncMock, return_value=sample_order),
+        patch.object(file_service, "upload_file", new_callable=AsyncMock) as mock_upload,
+    ):
         mock_upload.return_value = (True, "https://namanapi.namanmarket.com/orders/test.pdf", "")
         with patch.object(haravan_order_service, "attach_order_file", new_callable=AsyncMock) as mock_attach:
             mock_attach.return_value = sample_order

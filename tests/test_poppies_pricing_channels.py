@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 
-from app.api.deps import get_current_user, get_db, require_store_manager
+from app.api.deps import get_current_user, get_db, require_store_manager, require_super_admin
 from app.main import app
 from app.models.channel import Channel
 from app.models.product import Category, ChannelProductMapping, Product
@@ -874,10 +874,19 @@ async def test_master_data_sync_falls_back_to_store_pricing_snapshot_on_500():
     assert added_products[0].base_price == 214900.0
 
 
-def test_api_channels_sync_poppies_matching_and_ui_buttons(client, mock_store_manager):
+def test_api_channels_sync_poppies_matching_and_ui_buttons(client):
     """Verify new REST endpoints & UI buttons for Poppies ERP Sync & Matching."""
-    app.dependency_overrides[get_current_user] = lambda: mock_store_manager
-    app.dependency_overrides[require_store_manager] = lambda: mock_store_manager
+    admin_user = User(
+        id="admin-uuid-poppies",
+        username="admin_poppies",
+        email="admin@namanmarket.com",
+        role=UserRole.SUPER_ADMIN.value,
+        is_active=True,
+        is_superuser=True,
+    )
+    app.dependency_overrides[get_current_user] = lambda: admin_user
+    app.dependency_overrides[require_store_manager] = lambda: admin_user
+    app.dependency_overrides[require_super_admin] = lambda: admin_user
     app.dependency_overrides[get_db] = lambda: _make_mock_db()
 
     fake_matching = {

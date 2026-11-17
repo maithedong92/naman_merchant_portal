@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import check_store_access, get_current_user, require_staff, require_store_manager
+from app.api.deps import check_store_access, get_current_user, require_staff, require_store_manager, require_super_admin
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.responses import APIResponse
@@ -178,7 +178,7 @@ async def sync_all_inventory(
     description="Khởi tạo 5 danh mục hàng hóa, 16 sản phẩm tươi sống cao cấp và tồn kho cho 4 chi nhánh.",
 )
 async def seed_inventory_catalog(
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await InventoryService.seed_sample_catalog(db)
@@ -191,10 +191,12 @@ async def seed_inventory_catalog(
 @router.get("/stores/{store_id}", response_model=APIResponse[List[StoreInventoryResponse]])
 async def get_store_inventory(
     store_id: str,
+    page: int = Query(1, ge=1, description="Số trang hiện tại"),
+    page_size: int = Query(100, ge=1, le=500, description="Số bản ghi trên mỗi trang"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Retrieve all SKU inventory records for a given store."""
+    """Retrieve paginated SKU inventory records for a given store."""
     store_stmt = select(Store).where((Store.id == store_id) | (Store.code == store_id))
     store = (await db.execute(store_stmt)).scalar_one_or_none()
     if not store:
@@ -202,7 +204,13 @@ async def get_store_inventory(
 
     check_store_access(current_user, store.id)
 
-    stmt = select(StoreInventory).where(StoreInventory.store_id == store.id).order_by(StoreInventory.sku)
+    stmt = (
+        select(StoreInventory)
+        .where(StoreInventory.store_id == store.id)
+        .order_by(StoreInventory.sku)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
     res = await db.execute(stmt)
     inventories = res.scalars().all()
     return APIResponse.ok(data=inventories)
@@ -252,6 +260,7 @@ async def sync_poppies_master_data(
     current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
+    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     result = await poppies_service.sync_master_data_from_poppies(
         db=db,
         branch_code=branch_code,
@@ -276,6 +285,10 @@ async def sync_poppies_stock_realtime(
     current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
+    if store_code:
+        check_store_access(current_user, f"st-{store_code}" if not store_code.startswith("st-") else store_code)
+    elif current_user.store_id and not current_user.is_superuser:
+        raise ForbiddenError("Chỉ quản trị viên toàn chuỗi mới được phép đồng bộ tồn kho toàn bộ chi nhánh.")
     result = await poppies_service.sync_stock_cttk_realtime(
         db=db,
         store_code=store_code
@@ -302,6 +315,7 @@ async def sync_and_match_poppies_all(
     current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
+    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     result = await poppies_service.sync_and_match_all_from_poppies(
         db=db,
         branch_code=branch_code,

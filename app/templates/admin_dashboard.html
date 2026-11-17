@@ -26,7 +26,7 @@
 
             <!-- Header Quick Actions -->
             <div class="flex flex-wrap items-center gap-2 shrink-0">
-                <a href="/admin/users" class="px-3 py-1.5 rounded text-xs font-medium bg-[#2F3437] text-white hover:bg-[#474C50] shadow-2xs transition-colors inline-flex items-center space-x-1.5">
+                <a href="/admin/users" id="dash-users-link" class="hidden px-3 py-1.5 rounded text-xs font-medium bg-[#2F3437] text-white hover:bg-[#474C50] shadow-2xs transition-colors inline-flex items-center space-x-1.5">
                     <span>👥</span>
                     <span>Phân Quyền User</span>
                 </a>
@@ -34,13 +34,15 @@
                     <span>📦</span>
                     <span>Xử lý Đơn hàng</span>
                 </a>
-                <a href="/system-status" class="px-3 py-1.5 rounded text-xs font-medium text-[#787774] bg-[#F1F1EF] hover:bg-[#E9E9E7] hover:text-[#37352F] transition-colors">
+                <a href="/system-status" id="dash-system-status-link" class="hidden px-3 py-1.5 rounded text-xs font-medium text-[#787774] bg-[#F1F1EF] hover:bg-[#E9E9E7] hover:text-[#37352F] transition-colors">
                     Sự Cố Vận Hành
                 </a>
+                {% if debug %}
                 <a href="/docs" target="_blank" class="px-3 py-1.5 rounded text-xs font-medium text-[#787774] bg-[#F1F1EF] hover:bg-[#E9E9E7] hover:text-[#37352F] transition-colors inline-flex items-center space-x-1">
                     <span>Swagger API</span>
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                 </a>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -478,7 +480,7 @@
     </div>
 
     <!-- 4. Store & Channel Outlet Mapping Section -->
-    <div class="bg-white rounded-lg border border-[#E9E9E7] p-4 shadow-2xs">
+    <div id="section-store-mappings" class="hidden bg-white rounded-lg border border-[#E9E9E7] p-4 shadow-2xs">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#E9E9E7] gap-3">
             <div>
                 <h3 class="text-sm font-semibold text-[#37352F]">Ánh Xạ Chi Nhánh & Mã Cửa Hàng Trên Sàn</h3>
@@ -523,7 +525,7 @@
         </p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <a href="/system-status" class="p-3 rounded-md bg-[#F7F6F3] border border-[#E9E9E7]/80 hover:bg-[#F1F1EF] transition-colors block">
+            <a href="/system-status" id="dash-arch-system-status-link" class="hidden p-3 rounded-md bg-[#F7F6F3] border border-[#E9E9E7]/80 hover:bg-[#F1F1EF] transition-colors block">
                 <div class="flex items-center justify-between">
                     <span class="font-medium text-xs text-[#37352F]">System Status & Logs</span>
                     <span class="text-[11px] font-mono text-[#787774]">/system-status</span>
@@ -531,6 +533,7 @@
                 <p class="text-[11px] text-[#787774] mt-1">Xem nhật ký lỗi vận hành, sự cố đồng bộ và lịch sử xử lý sự cố.</p>
             </a>
 
+            {% if debug %}
             <a href="/docs" target="_blank" class="p-3 rounded-md bg-[#F7F6F3] border border-[#E9E9E7]/80 hover:bg-[#F1F1EF] transition-colors block">
                 <div class="flex items-center justify-between">
                     <span class="font-medium text-xs text-[#37352F]">REST API Documentation</span>
@@ -538,6 +541,7 @@
                 </div>
                 <p class="text-[11px] text-[#787774] mt-1">Khám phá và chạy thử trực tiếp toàn bộ REST API của Core Platform.</p>
             </a>
+            {% endif %}
 
             <div class="p-3 rounded-md bg-[#F7F6F3] border border-[#E9E9E7]/80">
                 <div class="flex items-center justify-between">
@@ -710,9 +714,10 @@
 
     // Manual sync trigger
     async function triggerSync(channelCode) {
+        const branchCode = (window.currentUser && window.currentUser.store_code) || '10001';
         showToast(`Đang gửi yêu cầu đồng bộ danh mục tới ${channelCode}...`, 'info');
         try {
-            const url = `/api/v1/channels/${encodeURIComponent(channelCode)}/sync-menu?store_id=10001`;
+            const url = `/api/v1/channels/${encodeURIComponent(channelCode)}/sync-menu?store_id=${encodeURIComponent(branchCode)}`;
             const res = await authFetch(url, { method: 'POST' });
             const data = await res.json();
             const syncPayload = data && data.data ? data.data : null;
@@ -777,9 +782,21 @@
                 return;
             }
             const authUrl = json.data.auth_url;
-            const popup = window.open(authUrl, 'shopee_oauth_popup', 'width=980,height=720,menubar=no,toolbar=no,location=yes,status=no');
+            let parsedAuthUrl;
+            try {
+                parsedAuthUrl = new URL(authUrl);
+            } catch (urlErr) {
+                showToast('Liên kết OAuth ShopeeMart không hợp lệ.', 'error');
+                return;
+            }
+            if (parsedAuthUrl.protocol !== 'https:') {
+                showToast('Liên kết OAuth ShopeeMart phải sử dụng giao thức HTTPS.', 'error');
+                return;
+            }
+            const safeAuthUrl = parsedAuthUrl.toString();
+            const popup = window.open(safeAuthUrl, 'shopee_oauth_popup', 'width=980,height=720,menubar=no,toolbar=no,location=yes,status=no');
             if (!popup) {
-                window.location.href = authUrl;
+                window.location.href = safeAuthUrl;
             } else {
                 showToast('Đã mở cửa sổ ủy quyền Shopee Open Platform. Sau khi xác nhận trên Shopee, trạng thái sẽ tự động cập nhật.', 'info');
             }
@@ -812,7 +829,7 @@
                 renderPoppiesMatchingTable(json.data);
             }
         } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-[#D44C47]">Không thể tải đối soát kênh Poppies ERP: ${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="py-6 text-center text-[#D44C47]">Không thể tải đối soát kênh Poppies ERP: ${escapeHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -846,52 +863,55 @@
 
         let html = '';
         channels.forEach(ch => {
+            const safeCode = escapeHtml(ch.channel_code);
+            const safeName = escapeHtml(ch.channel_name);
+            const safeArito = escapeHtml(ch.arito_channel_code || '—');
             const aliasHint = (ch.aliases && ch.aliases.length > 0)
-                ? `<div class="text-[10px] text-[#9B9A97] font-mono">Alias: ${ch.aliases.join(', ')}</div>`
+                ? `<div class="text-[10px] text-[#9B9A97] font-mono">Alias: ${escapeHtml(ch.aliases.join(', '))}</div>`
                 : '';
 
             let pricingBadge = '';
             if (ch.has_partner_pricing) {
-                const mk = ch.default_markup_percent > 0 ? ` (+${ch.default_markup_percent}%)` : '';
+                const mk = ch.default_markup_percent > 0 ? ` (+${Number(ch.default_markup_percent)}%)` : '';
                 pricingBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#E8DEEE] text-[#6940A5]">Giá riêng${mk}</span>`;
             } else {
-                pricingBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#F1F1EF] text-[#787774]">Kế thừa ${ch.inherited_from || 'STORE'}</span>`;
+                pricingBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#F1F1EF] text-[#787774]">Kế thừa ${escapeHtml(ch.inherited_from || 'STORE')}</span>`;
             }
 
             let modeDesc = '';
             if (ch.integration_mode === 'S2S_ADAPTER') {
-                modeDesc = `<div class="font-medium text-[#0F7B6C]">⚡ Adapter: ${ch.adapter_name}</div>
-                            <div class="text-[10px] text-[#787774]">${ch.mapped_stores_count} chi nhánh • ${ch.custom_price_skus_count} giá riêng • ${ch.blocked_skus_count} cấm bán</div>`;
+                modeDesc = `<div class="font-medium text-[#0F7B6C]">⚡ Adapter: ${escapeHtml(ch.adapter_name)}</div>
+                            <div class="text-[10px] text-[#787774]">${Number(ch.mapped_stores_count) || 0} chi nhánh • ${Number(ch.custom_price_skus_count) || 0} giá riêng • ${Number(ch.blocked_skus_count) || 0} cấm bán</div>`;
             } else if (ch.integration_mode === 'POS_BASE') {
                 modeDesc = `<div class="font-medium text-[#37352F]">🏪 Kênh Gốc POS Tại Quầy</div>
                             <div class="text-[10px] text-[#787774]">Giá chuẩn Base VAT (${(report.total_local_products || 0).toLocaleString()} SKU)</div>`;
             } else {
                 modeDesc = `<div class="font-medium text-[#28456C]">🌐 Omnichannel / Haravan</div>
-                            <div class="text-[10px] text-[#787774]">${ch.custom_price_skus_count} giá riêng • ${ch.blocked_skus_count} cấm bán</div>`;
+                            <div class="text-[10px] text-[#787774]">${Number(ch.custom_price_skus_count) || 0} giá riêng • ${Number(ch.blocked_skus_count) || 0} cấm bán</div>`;
             }
 
             let matchBadge = '';
             if (ch.match_status === 'MATCHED') {
                 matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#DBEDDB] text-[#28456C]">✅ Đã khớp (${ch.ump_is_active ? 'Bật' : 'Tắt'})</span>`;
             } else if (ch.match_status === 'ALIAS_NEEDS_MERGE') {
-                matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FDECC8] text-[#D9730D]">⚠️ Cần gộp Alias (${(ch.legacy_rows_in_db || []).join(', ')})</span>`;
+                matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FDECC8] text-[#D9730D]">⚠️ Cần gộp Alias (${escapeHtml((ch.legacy_rows_in_db || []).join(', '))})</span>`;
             } else {
                 matchBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#FFE2DD] text-[#D44C47]">➕ Chưa tạo trên UMP</span>`;
             }
 
-            const snapVer = ch.last_snapshot_version ? `<div class="text-[10px] text-[#9B9A97] font-mono mt-0.5">${ch.last_snapshot_version}</div>` : '';
+            const snapVer = ch.last_snapshot_version ? `<div class="text-[10px] text-[#9B9A97] font-mono mt-0.5">${escapeHtml(ch.last_snapshot_version)}</div>` : '';
 
             html += `
                 <tr class="hover:bg-[#F7F6F3]/60 transition-colors">
                     <td class="py-2.5 px-3">
                         <div class="flex items-center space-x-2">
-                            <span class="font-mono font-semibold text-[#37352F] bg-[#F7F6F3] px-1.5 py-0.5 rounded border border-[#E9E9E7]">${ch.channel_code}</span>
-                            <span class="font-medium text-[#37352F]">${ch.channel_name}</span>
+                            <span class="font-mono font-semibold text-[#37352F] bg-[#F7F6F3] px-1.5 py-0.5 rounded border border-[#E9E9E7]">${safeCode}</span>
+                            <span class="font-medium text-[#37352F]">${safeName}</span>
                         </div>
                         ${aliasHint}
                     </td>
                     <td class="py-2.5 px-3 font-mono font-semibold text-[#37352F]">
-                        ${ch.arito_channel_code || '—'}
+                        ${safeArito}
                     </td>
                     <td class="py-2.5 px-3">
                         ${pricingBadge}
@@ -903,7 +923,7 @@
                         ${matchBadge}
                     </td>
                     <td class="py-2.5 px-3 text-right">
-                        <button onclick="syncSingleChannelSnapshot('${ch.channel_code}', this)" class="px-2.5 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
+                        <button data-code="${safeCode}" onclick="syncSingleChannelSnapshot(this.dataset.code, this)" class="px-2.5 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
                             Kéo Snapshot Giá
                         </button>
                         ${snapVer}
@@ -927,7 +947,8 @@
                     : 'Đang kéo danh sách kênh chuẩn từ Poppies ERP & chuẩn hóa matching...',
                 'info'
             );
-            const url = `/api/v1/channels/sync-poppies?branch_code=10001&sync_pricing=${includePricing ? 'true' : 'false'}`;
+            const branchCode = (window.currentUser && window.currentUser.store_code) || '10001';
+            const url = `/api/v1/channels/sync-poppies?branch_code=${encodeURIComponent(branchCode)}&sync_pricing=${includePricing ? 'true' : 'false'}`;
             const res = await authFetch(url, { method: 'POST' });
             const json = await res.json();
             if (res.ok && json.success) {
@@ -960,7 +981,8 @@
         }
         try {
             showToast(`Đang kéo Pricing & Exclusions Snapshot kênh ${channelCode} từ Poppies ERP...`, 'info');
-            const res = await authFetch(`/api/v1/pricing/snapshots/sync?branch_code=10001&channel_code=${encodeURIComponent(channelCode)}`, {
+            const branchCode = (window.currentUser && window.currentUser.store_code) || '10001';
+            const res = await authFetch(`/api/v1/pricing/snapshots/sync?branch_code=${encodeURIComponent(branchCode)}&channel_code=${encodeURIComponent(channelCode)}`, {
                 method: 'POST'
             });
             const json = await res.json();
@@ -1051,7 +1073,7 @@
             }
             tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-[#D44C47] font-medium">Không thể tải dữ liệu ánh xạ chi nhánh.</td></tr>`;
         } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-[#D44C47] font-medium">Lỗi kết nối: ${e.message}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-[#D44C47] font-medium">Lỗi kết nối: ${escapeHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -1064,16 +1086,20 @@
 
         let html = '';
         mappings.forEach(m => {
-            const storeLabel = m.store_name ? `${m.store_code} - ${m.store_name}` : (m.store_code || m.store_id);
+            const safeStoreCode = escapeHtml(m.store_code || '');
+            const safeStoreName = escapeHtml(m.store_name || '');
+            const safeChannelCode = escapeHtml(m.channel_code || '');
+            const safePartnerId = escapeHtml(m.partner_store_id || '');
+            const storeLabel = m.store_name ? `${safeStoreCode} - ${safeStoreName}` : (safeStoreCode || escapeHtml(m.store_id));
             let channelBadge = '';
             if (m.channel_code === 'SHOPEEMART') {
                 channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FFE2DD] text-[#D44C47] space-x-1"><span>🛒</span><span>ShopeeMart (SHOPEEMART)</span></span>`;
             } else if (m.channel_code === 'GRAB' || m.channel_code === 'GRABMART') {
-                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#DBEDDB] text-[#0F7B6C] space-x-1"><span>🛵</span><span>GrabMart (${m.channel_code})</span></span>`;
+                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#DBEDDB] text-[#0F7B6C] space-x-1"><span>🛵</span><span>GrabMart (${safeChannelCode})</span></span>`;
             } else if (m.channel_code === 'SHOPEEFOOD') {
                 channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FDECC8] text-[#D9730D] space-x-1"><span>🍲</span><span>ShopeeFood (SHOPEEFOOD)</span></span>`;
             } else {
-                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F1F1EF] text-[#787774]">${m.channel_code}</span>`;
+                channelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#F1F1EF] text-[#787774]">${safeChannelCode}</span>`;
             }
 
             const statusBadge = m.is_active
@@ -1089,16 +1115,16 @@
                         ${channelBadge}
                     </td>
                     <td class="py-2.5 px-3 font-mono font-medium text-[#2F3437]">
-                        ${m.partner_store_id}
+                        ${safePartnerId}
                     </td>
                     <td class="py-2.5 px-3 text-center">
                         ${statusBadge}
                     </td>
                     <td class="py-2.5 px-3 text-right space-x-1">
-                        <button onclick="editMapping('${m.store_code}', '${m.channel_code}', '${m.partner_store_id}', ${m.is_active})" class="px-2 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
+                        <button data-store="${safeStoreCode}" data-channel="${safeChannelCode}" data-partner="${safePartnerId}" data-active="${m.is_active ? 'true' : 'false'}" onclick="editMapping(this.dataset.store, this.dataset.channel, this.dataset.partner, this.dataset.active === 'true')" class="px-2 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
                             Sửa
                         </button>
-                        <button onclick="deleteMapping('${m.store_code}', '${m.channel_code}')" class="px-2 py-1 rounded text-xs font-medium text-[#D44C47] hover:bg-[#FFE2DD]/40 transition-colors">
+                        <button data-store="${safeStoreCode}" data-channel="${safeChannelCode}" onclick="deleteMapping(this.dataset.store, this.dataset.channel)" class="px-2 py-1 rounded text-xs font-medium text-[#D44C47] hover:bg-[#FFE2DD]/40 transition-colors">
                             Xóa
                         </button>
                     </td>
@@ -1188,11 +1214,40 @@
         }
     }
 
+    function applyDashboardRbac(userArg) {
+        const user = userArg || (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        const isSuperAdmin = Boolean(user && (user.role === 'SUPER_ADMIN' || user.is_superuser));
+
+        const adminIds = ['dash-users-link', 'dash-system-status-link', 'dash-arch-system-status-link', 'section-store-mappings'];
+        adminIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.toggle('hidden', !isSuperAdmin);
+        });
+
+        // Hide/disable channel feature toggles for non-SUPER_ADMIN users
+        document.querySelectorAll('input[id^="toggle-"]').forEach(input => {
+            input.disabled = !isSuperAdmin;
+            const label = input.closest('label');
+            if (label) {
+                label.classList.toggle('hidden', !isSuperAdmin);
+            }
+        });
+
+        if (isSuperAdmin) {
+            loadStoreMappingsTable();
+        }
+    }
+
+    window.addEventListener('currentUserLoaded', (e) => {
+        applyDashboardRbac(e.detail);
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
+        applyDashboardRbac();
         loadDashboardMetrics();
         loadChannelFeatureFlags();
         loadShopeeMartOAuthStatus();
-        loadStoreMappingsTable();
         loadPoppiesMatchingTable();
 
         const params = new URLSearchParams(window.location.search);

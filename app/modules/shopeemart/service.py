@@ -22,6 +22,19 @@ settings = get_settings()
 
 TOKEN_STORE_PATH = Path("data/shopeemart_tokens.json")
 CREDENTIALS_STORE_PATH = Path("data/shopeemart_credentials.json")
+MAX_IMAGE_DOWNLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
+
+
+def _redact_url_secrets(text: str) -> str:
+    """Mask sensitive query parameters such as access_token and sign in URLs or error text."""
+    if not text:
+        return text
+    return re.sub(
+        r"(\b(?:access_token|sign)=)[^&\s'\"]+",
+        r"\1[REDACTED]",
+        str(text),
+        flags=re.IGNORECASE,
+    )
 
 
 class ShopeeMartClient:
@@ -51,8 +64,19 @@ class ShopeeMartClient:
         self.default_shop_id = self._sanitize_shop_id(settings.SHOPEEMART_SHOP_ID)
         # Token cache format: {shop_id: {"access_token": str, "refresh_token": str, "expires_at": float}}
         self._token_cache: Dict[str, Dict[str, Any]] = {}
+        self._http_client: Optional[httpx.AsyncClient] = None
         self._load_credentials()
         self._load_token_cache()
+
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=15.0)
+        return self._http_client
+
+    async def close(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
     def _load_credentials(self):
         """Load dynamically updated Live credentials across workers if saved on disk."""
@@ -167,8 +191,8 @@ class ShopeeMartClient:
         Shopee calculates signature: HMAC-SHA256(partner_key, f"{webhook_url}|{raw_body_utf8}")
         """
         if not self.is_configured:
-            # In sandbox/unconfigured mode, accept incoming webhooks
-            return True
+            logger.warning("ShopeeMart webhook rejected: ShopeeMart credentials not configured (fail-closed).")
+            return False
 
         if not signature:
             logger.warning("ShopeeMart webhook received without Authorization signature header.")
@@ -252,28 +276,28 @@ class ShopeeMartClient:
             "partner_id": int(self.partner_id),
         }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(f"{self.base_url}{path}", params=query_params, json=body)
-            data = resp.json()
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}{path}", params=query_params, json=body, timeout=15.0)
+        data = resp.json()
 
-            if resp.status_code != 200 or data.get("error"):
-                err_msg = data.get("message", "Failed to exchange Shopee auth code")
-                logger.error(f"Shopee token exchange error: {data}")
-                raise RuntimeError(f"ShopeeMart OAuth Error: {err_msg}")
+        if resp.status_code != 200 or data.get("error"):
+            err_msg = data.get("message", "Failed to exchange Shopee auth code")
+            logger.error(f"Shopee token exchange error: {data}")
+            raise RuntimeError(f"ShopeeMart OAuth Error: {err_msg}")
 
-            access_token = data.get("access_token", "")
-            refresh_token = data.get("refresh_token", "")
-            expire_in = int(data.get("expire_in", 14400))
+        access_token = data.get("access_token", "")
+        refresh_token = data.get("refresh_token", "")
+        expire_in = int(data.get("expire_in", 14400))
 
-            self._save_token_cache(str(shop_id), access_token, refresh_token, expire_in)
-            await self._persist_tokens_to_db(default_shop_id=str(shop_id))
+        self._save_token_cache(str(shop_id), access_token, refresh_token, expire_in)
+        await self._persist_tokens_to_db(default_shop_id=str(shop_id))
 
-            return ShopeeMartTokenResponse(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                expire_in=expire_in,
-                shop_id=int(shop_id)
-            )
+        return ShopeeMartTokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expire_in=expire_in,
+            shop_id=int(shop_id)
+        )
 
     async def refresh_access_token(self, shop_id: Optional[str] = None) -> ShopeeMartTokenResponse:
         """
@@ -322,37 +346,37 @@ class ShopeeMartClient:
             "partner_id": int(self.partner_id),
         }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(f"{self.base_url}{path}", params=query_params, json=body)
-            data = resp.json()
+        client = self._get_http_client()
+        resp = await client.post(f"{self.base_url}{path}", params=query_params, json=body, timeout=15.0)
+        data = resp.json()
 
-            if resp.status_code != 200 or data.get("error"):
-                err_code = str(data.get("error") or "")
-                err_msg = str(data.get("message") or "")
-                logger.error(f"Shopee refresh token error (shop={target_shop}): {data}")
-                if err_code == "shop_no_linked" or "no linked" in err_msg.lower():
-                    self._mark_shop_unlinked(target_shop)
-                    await self._persist_tokens_to_db()
-                elif "refresh_token" in err_code.lower() or "refresh_token" in err_msg.lower():
-                    cached["refresh_token"] = ""
-                    cached["expires_at"] = 0
-                    self._write_token_cache_file()
-                    await self._persist_tokens_to_db()
-                raise RuntimeError(f"ShopeeMart Token Refresh Error [{err_code}]: {err_msg}")
+        if resp.status_code != 200 or data.get("error"):
+            err_code = str(data.get("error") or "")
+            err_msg = str(data.get("message") or "")
+            logger.error(f"Shopee refresh token error (shop={target_shop}): {data}")
+            if err_code == "shop_no_linked" or "no linked" in err_msg.lower():
+                self._mark_shop_unlinked(target_shop)
+                await self._persist_tokens_to_db()
+            elif "refresh_token" in err_code.lower() or "refresh_token" in err_msg.lower():
+                cached["refresh_token"] = ""
+                cached["expires_at"] = 0
+                self._write_token_cache_file()
+                await self._persist_tokens_to_db()
+            raise RuntimeError(f"ShopeeMart Token Refresh Error [{err_code}]: {err_msg}")
 
-            access_token = data.get("access_token", "")
-            refresh_token = data.get("refresh_token", cached["refresh_token"])
-            expire_in = int(data.get("expire_in", 14400))
+        access_token = data.get("access_token", "")
+        refresh_token = data.get("refresh_token", cached["refresh_token"])
+        expire_in = int(data.get("expire_in", 14400))
 
-            self._save_token_cache(target_shop, access_token, refresh_token, expire_in)
-            await self._persist_tokens_to_db(default_shop_id=self.default_shop_id or target_shop)
+        self._save_token_cache(target_shop, access_token, refresh_token, expire_in)
+        await self._persist_tokens_to_db(default_shop_id=self.default_shop_id or target_shop)
 
-            return ShopeeMartTokenResponse(
-                access_token=access_token,
-                refresh_token=refresh_token,
-                expire_in=expire_in,
-                shop_id=int(target_shop)
-            )
+        return ShopeeMartTokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expire_in=expire_in,
+            shop_id=int(target_shop)
+        )
 
     def _active_token_shops(self) -> List[str]:
         """Return shop_ids in _token_cache that are not marked unlinked, preferring default_shop_id first."""
@@ -643,57 +667,63 @@ class ShopeeMartClient:
                 qp.update(params)
             return qp
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for attempt in range(2):
+        client = self._get_http_client()
+        for attempt in range(2):
+            try:
+                timestamp = int(time.time())
+                query_params = _build_query_params(timestamp, access_token, target_shop)
+                resp = await client.request(
+                    method=method,
+                    url=full_url,
+                    params=query_params,
+                    json=body,
+                )
+                err_json: Dict[str, Any] = {}
                 try:
-                    timestamp = int(time.time())
-                    query_params = _build_query_params(timestamp, access_token, target_shop)
-                    resp = await client.request(
-                        method=method,
-                        url=full_url,
-                        params=query_params,
-                        json=body
+                    parsed = resp.json()
+                    if isinstance(parsed, dict):
+                        err_json = parsed
+                except Exception:
+                    pass
+
+                err_code = str(err_json.get("error") or "")
+                err_msg = str(err_json.get("message") or err_code or resp.text)
+
+                if (
+                    attempt == 0
+                    and require_token
+                    and target_shop
+                    and self._is_auth_token_error(resp.status_code, err_code, err_msg)
+                ):
+                    logger.warning(
+                        f"ShopeeMart token rejected at {path} (shop={target_shop}); refreshing token and retrying once..."
                     )
-                    err_json: Dict[str, Any] = {}
-                    try:
-                        parsed = resp.json()
-                        if isinstance(parsed, dict):
-                            err_json = parsed
-                    except Exception:
-                        pass
+                    await self.hydrate_from_db()
+                    latest_cached = self._token_cache.get(target_shop) or {}
+                    if latest_cached.get("access_token") and latest_cached.get("access_token") != access_token:
+                        access_token = str(latest_cached["access_token"])
+                    else:
+                        refreshed = await self.refresh_access_token(target_shop)
+                        access_token = refreshed.access_token
+                    continue
 
-                    err_code = str(err_json.get("error") or "")
-                    err_msg = str(err_json.get("message") or err_code or resp.text)
+                if resp.status_code >= 400:
+                    safe_text = _redact_url_secrets(resp.text)
+                    safe_err_msg = _redact_url_secrets(err_msg)
+                    logger.error(f"ShopeeMart API HTTP {resp.status_code} at {path}: {safe_text}")
+                    raise RuntimeError(f"ShopeeMart API Error {resp.status_code} [{path}]: {safe_err_msg}")
 
-                    if (
-                        attempt == 0
-                        and require_token
-                        and target_shop
-                        and self._is_auth_token_error(resp.status_code, err_code, err_msg)
-                    ):
-                        logger.warning(
-                            f"ShopeeMart token rejected at {path} (shop={target_shop}); refreshing token and retrying once..."
-                        )
-                        await self.hydrate_from_db()
-                        latest_cached = self._token_cache.get(target_shop) or {}
-                        if latest_cached.get("access_token") and latest_cached.get("access_token") != access_token:
-                            access_token = str(latest_cached["access_token"])
-                        else:
-                            refreshed = await self.refresh_access_token(target_shop)
-                            access_token = refreshed.access_token
-                        continue
-
-                    if resp.status_code >= 400:
-                        logger.error(f"ShopeeMart API HTTP {resp.status_code} at {path}: {resp.text}")
-                        raise RuntimeError(f"ShopeeMart API Error {resp.status_code} [{path}]: {err_msg}")
-
-                    if err_code:
-                        logger.error(f"ShopeeMart API returned error at {path}: {err_code} - {err_msg}")
-                        raise RuntimeError(f"ShopeeMart Error [{err_code}]: {err_msg}")
-                    return err_json
-                except Exception as ex:
-                    logger.error(f"ShopeeMart HTTP Exception at {path}: {str(ex)}")
-                    raise
+                if err_code:
+                    safe_err_msg = _redact_url_secrets(err_msg)
+                    logger.error(f"ShopeeMart API returned error at {path}: {err_code} - {safe_err_msg}")
+                    raise RuntimeError(f"ShopeeMart Error [{err_code}]: {safe_err_msg}")
+                return err_json
+            except Exception as ex:
+                safe_ex = _redact_url_secrets(str(ex))
+                logger.error(f"ShopeeMart HTTP Exception at {path}: {safe_ex}")
+                if isinstance(ex, httpx.HTTPError):
+                    raise RuntimeError(f"ShopeeMart HTTP Exception [{path}]: {safe_ex}") from None
+                raise
         raise RuntimeError(f"ShopeeMart API failed after retry [{path}]")
 
     # ==========================================================================
@@ -857,6 +887,39 @@ class ShopeeMartClient:
     # 5. Product Listing, Publishing & Mass Outlet Management
     # ==========================================================================
 
+    @staticmethod
+    def _validate_external_image_url(image_url: str) -> None:
+        """Validate external image URL to mitigate SSRF (HTTPS/HTTP only, no private/loopback IPs)."""
+        import ipaddress
+        import socket
+        from urllib.parse import urlparse
+
+        parsed = urlparse(image_url)
+        if parsed.scheme not in ("https", "http") or not parsed.hostname:
+            raise ValueError("URL ảnh không hợp lệ (chỉ chấp nhận http/https).")
+
+        hostname = parsed.hostname.strip().lower()
+        if hostname in ("localhost", "host.docker.internal") or hostname.endswith(".local") or hostname.endswith(".internal"):
+            raise ValueError("Không được phép tải ảnh từ địa chỉ mạng nội bộ.")
+
+        try:
+            addr_infos = socket.getaddrinfo(hostname, None)
+        except socket.gaierror as exc:
+            raise ValueError(f"Không thể phân giải tên miền ảnh: {exc}") from exc
+
+        for info in addr_infos:
+            ip_str = info[4][0]
+            ip_obj = ipaddress.ip_address(ip_str)
+            if (
+                ip_obj.is_private
+                or ip_obj.is_loopback
+                or ip_obj.is_link_local
+                or ip_obj.is_multicast
+                or ip_obj.is_reserved
+                or ip_obj.is_unspecified
+            ):
+                raise ValueError("Không được phép tải ảnh từ dải IP nội bộ/riêng tư.")
+
     async def upload_image_from_url(self, image_url: str) -> Optional[str]:
         """
         Download an image from Poppies/Haravan CDN and upload to Shopee Media Space
@@ -865,6 +928,7 @@ class ShopeeMartClient:
         """
         if not image_url:
             return None
+        self._validate_external_image_url(image_url)
         if not self.is_configured:
             digest = hashlib.md5(image_url.encode("utf-8")).hexdigest()[:12]
             return f"vn-sandbox-img-{digest}"
@@ -878,23 +942,40 @@ class ShopeeMartClient:
             "sign": sign,
         }
 
-        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
-            img_resp = await client.get(image_url)
+        client = self._get_http_client()
+        async with client.stream("GET", image_url, follow_redirects=False, timeout=25.0) as img_resp:
             img_resp.raise_for_status()
+            content_length_hdr = img_resp.headers.get("content-length")
+            if content_length_hdr is not None:
+                try:
+                    if int(content_length_hdr) > MAX_IMAGE_DOWNLOAD_BYTES:
+                        raise ValueError("Image exceeds maximum allowed download size (15 MB).")
+                except ValueError as exc:
+                    if "exceeds maximum" in str(exc):
+                        raise
+            chunks: List[bytes] = []
+            total_bytes = 0
+            async for chunk in img_resp.aiter_bytes():
+                total_bytes += len(chunk)
+                if total_bytes > MAX_IMAGE_DOWNLOAD_BYTES:
+                    raise ValueError("Image exceeds maximum allowed download size (15 MB).")
+                chunks.append(chunk)
+            img_bytes = b"".join(chunks)
             content_type = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-            ext = "png" if "png" in content_type else "jpg"
-            files = {"image": (f"product.{ext}", img_resp.content, content_type)}
+        ext = "png" if "png" in content_type else "jpg"
+        files = {"image": (f"product.{ext}", img_bytes, content_type)}
 
-            up_resp = await client.post(
-                f"{self.base_url}{path}",
-                params=query_params,
-                files=files,
+        up_resp = await client.post(
+            f"{self.base_url}{path}",
+            params=query_params,
+            files=files,
+            timeout=25.0,
+        )
+        data = up_resp.json()
+        if up_resp.status_code != 200 or data.get("error"):
+            raise RuntimeError(
+                f"Shopee upload_image error [{data.get('error')}]: {data.get('message')}"
             )
-            data = up_resp.json()
-            if up_resp.status_code != 200 or data.get("error"):
-                raise RuntimeError(
-                    f"Shopee upload_image error [{data.get('error')}]: {data.get('message')}"
-                )
             image_info = (data.get("response") or {}).get("image_info") or {}
             return image_info.get("image_id")
 
@@ -1285,14 +1366,20 @@ class ShopeeMartClient:
             query_params["shop_id"] = target_shop
 
         full_url = f"{self.base_url}{path}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        client = self._get_http_client()
+        try:
             resp = await client.post(
                 full_url,
                 params=query_params,
                 json={"order_list": [{"order_sn": order_sn, "shipping_document_type": document_type}]},
+                timeout=30.0,
             )
             resp.raise_for_status()
             return resp.content
+        except httpx.HTTPError as ex:
+            safe_ex = _redact_url_secrets(str(ex))
+            logger.error(f"ShopeeMart download_shipping_document_bytes HTTP error: {safe_ex}")
+            raise RuntimeError(f"ShopeeMart AWB download error: {safe_ex}") from None
 
     async def download_shipping_document(
         self,

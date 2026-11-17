@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import secrets
@@ -15,6 +16,7 @@ from app.core.config import get_settings
 from app.core.database import get_db, get_optional_db
 from app.core.exceptions import AppException, ForbiddenError
 from app.core.responses import APIResponse
+from app.core.security import create_partner_token, redact_sensitive_headers, verify_partner_token
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
 from app.models.operational_error import ErrorSeverity
@@ -48,6 +50,31 @@ def _reject_read_only(current_user: User) -> None:
         raise ForbiddenError("Tài khoản chỉ xem không có quyền thực hiện thao tác này.")
 
 
+async def verify_grabmart_webhook_bearer(request: Request) -> None:
+    """Fail-closed Bearer token verification for all GrabMart inbound webhook calls."""
+    auth_header = (request.headers.get("authorization") or "").strip()
+    if not auth_header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid GrabMart Bearer authorization header",
+        )
+    token = auth_header[7:].strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Empty GrabMart Bearer token",
+        )
+    static_inbound = (getattr(settings, "GRABMART_INBOUND_BEARER_TOKEN", "") or "").strip()
+    if static_inbound and hmac.compare_digest(token, static_inbound):
+        return
+    if verify_partner_token(token, "grabmart") is not None:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired GrabMart Bearer token",
+    )
+
+
 # ==============================================================================
 # 1. Partner OAuth Endpoint (GrabMart calls to authenticate before webhooks)
 # ==============================================================================
@@ -61,71 +88,61 @@ def _reject_read_only(current_user: User) -> None:
 async def get_partner_oauth_token(request: Request):
     """
     Implements GrabMart Partner OAuth Token Webhook specification.
-    Returns Bearer token to authorize GrabMart webhook requests.
-    Supports application/json, application/x-www-form-urlencoded, and query params.
+    Returns a signed short-lived Bearer JWT to authorize GrabMart webhook requests.
+    Supports application/json and application/x-www-form-urlencoded bodies.
     """
-    client_id = "grabmart_client"
+    client_id = ""
     client_secret: Optional[str] = None
     try:
         content_type = request.headers.get("content-type", "")
         if "application/json" in content_type:
             data = await request.json()
-            client_id = data.get("client_id", client_id)
+            client_id = str(data.get("client_id") or "")
             client_secret = data.get("client_secret")
         elif "form" in content_type:
             form = await request.form()
-            client_id = form.get("client_id", client_id)
+            client_id = str(form.get("client_id") or "")
             client_secret = form.get("client_secret")
         else:
             try:
                 data = await request.json()
-                client_id = data.get("client_id", client_id)
+                client_id = str(data.get("client_id") or "")
                 client_secret = data.get("client_secret")
             except Exception:
                 form = await request.form()
-                client_id = form.get("client_id", client_id)
+                client_id = str(form.get("client_id") or "")
                 client_secret = form.get("client_secret")
     except Exception as ex:
         logger.debug(f"Parsing body in get_partner_oauth_token: {ex}")
 
-    if client_id == "grabmart_client" and request.query_params.get("client_id"):
-        client_id = request.query_params.get("client_id")
-    if client_secret is None and request.query_params.get("client_secret"):
-        client_secret = request.query_params.get("client_secret")
-
     configured_secret = (settings.GRABMART_CLIENT_SECRET or "").strip()
     partner_webhook_secret = (getattr(settings, "GRABMART_PARTNER_CLIENT_SECRET", "") or "").strip()
-    is_test_fixture = (
-        client_secret in ("grabmart_secret_123", "test_secret")
-        and not request.headers.get("x-forwarded-proto")
-    )
-    is_registered_grab_partner_id = (
-        client_id == "naman_grabmart_pos"
-        and bool(client_secret and str(client_secret).strip())
-        and not partner_webhook_secret
-    )
-    expected_secret = partner_webhook_secret or configured_secret
-    if expected_secret and "your_grab" not in expected_secret:
-        if (
-            client_secret
-            and not secrets.compare_digest(str(client_secret), expected_secret)
-            and not is_test_fixture
-            and not is_registered_grab_partner_id
-        ):
-            logger.warning(f"GrabMart OAuth token request rejected: invalid client_secret for client_id={client_id}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid GrabMart client credentials",
-            )
-        if not client_secret and request.headers.get("x-forwarded-proto"):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing GrabMart client_secret",
-            )
+    partner_client_id = (getattr(settings, "GRABMART_PARTNER_CLIENT_ID", "naman_grabmart_pos") or "").strip()
+
+    if client_id == partner_client_id and partner_webhook_secret:
+        expected_secret = partner_webhook_secret
+    else:
+        expected_secret = partner_webhook_secret or configured_secret
+
+    if not expected_secret or "your_grab" in expected_secret:
+        logger.error("GrabMart OAuth rejected: GRABMART_CLIENT_SECRET / GRABMART_PARTNER_CLIENT_SECRET chưa được cấu hình.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="GrabMart OAuth credentials not configured",
+        )
+
+    provided_secret = (str(client_secret) if client_secret is not None else "").strip()
+    if not provided_secret or not secrets.compare_digest(provided_secret, expected_secret):
+        logger.warning(f"GrabMart OAuth token request rejected: invalid client_secret for client_id={client_id}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid GrabMart client credentials",
+        )
 
     logger.info(f"GrabMart requested partner OAuth token for client_id: {client_id}")
+    access_token = create_partner_token("grabmart", client_id or "grabmart_client", expires_seconds=86400)
     return GrabOAuthTokenResponse(
-        access_token="naman_partner_bearer_token_for_grabmart",
+        access_token=access_token,
         token_type="Bearer",
         expires_in=86400,
     )
@@ -147,23 +164,23 @@ async def get_partner_oauth_token(request: Request):
 )
 async def receive_grabmart_order(
     request: Request,
+    _: None = Depends(verify_grabmart_webhook_bearer),
     db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
     raw_body = await request.body()
     headers = dict(request.headers)
+    safe_headers = redact_sensitive_headers(headers)
+
+    if db is None:
+        logger.error("GrabMart order webhook rejected: database unavailable.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        )
 
     try:
-        if db is not None:
-            response = await adapter.handle_order_webhook(headers, raw_body, db)
-            return response
-        else:
-            logger.warning("GrabMart order received in offline DB mode. Returning mock accepted response.")
-            payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
-            return {
-                "status": "ACCEPTED",
-                "orderID": payload.get("orderID", "MOCK-ORDER-ID"),
-                "shortOrderNumber": payload.get("shortOrderNumber", "MOCK-101"),
-            }
+        response = await adapter.handle_order_webhook(headers, raw_body, db)
+        return response
     except Exception as ex:
         logger.error(f"Error handling GrabMart order webhook: {str(ex)}", exc_info=True)
         is_validation_err = isinstance(ex, (PydanticValidationError, json.JSONDecodeError, ValueError)) or (
@@ -185,13 +202,13 @@ async def receive_grabmart_order(
                     stack_trace=traceback.format_exc(),
                     endpoint="/webhooks/order",
                     http_method="POST",
-                    request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
+                    request_payload={"headers": safe_headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
                 )
             except Exception as log_ex:
                 logger.error(f"Failed to record operational error: {log_ex}")
         return JSONResponse(
             status_code=err_status,
-            content={"status": "FAILED", "message": str(ex)},
+            content={"status": "FAILED", "message": "Dữ liệu đơn hàng không hợp lệ." if is_validation_err else "Lỗi xử lý đơn hàng GrabMart."},
         )
 
 
@@ -207,10 +224,12 @@ async def receive_grabmart_order(
 )
 async def receive_grabmart_order_state(
     request: Request,
+    _: None = Depends(verify_grabmart_webhook_bearer),
     db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
     raw_body = await request.body()
     headers = dict(request.headers)
+    safe_headers = redact_sensitive_headers(headers)
 
     try:
         if db is not None:
@@ -236,7 +255,7 @@ async def receive_grabmart_order_state(
                     stack_trace=traceback.format_exc(),
                     endpoint="/webhooks/order/state",
                     http_method="PUT",
-                    request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
+                    request_payload={"headers": safe_headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
                 )
             except Exception as log_ex:
                 logger.error(f"Failed to record operational error: {log_ex}")
@@ -259,6 +278,7 @@ async def get_mart_menu_webhook(
     BusinessType: Optional[int] = Query(default=1),
     merchant_id_query: Optional[str] = Query(None, alias="merchantID"),
     partner_merchant_id_query: Optional[str] = Query(None, alias="partnerMerchantID"),
+    _: None = Depends(verify_grabmart_webhook_bearer),
     db: Optional[AsyncSession] = Depends(get_optional_db),
 ):
     """
@@ -329,7 +349,10 @@ async def get_mart_menu_webhook(
     summary="GrabMart Menu Sync State Webhook",
     description="GrabMart calls this endpoint to notify the status of a background menu sync.",
 )
-async def receive_menu_sync_state(request: Request):
+async def receive_menu_sync_state(
+    request: Request,
+    _: None = Depends(verify_grabmart_webhook_bearer),
+):
     try:
         data = await request.json()
         logger.info(f"GrabMart menu sync state callback: {data}")
@@ -343,7 +366,10 @@ async def receive_menu_sync_state(request: Request):
     summary="GrabMart Push Grab Menu Webhook",
     description="GrabMart calls this endpoint to push the Grab store menu to partner POS.",
 )
-async def receive_push_grab_menu(request: Request):
+async def receive_push_grab_menu(
+    request: Request,
+    _: None = Depends(verify_grabmart_webhook_bearer),
+):
     try:
         data = await request.json()
         logger.info(f"GrabMart push menu callback: merchantID={data.get('merchantID')}")
@@ -357,7 +383,10 @@ async def receive_push_grab_menu(request: Request):
     summary="GrabMart Push Store Integration Status Webhook",
     description="GrabMart calls this endpoint to notify store integration status changes.",
 )
-async def receive_store_integration_status(request: Request):
+async def receive_store_integration_status(
+    request: Request,
+    _: None = Depends(verify_grabmart_webhook_bearer),
+):
     try:
         data = await request.json()
         logger.info(f"GrabMart integration status callback: {data}")
@@ -382,8 +411,7 @@ async def trigger_menu_sync(
     current_user: User = Depends(get_current_active_user),
 ):
     _reject_read_only(current_user)
-    if getattr(current_user, "store_id", None):
-        check_store_access(current_user, store_id)
+    check_store_access(current_user, store_id)
 
     # Resolve partner_store_id for this store on GrabMart (GRAB / GRABMART)
     stmt = (
@@ -427,8 +455,7 @@ async def trigger_stock_sync(
     current_user: User = Depends(get_current_active_user),
 ):
     _reject_read_only(current_user)
-    if getattr(current_user, "store_id", None):
-        check_store_access(current_user, store_id)
+    check_store_access(current_user, store_id)
 
     # Fetch active inventories for this store
     inv_stmt = (
@@ -495,7 +522,7 @@ async def prepare_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+    if getattr(order, "store_id", None):
         check_store_access(current_user, order.store_id)
 
     target_status = UnifiedOrderStatus.ACCEPTED if payload.toState == "Accepted" else UnifiedOrderStatus.CANCELLED
@@ -536,7 +563,7 @@ async def mark_order_ready(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+    if getattr(order, "store_id", None):
         check_store_access(current_user, order.store_id)
 
     updated_order = await OrderService.update_order_status(
@@ -576,7 +603,7 @@ async def cancel_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if getattr(order, "store_id", None) and getattr(current_user, "store_id", None):
+    if getattr(order, "store_id", None):
         check_store_access(current_user, order.store_id)
 
     updated_order = await OrderService.update_order_status(

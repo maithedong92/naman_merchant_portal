@@ -12,7 +12,7 @@ class Category(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    parent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("categories.id"), nullable=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("categories.id"), nullable=True, index=True)
     sequence: Mapped[int] = mapped_column(default=0)
 
     # Relationships
@@ -35,7 +35,7 @@ class Product(Base, TimestampMixin):
     unit: Mapped[str] = mapped_column(String(50), default="Cái", nullable=False)
     base_price: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    category_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("categories.id"), nullable=True)
+    category_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("categories.id"), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     metadata_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 

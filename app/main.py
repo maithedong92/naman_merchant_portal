@@ -1,9 +1,11 @@
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy import text
 
 from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
@@ -28,21 +30,33 @@ logger = logging.getLogger("naman_portal")
 settings = get_settings()
 
 
+async def _stop_worker(worker) -> None:
+    """Stop a background sync worker and await its task completion."""
+    if hasattr(worker, "stop_and_wait"):
+        await worker.stop_and_wait()
+        return
+    worker.stop_background_worker()
+    task = getattr(worker, "_background_task", None)
+    if task is not None and not task.done():
+        with suppress(asyncio.CancelledError, asyncio.TimeoutError):
+            await asyncio.wait_for(task, timeout=5.0)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application Lifespan:
-    1. Initialize Database Schema tables.
+    1. Initialize Database Schema tables (in DEBUG) or verify DB connectivity.
     2. Seed initial SuperAdmin account if none exists.
     3. Register Channel Adapters (ShopeeFood, GrabMart, ShopeeMart) into Central Registry.
     4. Clean up on shutdown.
     """
     logger.info("=== Khởi động Nam An Unified Merchant Portal ===")
-    
-    # Auto-create tables in development and seed initial admin
-    if settings.DEBUG:
-        logger.info("Đang khởi tạo cấu trúc cơ sở dữ liệu PostgreSQL...")
-        try:
+
+    # Verify DB connectivity (and auto-create tables / seed in DEBUG)
+    try:
+        if settings.DEBUG:
+            logger.info("Đang khởi tạo cấu trúc cơ sở dữ liệu PostgreSQL...")
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
             logger.info("✅ Đã sẵn sàng cơ sở dữ liệu PostgreSQL.")
@@ -52,8 +66,15 @@ async def lifespan(app: FastAPI):
                 await auth_service.seed_initial_superadmin(session)
                 from app.services.channel_service import channel_service
                 await channel_service.ensure_default_channels(session)
-        except Exception as ex:
-            logger.warning(f"Lưu ý: Không thể kết nối tới PostgreSQL trong startup ({str(ex)}). Tiếp tục khởi động...")
+        else:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            logger.info("✅ Kết nối cơ sở dữ liệu PostgreSQL sẵn sàng.")
+    except Exception as ex:
+        if settings.ENVIRONMENT != "test":
+            logger.error(f"Không thể kết nối tới PostgreSQL trong startup: {str(ex)}")
+            raise
+        logger.warning(f"Lưu ý: Không thể kết nối tới PostgreSQL trong startup ({str(ex)}). Tiếp tục khởi động (test)...")
 
 
     # Register decoupled channel adapters
@@ -75,17 +96,24 @@ async def lifespan(app: FastAPI):
     
     # Start Haravan & Poppies ERP Background Sync Workers
     from app.modules.haravan.sync_worker import haravan_sync_worker
-    from app.services.poppies_sync_worker import poppies_sync_worker
     from app.services.arito_service import arito_service
+    from app.services.file_service import file_service
+    from app.services.haravan_order_service import haravan_order_service
+    from app.services.poppies_service import poppies_service
+    from app.services.poppies_sync_worker import poppies_sync_worker
     haravan_sync_worker.start_background_worker()
     poppies_sync_worker.start_background_worker()
 
     yield
     
     logger.info("=== Đang tắt hệ thống Nam An Merchant Portal ===")
-    poppies_sync_worker.stop_background_worker()
-    haravan_sync_worker.stop_background_worker()
+    await _stop_worker(poppies_sync_worker)
+    await _stop_worker(haravan_sync_worker)
+    auth_service.close()
+    haravan_order_service.close()
     arito_service.close()
+    await poppies_service.client.close()
+    await file_service.close()
     await engine.dispose()
 
 
@@ -93,18 +121,27 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Hệ thống Cổng Quản Trị Đa Kênh & Đồng Bộ Đơn Hàng Hợp Nhất của Nam An Market (ShopeeFood, GrabMart, Shopee,...)",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
     lifespan=lifespan
 )
 
-# CORS Middleware
+# CORS Middleware (explicit methods & headers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "X-Requested-With",
+        "X-Poppies-Webhook-Key",
+        "X-Event-Id",
+        "Idempotency-Key",
+    ],
 )
 
 
@@ -235,13 +272,15 @@ app.include_router(web_router)
 
 @app.get("/api/info", tags=["Root"])
 async def api_info():
+    data = {
+        "portal": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "channels": channel_registry.list_channels(),
+    }
+    if settings.DEBUG:
+        data["docs"] = "/docs"
     return APIResponse.ok(
-        data={
-            "portal": settings.APP_NAME,
-            "version": settings.APP_VERSION,
-            "docs": "/docs",
-            "channels": channel_registry.list_channels()
-        },
+        data=data,
         message="Chào mừng bạn đến với Nam An Market Unified Merchant Portal API"
     )
 

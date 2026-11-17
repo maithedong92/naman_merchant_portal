@@ -4,13 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, require_super_admin
+from app.api.deps import check_store_access, get_current_user, require_super_admin
 from app.core.database import get_db
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.core.responses import APIResponse
 from app.models.channel import Channel
 from app.models.store import Store, StoreChannelMapping
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.store import (
     StoreChannelMappingCreate,
     StoreChannelMappingDetail,
@@ -33,8 +33,12 @@ async def list_stores(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all physical stores / outlets of Nam An Market."""
+    """List physical stores / outlets of Nam An Market (scoped to user's branch if assigned)."""
+    if current_user.role == UserRole.STAFF.value and not current_user.store_id:
+        return APIResponse.ok(data=[])
     stmt = select(Store).options(selectinload(Store.channel_mappings)).order_by(Store.code)
+    if current_user.store_id and not current_user.is_superuser:
+        stmt = stmt.where(Store.id == current_user.store_id)
     res = await db.execute(stmt)
     stores = res.scalars().all()
     return APIResponse.ok(data=stores)
@@ -67,7 +71,9 @@ async def list_all_store_channel_mappings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all store-to-channel partner mappings with store and channel names."""
+    """List store-to-channel partner mappings (scoped to user's branch if assigned)."""
+    if current_user.role == UserRole.STAFF.value and not current_user.store_id:
+        return APIResponse.ok(data=[])
     stmt = (
         select(StoreChannelMapping)
         .options(
@@ -76,6 +82,8 @@ async def list_all_store_channel_mappings(
         )
         .order_by(StoreChannelMapping.created_at.desc())
     )
+    if current_user.store_id and not current_user.is_superuser:
+        stmt = stmt.where(StoreChannelMapping.store_id == current_user.store_id)
     res = await db.execute(stmt)
     mappings = res.scalars().all()
 
@@ -114,6 +122,7 @@ async def get_store(
     store = res.scalar_one_or_none()
     if not store:
         raise NotFoundError("Store", store_id)
+    check_store_access(current_user, store.id)
     return APIResponse.ok(data=store)
 
 

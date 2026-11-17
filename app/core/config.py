@@ -17,8 +17,8 @@ class Settings(BaseSettings):
     # General App Config
     APP_NAME: str = "Nam An Merchant Portal"
     APP_VERSION: str = "1.0.0"
-    ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    ENVIRONMENT: str = "production"
+    DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 3002
     ALLOWED_ORIGINS: List[str] = [
@@ -27,44 +27,56 @@ class Settings(BaseSettings):
         "http://localhost:3003",
         "https://portal.namanmarket.com"
     ]
+    TRUSTED_PROXY_CIDRS: List[str] = [
+        "127.0.0.1/32",
+        "::1/128",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+    ]
 
     # Database
     DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/naman_merchant_portal",
-        description="Async PostgreSQL connection string"
+        default="",
+        description="Async PostgreSQL connection string (must be provided via .env)"
     )
     DB_POOL_SIZE: int = 5
     DB_MAX_OVERFLOW: int = 5
     DB_ECHO: bool = False
 
-    # Security & Authentication
-    INTERNAL_API_SECRET: str = "naman_secure_internal_secret_change_me"
+    # Security & Authentication (must be supplied via .env)
+    INTERNAL_API_SECRET: str = ""
     WEBHOOK_TIMEOUT_SECONDS: int = 15
-    JWT_SECRET_KEY: str = "naman_portal_jwt_secret_key_change_in_production_super_secure_32_bytes"
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     ACCOUNT_LOCKOUT_MINUTES: int = 15
 
-    # Initial SuperAdmin Seed Account
+    # Initial SuperAdmin Seed Account (optional; skipped if INITIAL_ADMIN_PASSWORD is empty)
     INITIAL_ADMIN_USERNAME: str = "admin"
-    INITIAL_ADMIN_PASSWORD: str = "phhthtnkhk"
+    INITIAL_ADMIN_PASSWORD: str = ""
     INITIAL_ADMIN_EMAIL: str = "admin@namanmarket.com"
     INITIAL_ADMIN_FULL_NAME: str = "Nam An System Administrator"
 
     # ShopeeFood Module Settings
     SHOPEEFOOD_ENABLED: bool = True
-    SHOPEEFOOD_APP_ID: str = "10045"
-    SHOPEEFOOD_APP_KEY: str = "a9756768d72268a6d66ea886031988f0638f03b0036fc63fbe0b86a6aef18546"
+    SHOPEEFOOD_APP_ID: str = ""
+    SHOPEEFOOD_APP_KEY: str = ""
     SHOPEEFOOD_BASE_URL: str = "https://gexternalapi.deliverynow.vn"
     SHOPEEFOOD_COUNTRY: str = "VN"
     SHOPEEFOOD_LANGUAGE: str = "vi"
+    SHOPEEFOOD_MENU_USERNAME: str = ""
+    SHOPEEFOOD_MENU_PASSWORD: str = ""
 
     # GrabMart Module Settings
     GRABMART_ENABLED: bool = True
     GRABMART_CLIENT_ID: str = ""
     GRABMART_CLIENT_SECRET: str = ""
+    GRABMART_PARTNER_CLIENT_ID: str = "naman_grabmart_pos"
+    GRABMART_PARTNER_CLIENT_SECRET: str = ""
+    GRABMART_INBOUND_BEARER_TOKEN: str = ""
     GRABMART_OAUTH_URL: str = "https://api.grab.com/grabid/v1/oauth2/token"
     GRABMART_BASE_URL: str = "https://partner-api.grab.com"
     GRABMART_SCOPE: str = "mart.partner_api"
@@ -79,7 +91,7 @@ class Settings(BaseSettings):
     SHOPEEMART_BASE_URL: str = "https://partner.shopeemobile.com"
 
     # MongoDB & Haravan Omnichannel Sync Settings
-    MONGO_URI: str = "mongodb://user_donhang:phhthtnkhk_donhang@103.175.248.250:27011/?authSource=pmdonhang"
+    MONGO_URI: str = ""
     MONGO_DB: str = "pmdonhang"
     MONGO_ORDERS_COLLECTION: str = "donhang"
     ARITO_DB: str = "arito_database"
@@ -87,12 +99,12 @@ class Settings(BaseSettings):
 
     # Internal MongoDB User Authentication (naman_internal_app.user)
     AUTH_MONGO_ENABLED: bool = True
-    AUTH_MONGO_URI: str = "mongodb://adminuser:phhthtnkhk@103.175.248.250:27011/"
+    AUTH_MONGO_URI: str = ""
     AUTH_MONGO_DB: str = "naman_internal_app"
     AUTH_MONGO_COLLECTION: str = "user"
 
     HARAVAN_ENABLED: bool = True
-    HARAVAN_TOKEN: str = "C1524959DBF63FD832CB79A18C50A9DAC2D1A4FAB178B7AC6528A98E045F33C8"
+    HARAVAN_TOKEN: str = ""
     HARAVAN_BASE_URL: str = "https://apis.haravan.com/com"
     HARAVAN_SYNC_INTERVAL_SECONDS: int = 60
     HARAVAN_SYNC_LIMIT: int = 100
@@ -101,11 +113,14 @@ class Settings(BaseSettings):
     POPPIES_API_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pos/master-data"
     POPPIES_PRICING_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pricing"
     POPPIES_POS_PRICING_BASE_URL: str = "http://host.docker.internal:6515/api/v1/pos/pricing"
-    POPPIES_API_KEY: str = "naman_pos_api_secret_key_2026"
-    POPPIES_WEBHOOK_KEY: str = "naman_pos_api_secret_key_2026"
+    POPPIES_API_KEY: str = ""
+    POPPIES_WEBHOOK_KEY: str = ""
     POPPIES_TIMEOUT_SECONDS: float = 120.0
     POPPIES_SYNC_ENABLED: bool = True
     POPPIES_SYNC_INTERVAL_SECONDS: int = 300
+
+    # Virtual Stock Reservation Settings
+    VIRTUAL_STOCK_STRICT_MODE: bool = False
 
 
 @lru_cache()

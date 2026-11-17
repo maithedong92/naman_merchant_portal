@@ -313,7 +313,7 @@ class HaravanOrderService:
         loop = asyncio.get_running_loop()
         order = await loop.run_in_executor(None, self.get_order_by_id_or_number_sync, order_id_or_sn)
         if not order:
-            raise NotFoundError(f"Không tìm thấy đơn hàng '{order_id_or_sn}' trong hệ thống Haravan.")
+            raise NotFoundError("HaravanOrder", order_id_or_sn)
 
         # RBAC Check
         user_store = self._get_user_store(current_user)

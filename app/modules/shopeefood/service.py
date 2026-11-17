@@ -22,6 +22,17 @@ class ShopeeFoodClient:
         self.base_url = settings.SHOPEEFOOD_BASE_URL.rstrip("/")
         self.app_id = str(settings.SHOPEEFOOD_APP_ID)
         self.app_key = settings.SHOPEEFOOD_APP_KEY
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=15.0)
+        return self._http_client
+
+    async def close(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
     def build_signature(self, method: str, full_url: str, body_str: str) -> str:
         """
@@ -50,7 +61,7 @@ class ShopeeFoodClient:
         if not sig_clean:
             return False
         if not self.app_key or "your_" in str(self.app_key):
-            return True
+            return False
 
         body_str = (
             raw_body.decode("utf-8", errors="ignore")
@@ -94,24 +105,25 @@ class ShopeeFoodClient:
         body_str = json.dumps(body, separators=(",", ":")) if body is not None else ""
         headers = self.build_headers(method, full_url, body_str)
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            try:
-                response = await client.request(
-                    method=method.upper(),
-                    url=full_url,
-                    headers=headers,
-                    content=body_str.encode("utf-8") if body_str else None
-                )
-                response.raise_for_status()
-                res_data = response.json()
-                logger.info(f"ShopeeFood API {method} {endpoint} -> {res_data.get('result', 'ok')}")
-                return res_data
-            except httpx.HTTPStatusError as err:
-                logger.error(f"ShopeeFood API HTTP error {err.response.status_code}: {err.response.text}")
-                return {"result": "error", "error": f"HTTP {err.response.status_code}: {err.response.text}"}
-            except Exception as ex:
-                logger.error(f"ShopeeFood API connection error: {str(ex)}")
-                return {"result": "error", "error": str(ex)}
+        client = self._get_http_client()
+        try:
+            response = await client.request(
+                method=method.upper(),
+                url=full_url,
+                headers=headers,
+                content=body_str.encode("utf-8") if body_str else None,
+                timeout=15.0,
+            )
+            response.raise_for_status()
+            res_data = response.json()
+            logger.info(f"ShopeeFood API {method} {endpoint} -> {res_data.get('result', 'ok')}")
+            return res_data
+        except httpx.HTTPStatusError as err:
+            logger.error(f"ShopeeFood API HTTP error {err.response.status_code}: {err.response.text}")
+            return {"result": "error", "error": f"HTTP {err.response.status_code}: {err.response.text}"}
+        except Exception as ex:
+            logger.error(f"ShopeeFood API connection error: {str(ex)}")
+            return {"result": "error", "error": str(ex)}
 
     async def notify_menu_sync(self, partner_restaurant_id: str) -> Dict[str, Any]:
         """

@@ -76,7 +76,7 @@ def test_root_redirects_to_admin(client):
     assert response.headers["location"] == "/admin"
 
 
-def test_get_system_health_endpoint(client):
+def test_get_system_health_endpoint(client, mock_admin_user):
     """GET /api/v1/system/health returns healthy status response."""
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock()
@@ -86,6 +86,7 @@ def test_get_system_health_endpoint(client):
     mock_db.execute.return_value = mock_res
 
     app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     try:
         response = client.get("/api/v1/system/health")
         assert response.status_code == 200
@@ -163,7 +164,7 @@ def test_resolve_operational_error_endpoint(client, mock_admin_user):
         json_data = response.json()
         assert json_data["success"] is True
         assert json_data["data"]["resolution_status"] == ErrorStatus.RESOLVED.value
-        assert json_data["data"]["resolved_by"] == "Mai The Dong"
+        assert json_data["data"]["resolved_by"] == "admin"
     finally:
         app.dependency_overrides.pop(get_current_user, None)
         app.dependency_overrides.pop(get_db, None)

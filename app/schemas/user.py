@@ -1,8 +1,17 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.user import UserRole
+
+
+def validate_password_policy(password: str) -> str:
+    """Enforce bcrypt 72-byte UTF-8 limit and basic complexity (letter + digit)."""
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Mật khẩu không được vượt quá 72 byte UTF-8.")
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        raise ValueError("Mật khẩu phải chứa ít nhất 1 chữ cái và 1 chữ số.")
+    return password
 
 
 class UserBase(BaseModel):
@@ -15,7 +24,12 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=128, description="Mật khẩu (tối thiểu 8 ký tự)")
+    password: str = Field(..., min_length=8, max_length=72, description="Mật khẩu (tối thiểu 8 ký tự)")
+
+    @field_validator("password")
+    @classmethod
+    def check_password_policy(cls, v: str) -> str:
+        return validate_password_policy(v)
 
 
 class UserUpdate(BaseModel):
@@ -25,7 +39,14 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     store_id: Optional[str] = None
     is_active: Optional[bool] = None
-    password: Optional[str] = Field(None, min_length=8, max_length=128)
+    password: Optional[str] = Field(None, min_length=8, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def check_password_policy(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return validate_password_policy(v)
 
 
 class UserResponse(BaseModel):

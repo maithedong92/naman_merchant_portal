@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.security import redact_sensitive_headers
 from app.models.channel import Channel
 from app.models.product import ChannelProductMapping, Product
 from app.models.sync_log import WebhookAuditLog
@@ -78,6 +78,7 @@ class PoppiesOutboxWebhookMixin:
         2. Out-of-order protection via original `timestamp` comparison.
         3. Safe price updates: pure `price_changed` events NEVER overwrite `is_enabled` to False.
         """
+        headers = redact_sensitive_headers(headers or {})
         event_id = str(
             event_id_header or payload.get("event_id") or payload.get("eventId") or ""
         ).strip()
@@ -254,15 +255,13 @@ class PoppiesOutboxWebhookMixin:
                 target_price = float(payload["effective_price"])
             elif event_type.upper() != "CHANNEL_PUBLISH_STATUS_CHANGED":
                 try:
-                    get_sku_fn = getattr(self.client, "get_sku", None)
-                    is_mocked = isinstance(get_sku_fn, (AsyncMock, MagicMock))
                     now_mono = time.monotonic()
-                    cached_entry = None if is_mocked else _SKU_REMOTE_CACHE.get(sku)
+                    cached_entry = _SKU_REMOTE_CACHE.get(sku)
                     if cached_entry and (now_mono - cached_entry[0]) < _SKU_REMOTE_CACHE_TTL_SEC:
                         remote_item = cached_entry[1]
                     else:
                         remote_item = await self.client.get_sku(sku)
-                        if not is_mocked and isinstance(remote_item, dict):
+                        if isinstance(remote_item, dict):
                             if len(_SKU_REMOTE_CACHE) > 500:
                                 _SKU_REMOTE_CACHE.clear()
                             _SKU_REMOTE_CACHE[sku] = (now_mono, remote_item)

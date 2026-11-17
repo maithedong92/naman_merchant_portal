@@ -31,6 +31,7 @@ async def admin_dashboard(request: Request):
             "active_page": "dashboard",
             "app_name": settings.APP_NAME,
             "app_version": settings.APP_VERSION,
+            "debug": settings.DEBUG,
         }
     )
 

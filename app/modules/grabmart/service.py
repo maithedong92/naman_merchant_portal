@@ -22,6 +22,17 @@ class GrabMartClient:
         self.oauth_url = getattr(settings, "GRABMART_OAUTH_URL", "https://api.grab.com/grabid/v1/oauth2/token")
         self._cached_token: Optional[str] = None
         self._token_expires_at: float = 0
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=15.0)
+        return self._http_client
+
+    async def close(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
     @property
     def is_configured(self) -> bool:
@@ -53,17 +64,17 @@ class GrabMartClient:
             "scope": settings.GRABMART_SCOPE,
         }
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            try:
-                resp = await client.post(token_url, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                self._cached_token = data["access_token"]
-                self._token_expires_at = now + data.get("expires_in", 3600)
-                return self._cached_token
-            except Exception as ex:
-                logger.error(f"Failed to fetch GrabMart OAuth token: {str(ex)}")
-                raise
+        client = self._get_http_client()
+        try:
+            resp = await client.post(token_url, json=payload, timeout=10.0)
+            resp.raise_for_status()
+            data = resp.json()
+            self._cached_token = data["access_token"]
+            self._token_expires_at = now + data.get("expires_in", 3600)
+            return self._cached_token
+        except Exception as ex:
+            logger.error(f"Failed to fetch GrabMart OAuth token: {str(ex)}")
+            raise
 
     async def call_api(
         self,
@@ -86,21 +97,22 @@ class GrabMartClient:
             "Content-Type": "application/json",
         }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            try:
-                resp = await client.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    json=body,
-                    params=params,
-                )
-                resp.raise_for_status()
-                return resp.json() if resp.content else {}
-            except httpx.HTTPStatusError as ex:
-                err_detail = ex.response.text
-                logger.error(f"GrabMart API Error [{ex.response.status_code}] on {method} {url}: {err_detail}")
-                raise
+        client = self._get_http_client()
+        try:
+            resp = await client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=body,
+                params=params,
+                timeout=15.0,
+            )
+            resp.raise_for_status()
+            return resp.json() if resp.content else {}
+        except httpx.HTTPStatusError as ex:
+            err_detail = ex.response.text
+            logger.error(f"GrabMart API Error [{ex.response.status_code}] on {method} {url}: {err_detail}")
+            raise
 
     # ==========================================================================
     # 1. Menu & Catalog Management

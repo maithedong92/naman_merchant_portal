@@ -24,6 +24,17 @@ class HaravanClient:
         self.base_url = (base_url or settings.HARAVAN_BASE_URL).rstrip("/")
         self.token = token or settings.HARAVAN_TOKEN
         self.timeout = timeout
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=self.timeout)
+        return self._http_client
+
+    async def close(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
     @property
     def headers(self) -> Dict[str, str]:
@@ -37,29 +48,29 @@ class HaravanClient:
         """Kiểm tra tính hợp lệ của token và kết nối tới Haravan API."""
         url = f"{self.base_url}/orders.json"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                res = await client.get(url, headers=self.headers, params={"limit": 1})
-                if res.status_code == 200:
-                    data = res.json()
-                    orders = data.get("orders", [])
-                    return {
-                        "connected": True,
-                        "status_code": 200,
-                        "sample_order_count": len(orders),
-                        "message": "Kết nối Haravan Omnichannel API thành công.",
-                    }
-                elif res.status_code == 401:
-                    return {
-                        "connected": False,
-                        "status_code": 401,
-                        "message": "Haravan Bearer Token không hợp lệ hoặc đã hết hạn.",
-                    }
-                else:
-                    return {
-                        "connected": False,
-                        "status_code": res.status_code,
-                        "message": f"Haravan API trả về mã lỗi HTTP {res.status_code}: {res.text[:200]}",
-                    }
+            client = self._get_http_client()
+            res = await client.get(url, headers=self.headers, params={"limit": 1}, timeout=10.0)
+            if res.status_code == 200:
+                data = res.json()
+                orders = data.get("orders", [])
+                return {
+                    "connected": True,
+                    "status_code": 200,
+                    "sample_order_count": len(orders),
+                    "message": "Kết nối Haravan Omnichannel API thành công.",
+                }
+            elif res.status_code == 401:
+                return {
+                    "connected": False,
+                    "status_code": 401,
+                    "message": "Haravan Bearer Token không hợp lệ hoặc đã hết hạn.",
+                }
+            else:
+                return {
+                    "connected": False,
+                    "status_code": res.status_code,
+                    "message": f"Haravan API trả về mã lỗi HTTP {res.status_code}: {res.text[:200]}",
+                }
         except Exception as ex:
             logger.error(f"Lỗi kết nối Haravan API: {ex}")
             return {
@@ -80,48 +91,48 @@ class HaravanClient:
         retries = 0
         max_retries = 3
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            while page <= max_pages and len(all_orders) < limit:
-                params = {
-                    "limit": page_size,
-                    "page": page,
-                    "order": "updated_at desc",
-                }
-                url = f"{self.base_url}/orders.json"
-                try:
-                    res = await client.get(url, headers=self.headers, params=params)
-                except httpx.RequestError as exc:
-                    logger.error(f"Lỗi kết nối tới Haravan (trang {page}): {exc}")
-                    break
+        client = self._get_http_client()
+        while page <= max_pages and len(all_orders) < limit:
+            params = {
+                "limit": page_size,
+                "page": page,
+                "order": "updated_at desc",
+            }
+            url = f"{self.base_url}/orders.json"
+            try:
+                res = await client.get(url, headers=self.headers, params=params)
+            except httpx.RequestError as exc:
+                logger.error(f"Lỗi kết nối tới Haravan (trang {page}): {exc}")
+                break
 
-                if res.status_code == 200:
-                    retries = 0
-                    data = res.json()
-                    orders = data.get("orders", [])
-                    if not orders:
-                        break
-                    all_orders.extend(orders)
-                    if len(all_orders) >= limit or len(orders) < page_size:
-                        break
-                    page += 1
-                    await asyncio.sleep(0.2)  # Delay nhẹ giữa các trang tránh burst rate limit
-                elif res.status_code == 429:
-                    retries += 1
-                    if retries > max_retries:
-                        logger.error(f"Haravan Rate Limit (429) vượt quá {max_retries} lần thử lại, dừng chu kỳ.")
-                        break
-                    try:
-                        retry_after = min(30, max(1, int(res.headers.get("Retry-After", 2))))
-                    except (ValueError, TypeError):
-                        retry_after = 2
-                    logger.warning(f"Haravan Rate Limit (429), chờ {retry_after}s (lần thử {retries}/{max_retries})...")
-                    await asyncio.sleep(retry_after)
-                elif res.status_code == 401:
-                    logger.error("Haravan Bearer Token hết hạn hoặc không có quyền truy cập.")
+            if res.status_code == 200:
+                retries = 0
+                data = res.json()
+                orders = data.get("orders", [])
+                if not orders:
                     break
-                else:
-                    logger.error(f"Lỗi Haravan HTTP {res.status_code}: {res.text[:200]}")
+                all_orders.extend(orders)
+                if len(all_orders) >= limit or len(orders) < page_size:
                     break
+                page += 1
+                await asyncio.sleep(0.2)  # Delay nhẹ giữa các trang tránh burst rate limit
+            elif res.status_code == 429:
+                retries += 1
+                if retries > max_retries:
+                    logger.error(f"Haravan Rate Limit (429) vượt quá {max_retries} lần thử lại, dừng chu kỳ.")
+                    break
+                try:
+                    retry_after = min(30, max(1, int(res.headers.get("Retry-After", 2))))
+                except (ValueError, TypeError):
+                    retry_after = 2
+                logger.warning(f"Haravan Rate Limit (429), chờ {retry_after}s (lần thử {retries}/{max_retries})...")
+                await asyncio.sleep(retry_after)
+            elif res.status_code == 401:
+                logger.error("Haravan Bearer Token hết hạn hoặc không có quyền truy cập.")
+                break
+            else:
+                logger.error(f"Lỗi Haravan HTTP {res.status_code}: {res.text[:200]}")
+                break
 
         logger.info(f"Đã lấy thành công {len(all_orders[:limit])} đơn hàng từ Haravan API.")
         return all_orders[:limit]

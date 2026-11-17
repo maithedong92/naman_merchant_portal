@@ -201,64 +201,14 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                     product_ids=[str(r[0].id) for r in rows] if rows else None,
                 )
             except Exception as ex:
-                logger.error(f"Error querying DB for GrabMart catalog: {ex}. Using default catalog items.")
-                rows = []
+                logger.error(f"Error querying DB for GrabMart catalog: {ex}")
+                raise
 
         # Build category map: category -> subcategory -> items
         category_map: Dict[str, Dict[str, Any]] = {}
         seq = 1
 
-        if not rows:
-            # Fallback catalog ensuring 100% test validation pass even during DB reconnects
-            mock_items = [
-                ("SKU-SALMON-01", "Cá Hồi Tươi Na Uy Fillet", 320000, "SEAFOOD_MEAT", "8931000001", "https://ump.namanmarket.com/static/images/salmon.jpg"),
-                ("SKU-BEEF-01", "Thịt Bò Fuji Nhật Bản", 280000, "SEAFOOD_MEAT", "8931000002", "https://ump.namanmarket.com/static/images/beef.jpg"),
-                ("SKU-TOMATO-01", "Cà Chua Bi Hữu Cơ Nam An", 45000, "FRUITS_VEGGIES", "8931000003", "https://ump.namanmarket.com/static/images/tomato.jpg"),
-                ("SKU-APPLE-01", "Táo Envy New Zealand", 120000, "FRUITS_VEGGIES", "8931000004", "https://ump.namanmarket.com/static/images/apple.jpg"),
-                ("SKU-MILK-01", "Sữa Tươi Thanh Trùng 1L", 55000, "DAIRY_DELI", "8931000005", "https://ump.namanmarket.com/static/images/milk.jpg"),
-                ("SKU-CHEESE-01", "Phô Mai Brie Pháp", 95000, "DAIRY_DELI", "8931000006", "https://ump.namanmarket.com/static/images/cheese.jpg"),
-                ("SKU-BREAD-01", "Bánh Mì Baguette Truyền Thống", 25000, "BAKERY_PANTRY", "8931000007", "https://ump.namanmarket.com/static/images/bread.jpg"),
-                ("SKU-WATER-01", "Nước Khoáng Tự Nhiên 500ml", 12000, "WINE_BEVERAGES", "8931000008", "https://ump.namanmarket.com/static/images/water.jpg"),
-            ]
-            for sku, name, price, cat_code, barcode, photo in mock_items:
-                mapping = GRAB_CATEGORY_MAPPING.get(cat_code, GRAB_CATEGORY_MAPPING["DEFAULT"])
-                cat_id = mapping["cat_id"]
-                cat_name = mapping["cat_name"]
-                sub_id = mapping["sub_id"]
-                sub_name = mapping["sub_name"]
-                if cat_id not in category_map:
-                    category_map[cat_id] = {
-                        "id": cat_id,
-                        "name": cat_name,
-                        "sequence": len(category_map) + 1,
-                        "availableStatus": "AVAILABLE",
-                        "sellingTimeID": "standard_schedule",
-                        "subCategories": {
-                            sub_id: {
-                                "id": sub_id,
-                                "name": sub_name,
-                                "sequence": 1,
-                                "availableStatus": "AVAILABLE",
-                                "sellingTimeID": "standard_schedule",
-                                "items": [],
-                            }
-                        },
-                    }
-                item = GrabMenuItem(
-                    id=sku,
-                    name=name,
-                    sequence=seq,
-                    price=price,
-                    availableStatus="AVAILABLE",
-                    maxStock=100,
-                    photos=[photo],
-                    barcodes=[barcode],
-                    description=name,
-                    sellingTimeID="standard_schedule",
-                )
-                seq += 1
-                category_map[cat_id]["subCategories"][sub_id]["items"].append(item)
-        else:
+        if rows:
             # Sort enabled & real-photo online items first so curated online products always appear within GrabMart's 1,400/subCategory cap
             sorted_rows = sorted(
                 rows,
@@ -409,8 +359,9 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
         )
 
         menu_dict = payload.model_dump(exclude_none=True)
-        _store_menu_cache[partner_store_id] = menu_dict
-        _store_menu_cache_ts[partner_store_id] = time.time()
+        if rows:
+            _store_menu_cache[partner_store_id] = menu_dict
+            _store_menu_cache_ts[partner_store_id] = time.time()
         return menu_dict
 
     async def sync_menu(
@@ -447,6 +398,17 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 for cat in menu_data.get("categories", [])
                 for sub in cat.get("subCategories", [])
             )
+
+            if total_items == 0:
+                logger.warning(f"GrabMart menu sync aborted for store {store_id}: no catalog items found.")
+                return SyncResult(
+                    channel_code=self.channel_code,
+                    store_id=store_id,
+                    sync_type="MENU",
+                    success=False,
+                    total_synced=0,
+                    message=f"Không có sản phẩm nào trong danh mục cho chi nhánh {store_id}; hủy đồng bộ menu.",
+                )
 
             # Notify GrabMart that new menu is ready using real Grab merchantID
             try:

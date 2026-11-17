@@ -1,7 +1,7 @@
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from app.schemas.user import UserResponse
+from app.schemas.user import UserResponse, validate_password_policy
 
 
 class LoginRequest(BaseModel):
@@ -27,7 +27,12 @@ class RefreshTokenRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """Schema for changing account password."""
     current_password: str = Field(..., description="Mật khẩu hiện tại")
-    new_password: str = Field(..., min_length=8, max_length=128, description="Mật khẩu mới (tối thiểu 8 ký tự)")
+    new_password: str = Field(..., min_length=8, max_length=72, description="Mật khẩu mới (tối thiểu 8 ký tự)")
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password_policy(cls, v: str) -> str:
+        return validate_password_policy(v)
 
 
 class LogoutRequest(BaseModel):

@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -202,6 +202,18 @@ SAMPLE_PRODUCTS = [
 class InventoryService:
     """Core Service managing multi-store inventory calculation and channel sync."""
 
+    @staticmethod
+    def compute_available_stock(
+        total_stock: float,
+        reserved_stock: float = 0.0,
+        safety_stock: float = 0.0,
+    ) -> float:
+        """Compute sellable available stock: max(0.0, total - reserved - safety)."""
+        return max(
+            0.0,
+            float(total_stock or 0.0) - float(reserved_stock or 0.0) - float(safety_stock or 0.0),
+        )
+
     @classmethod
     async def seed_sample_catalog(cls, db: AsyncSession) -> Dict[str, int]:
         """Seed master categories, products, store-channel mappings, and inventory across all 4 Nam An branches."""
@@ -335,24 +347,15 @@ class InventoryService:
         if prod_count == 0:
             await cls.seed_sample_catalog(db)
 
-        # 2. Build Query
-        # Join Product, Category, StoreInventory
-        stmt = (
-            select(Product, Category, StoreInventory)
-            .outerjoin(Category, Product.category_id == Category.id)
-            .outerjoin(
-                StoreInventory,
-                (StoreInventory.product_id == Product.id) & (StoreInventory.store_id == store.id),
-            )
-            .where(Product.is_active == True)
-        )
+        # 2. Build Base Filter Criteria
+        base_filters = [Product.is_active == True]
 
         if category_id:
-            stmt = stmt.where(Product.category_id == category_id)
+            base_filters.append(Product.category_id == category_id)
 
         if search:
             search_clean = f"%{search.strip()}%"
-            stmt = stmt.where(
+            base_filters.append(
                 or_(
                     Product.name.ilike(search_clean),
                     Product.sku.ilike(search_clean),
@@ -360,38 +363,33 @@ class InventoryService:
                 )
             )
 
-        # Execute total fetch for counters
-        all_res = await db.execute(stmt)
-        all_rows = all_res.all()
+        is_oos_expr = func.coalesce(StoreInventory.is_out_of_stock, False)
+        avail_expr = func.coalesce(StoreInventory.available_stock, 0.0)
+        is_oos_cond = or_(is_oos_expr == True, avail_expr <= 0)
+        is_in_stock_cond = (is_oos_expr == False) & (avail_expr > 0)
+        is_low_stock_cond = (is_oos_expr == False) & (avail_expr > 0) & (avail_expr <= 5.0)
 
-        total_skus = len(all_rows)
-        in_stock_count = 0
-        out_of_stock_count = 0
-        low_stock_count = 0
+        # SQL aggregation for summary KPIs
+        agg_stmt = (
+            select(
+                func.count(Product.id),
+                func.coalesce(func.sum(case((is_in_stock_cond, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((is_oos_cond, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((is_low_stock_cond, 1), else_=0)), 0),
+            )
+            .outerjoin(
+                StoreInventory,
+                (StoreInventory.product_id == Product.id) & (StoreInventory.store_id == store.id),
+            )
+            .where(*base_filters)
+        )
+        agg_row = (await db.execute(agg_stmt)).one()
 
-        filtered_rows = []
-        for prod, cat, inv in all_rows:
-            is_oos = bool(inv.is_out_of_stock) if inv else False
-            avail = float(inv.available_stock) if inv else 0.0
+        total_skus = int(agg_row[0] or 0)
+        in_stock_count = int(agg_row[1] or 0)
+        out_of_stock_count = int(agg_row[2] or 0)
+        low_stock_count = int(agg_row[3] or 0)
 
-            if is_oos or avail <= 0:
-                out_of_stock_count += 1
-            else:
-                in_stock_count += 1
-                if avail <= 5.0:
-                    low_stock_count += 1
-
-            # Filter by status if specified
-            if status == "IN_STOCK" and (is_oos or avail <= 0):
-                continue
-            if status == "OUT_OF_STOCK" and (not is_oos and avail > 0):
-                continue
-            if status == "LOW_STOCK" and (is_oos or avail > 5.0 or avail <= 0):
-                continue
-
-            filtered_rows.append((prod, cat, inv))
-
-        total_filtered = len(filtered_rows)
         summary = InventoryOverviewSummary(
             total_skus=total_skus,
             in_stock_count=in_stock_count,
@@ -399,9 +397,30 @@ class InventoryService:
             low_stock_count=low_stock_count,
         )
 
-        # Pagination on filtered rows
-        start_idx = (page - 1) * page_size
-        paged_rows = filtered_rows[start_idx : start_idx + page_size]
+        # Apply status filter & SQL pagination
+        stmt = (
+            select(Product, Category, StoreInventory)
+            .outerjoin(Category, Product.category_id == Category.id)
+            .outerjoin(
+                StoreInventory,
+                (StoreInventory.product_id == Product.id) & (StoreInventory.store_id == store.id),
+            )
+            .where(*base_filters)
+        )
+        if status == "IN_STOCK":
+            stmt = stmt.where(is_in_stock_cond)
+            total_filtered = in_stock_count
+        elif status == "OUT_OF_STOCK":
+            stmt = stmt.where(is_oos_cond)
+            total_filtered = out_of_stock_count
+        elif status == "LOW_STOCK":
+            stmt = stmt.where(is_low_stock_cond)
+            total_filtered = low_stock_count
+        else:
+            total_filtered = total_skus
+
+        stmt = stmt.order_by(Product.sku).offset((page - 1) * page_size).limit(page_size)
+        paged_rows = (await db.execute(stmt)).all()
 
         items = []
         for prod, cat, inv in paged_rows:
@@ -539,15 +558,22 @@ class InventoryService:
         if not prod:
             raise NotFoundError("Product", sku)
 
-        inv_stmt = select(StoreInventory).where(
-            StoreInventory.store_id == store.id,
-            StoreInventory.product_id == prod.id,
+        inv_stmt = (
+            select(StoreInventory)
+            .where(
+                StoreInventory.store_id == store.id,
+                StoreInventory.product_id == prod.id,
+            )
+            .with_for_update()
         )
         inv = (await db.execute(inv_stmt)).scalar_one_or_none()
 
         now = datetime.now(timezone.utc)
         qty_before = float(inv.available_stock) if inv else 0.0
-        new_avail = max(0.0, float(new_stock))
+        new_total = max(0.0, float(new_stock))
+        reserved = float(inv.reserved_stock or 0.0) if inv else 0.0
+        safety = float(inv.safety_stock or 0.0) if inv else 0.0
+        new_avail = cls.compute_available_stock(new_total, reserved, safety)
         is_oos = (new_avail <= 0.0)
 
         if not inv:
@@ -555,7 +581,7 @@ class InventoryService:
                 store_id=store.id,
                 product_id=prod.id,
                 sku=prod.sku,
-                total_stock=new_avail,
+                total_stock=new_total,
                 reserved_stock=0.0,
                 available_stock=new_avail,
                 safety_stock=0.0,
@@ -564,8 +590,8 @@ class InventoryService:
             )
             db.add(inv)
         else:
+            inv.total_stock = new_total
             inv.available_stock = new_avail
-            inv.total_stock = new_avail
             inv.is_out_of_stock = is_oos
             inv.last_synced_at = now
 
@@ -639,25 +665,38 @@ class InventoryService:
         updated_inventories: List[StoreInventory] = []
         channel_stock_items: List[Dict[str, Any]] = []
 
+        # Batch-load Products & StoreInventory to avoid N+1 queries
+        skus = list({item.sku.strip() for item in payload.items if item.sku and item.sku.strip()})
+        if not skus:
+            return []
+
+        prod_res = await db.execute(select(Product).where(Product.sku.in_(skus)))
+        prod_by_sku: Dict[str, Product] = {p.sku: p for p in prod_res.scalars().all()}
+
+        product_ids = [p.id for p in prod_by_sku.values()]
+        inv_by_prod_id: Dict[str, StoreInventory] = {}
+        if product_ids:
+            inv_res = await db.execute(
+                select(StoreInventory).where(
+                    StoreInventory.store_id == store.id,
+                    StoreInventory.product_id.in_(product_ids),
+                )
+            )
+            inv_by_prod_id = {str(inv.product_id): inv for inv in inv_res.scalars().all()}
+
+        now = datetime.now(timezone.utc)
         for item in payload.items:
-            prod_stmt = select(Product).where(Product.sku == item.sku.strip())
-            prod_res = await db.execute(prod_stmt)
-            product = prod_res.scalar_one_or_none()
+            product = prod_by_sku.get(item.sku.strip())
             if not product:
                 continue
 
-            inv_stmt = select(StoreInventory).where(
-                StoreInventory.store_id == store.id,
-                StoreInventory.product_id == product.id,
-            )
-            inv_res = await db.execute(inv_stmt)
-            inventory = inv_res.scalar_one_or_none()
+            inventory = inv_by_prod_id.get(str(product.id))
 
             qty_before = float(inventory.total_stock) if inventory else 0.0
             new_total = float(item.total_stock)
-            safety = float(item.safety_stock or (inventory.safety_stock if inventory else 0.0))
+            safety = float(item.safety_stock if item.safety_stock is not None else (inventory.safety_stock if inventory else 0.0))
             reserved = float(inventory.reserved_stock) if inventory else 0.0
-            available = max(0.0, new_total - reserved - safety)
+            available = InventoryService.compute_available_stock(new_total, reserved, safety)
             is_oos = (available <= 0.0)
 
             if not inventory:
@@ -670,15 +709,16 @@ class InventoryService:
                     available_stock=available,
                     safety_stock=safety,
                     is_out_of_stock=is_oos,
-                    last_synced_at=datetime.now(timezone.utc),
+                    last_synced_at=now,
                 )
                 db.add(inventory)
+                inv_by_prod_id[str(product.id)] = inventory
             else:
                 inventory.total_stock = new_total
                 inventory.safety_stock = safety
                 inventory.available_stock = available
                 inventory.is_out_of_stock = is_oos
-                inventory.last_synced_at = datetime.now(timezone.utc)
+                inventory.last_synced_at = now
 
             stock_log = InventoryStockLog(
                 store_id=store.id,

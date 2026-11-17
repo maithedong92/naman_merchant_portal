@@ -171,7 +171,7 @@ def test_shopeemart_webhook_proxy_url_signature_and_missing_header_block(client)
 
 def test_grabmart_oauth_secret_check_and_webhook_500_on_db_crash(client):
     """Verify GrabMart rejects invalid client_secret when configured and returns HTTP 500 (not 200 ACCEPTED) on DB failure."""
-    with patch.object(grab_router_settings, "GRABMART_CLIENT_SECRET", "real_prod_grab_secret_999"):
+    with patch.object(grab_router_settings, "GRABMART_PARTNER_CLIENT_SECRET", "real_prod_grab_secret_999"):
         r_bad_oauth = client.post(
             "/api/v1/grabmart/oauth/token",
             json={"client_id": "grab", "client_secret": "wrong_attacker_secret"},
@@ -191,11 +191,14 @@ def test_grabmart_oauth_secret_check_and_webhook_500_on_db_crash(client):
     mock_db = AsyncMock()
     app.dependency_overrides[get_optional_db] = lambda: mock_db
     try:
+        from app.core.security import create_partner_token
+        partner_token = create_partner_token("grabmart", "naman_grabmart_pos")
         with patch("app.modules.grabmart.router.adapter.handle_order_webhook", new_callable=AsyncMock, side_effect=RuntimeError("PG deadlock")), \
              patch("app.modules.grabmart.router.error_service.log_error", new_callable=AsyncMock):
             r_crash = client.post(
                 "/api/v1/grabmart/webhooks/order",
                 json={"orderID": "GM-CRASH-1", "merchantID": "10001"},
+                headers={"Authorization": f"Bearer {partner_token}"},
             )
             assert r_crash.status_code == 500
             assert r_crash.json()["status"] == "FAILED"
@@ -391,25 +394,26 @@ def test_haravan_error_paths_return_clean_apiresponse_fail_without_500(client, b
         assert r_bad_type.json()["success"] is False
         assert r_bad_type.json()["error_code"] == "INVALID_FILE_TYPE"
 
-        # 3. /files/upload empty 0-byte file
-        r_empty = client.post(
-            "/api/v1/haravan/orders/123/files/upload",
-            data={"file_type": "order"},
-            files={"file": ("empty.pdf", b"", "application/pdf")},
-        )
-        assert r_empty.status_code == 200
-        assert r_empty.json()["success"] is False
-        assert r_empty.json()["error_code"] == "EMPTY_FILE"
+        with patch("app.api.v1.haravan.haravan_order_service.get_order_detail", new_callable=AsyncMock, return_value={"id": 123}):
+            # 3. /files/upload empty 0-byte file
+            r_empty = client.post(
+                "/api/v1/haravan/orders/123/files/upload",
+                data={"file_type": "order"},
+                files={"file": ("empty.pdf", b"", "application/pdf")},
+            )
+            assert r_empty.status_code == 200
+            assert r_empty.json()["success"] is False
+            assert r_empty.json()["error_code"] == "EMPTY_FILE"
 
-        # 4. /files/upload disallowed .exe extension
-        r_exe = client.post(
-            "/api/v1/haravan/orders/123/files/upload",
-            data={"file_type": "order"},
-            files={"file": ("malware.exe", b"MZ9000", "application/octet-stream")},
-        )
-        assert r_exe.status_code == 200
-        assert r_exe.json()["success"] is False
-        assert r_exe.json()["error_code"] == "FILE_UPLOAD_FAILED"
+            # 4. /files/upload disallowed .exe extension
+            r_exe = client.post(
+                "/api/v1/haravan/orders/123/files/upload",
+                data={"file_type": "order"},
+                files={"file": ("malware.exe", b"MZ9000", "application/octet-stream")},
+            )
+            assert r_exe.status_code == 200
+            assert r_exe.json()["success"] is False
+            assert r_exe.json()["error_code"] == "FILE_UPLOAD_FAILED"
 
         # 5. DELETE /files/{file_type} invalid file_type
         r_del_bad = client.delete("/api/v1/haravan/orders/123/files/hacked_field")
@@ -542,6 +546,7 @@ async def test_order_service_lifecycle_reserve_complete_and_cancel_before_vs_aft
         store_id="st-10001",
         channel_order_id="261109ABC",
         status=UnifiedOrderStatus.ACCEPTED,
+        stock_reservation_status="RESERVED",
         subtotal_amount=100000.0,
         total_amount=100000.0,
     )
@@ -554,6 +559,7 @@ async def test_order_service_lifecycle_reserve_complete_and_cancel_before_vs_aft
     res_ord_a.scalar_one_or_none.return_value = order_a
     res_inv_a = MagicMock()
     res_inv_a.scalars.return_value.first.return_value = inv_a
+    res_inv_a.scalars.return_value.all.return_value = [inv_a]
     res_inv_a.scalar_one_or_none.return_value = inv_a
     mock_db.execute.side_effect = [res_ord_a, res_inv_a, res_ord_a]
 
@@ -564,10 +570,11 @@ async def test_order_service_lifecycle_reserve_complete_and_cancel_before_vs_aft
         sync_to_channel=False,
     )
     assert updated_a.status == UnifiedOrderStatus.DELIVERED
+    assert updated_a.stock_reservation_status == "CONSUMED"
     assert updated_a.completed_at is not None
     assert float(inv_a.reserved_stock) == 0.0
-    assert float(inv_a.total_stock) == 8.0
-    assert float(inv_a.available_stock) == 6.0
+    assert float(inv_a.total_stock) == 10.0
+    assert float(inv_a.available_stock) == 8.0
     assert any(isinstance(c.args[0], InventoryStockLog) and c.args[0].change_type == "ORDER_COMPLETE" for c in mock_db.add.call_args_list)
 
     # Case B: PICKED_UP -> CANCELLED must NOT auto-restore shelf stock because driver already took the goods

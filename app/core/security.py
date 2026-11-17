@@ -12,6 +12,22 @@ from app.core.config import get_settings
 from app.core.exceptions import UnauthorizedError
 
 settings = get_settings()
+_EPHEMERAL_DEV_JWT_SECRET: Optional[str] = None
+
+
+def get_jwt_secret() -> str:
+    """Return configured JWT secret; fail closed in production if missing."""
+    global _EPHEMERAL_DEV_JWT_SECRET
+    secret = (settings.JWT_SECRET_KEY or "").strip()
+    if secret and "change_in_production" not in secret:
+        return secret
+    if secret and settings.ENVIRONMENT.lower() != "production":
+        return secret
+    if settings.ENVIRONMENT.lower() == "production":
+        raise RuntimeError("JWT_SECRET_KEY must be configured with a strong secret in production.")
+    if _EPHEMERAL_DEV_JWT_SECRET is None:
+        _EPHEMERAL_DEV_JWT_SECRET = secrets.token_urlsafe(48)
+    return _EPHEMERAL_DEV_JWT_SECRET
 
 
 # ==============================================================================
@@ -78,12 +94,13 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     to_encode.update({
         "exp": expire,
         "iat": now,
-        "type": "access"
+        "type": "access",
+        "ver": int(to_encode.get("ver", 0) or 0),
     })
     
     encoded_jwt = jwt.encode(
         to_encode,
-        settings.JWT_SECRET_KEY,
+        get_jwt_secret(),
         algorithm=settings.JWT_ALGORITHM
     )
     return encoded_jwt, expire
@@ -112,7 +129,7 @@ def create_refresh_token(data: Dict[str, Any], expires_delta: Optional[timedelta
     
     encoded_jwt = jwt.encode(
         to_encode,
-        settings.JWT_SECRET_KEY,
+        get_jwt_secret(),
         algorithm=settings.JWT_ALGORITHM
     )
     token_hash = hash_token(encoded_jwt)
@@ -127,7 +144,7 @@ def decode_token(token: str) -> Dict[str, Any]:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET_KEY,
+            get_jwt_secret(),
             algorithms=[settings.JWT_ALGORITHM]
         )
         return payload
@@ -173,4 +190,52 @@ def verify_hmac_sha256(key: str, message: str, expected_signature: str, is_hex_k
         return secrets.compare_digest(calculated.lower(), expected_signature.lower())
     except Exception:
         return False
+
+
+def create_partner_token(partner: str, client_id: str, expires_seconds: int = 86400) -> str:
+    """Create a signed short-lived JWT for inbound partner webhook calls."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": client_id,
+        "partner": partner,
+        "type": "partner_access",
+        "iat": now,
+        "exp": now + timedelta(seconds=expires_seconds),
+        "jti": secrets.token_hex(12),
+    }
+    return jwt.encode(payload, get_jwt_secret(), algorithm=settings.JWT_ALGORITHM)
+
+
+def verify_partner_token(token: str, expected_partner: str) -> Optional[Dict[str, Any]]:
+    """Verify an inbound partner Bearer JWT and ensure partner claim matches."""
+    try:
+        payload = jwt.decode(token, get_jwt_secret(), algorithms=[settings.JWT_ALGORITHM])
+        if payload.get("type") != "partner_access":
+            return None
+        if payload.get("partner") != expected_partner:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+_SENSITIVE_HEADER_NAMES = {
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "x-poppies-webhook-key",
+    "x-webhook-secret",
+}
+
+
+def redact_sensitive_headers(headers: Dict[str, Any]) -> Dict[str, Any]:
+    """Redact authentication/secret headers before persisting audit or error logs."""
+    sanitized: Dict[str, Any] = {}
+    for k, v in (headers or {}).items():
+        if str(k).strip().lower() in _SENSITIVE_HEADER_NAMES:
+            sanitized[k] = "[REDACTED]"
+        else:
+            sanitized[k] = v
+    return sanitized
 

@@ -1,12 +1,12 @@
+import asyncio
 import csv
 import io
 import logging
 from datetime import date, datetime, time, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
-from unittest.mock import MagicMock
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -84,6 +84,28 @@ class ReportService:
 
         return criteria
 
+    @staticmethod
+    def _resolve_date_window(
+        from_date: Optional[date] = None,
+        to_date: Optional[date] = None,
+        default_days: int = 30,
+    ) -> Tuple[date, date]:
+        """Enforce a bounded date window (default 30 days) when from_date/to_date are omitted."""
+        today_vn = datetime.now(VN_TZ).date()
+        if from_date is None and to_date is None:
+            resolved_to = today_vn
+            resolved_from = today_vn - timedelta(days=default_days - 1)
+        elif from_date is not None and to_date is None:
+            resolved_from = from_date
+            resolved_to = today_vn
+        elif from_date is None and to_date is not None:
+            resolved_to = to_date
+            resolved_from = to_date - timedelta(days=default_days - 1)
+        else:
+            resolved_from = from_date  # type: ignore[assignment]
+            resolved_to = to_date  # type: ignore[assignment]
+        return resolved_from, resolved_to
+
     @classmethod
     def _fetch_haravan_orders_for_report(
         cls,
@@ -100,7 +122,7 @@ class ReportService:
         Resiliently fetch Haravan Omnichannel orders from MongoDB for unified reporting,
         deduplicating any orders already present in PostgreSQL unified_orders.
         """
-        if not isinstance(db, AsyncSession) or isinstance(db, MagicMock):
+        if not isinstance(db, AsyncSession):
             return []
 
         try:
@@ -251,60 +273,88 @@ class ReportService:
         store_code: Optional[str] = None,
     ) -> FullAnalyticsReport:
         """Calculate comprehensive financial and operational analytics across channels and stores."""
-        criteria = cls._build_filter_criteria(from_date, to_date, channel_code, store_code)
+        resolved_from, resolved_to = cls._resolve_date_window(from_date, to_date)
+        criteria = cls._build_filter_criteria(resolved_from, resolved_to, channel_code, store_code)
 
-        # Base query joining channel and store
-        stmt = (
-            select(UnifiedOrder)
+        # 1. SQL Aggregation for PG Financial Summary (avoids loading full UnifiedOrder rows)
+        summary_stmt = (
+            select(
+                func.count(UnifiedOrder.id),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.DELIVERED, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.CANCELLED, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((UnifiedOrder.status != UnifiedOrderStatus.CANCELLED, UnifiedOrder.total_amount), else_=0.0)), 0.0),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.DELIVERED, UnifiedOrder.total_amount), else_=0.0)), 0.0),
+                func.coalesce(func.sum(case((UnifiedOrder.status != UnifiedOrderStatus.CANCELLED, UnifiedOrder.subtotal_amount), else_=0.0)), 0.0),
+                func.coalesce(func.sum(case((UnifiedOrder.status != UnifiedOrderStatus.CANCELLED, UnifiedOrder.discount_amount), else_=0.0)), 0.0),
+                func.coalesce(func.sum(case((UnifiedOrder.status != UnifiedOrderStatus.CANCELLED, UnifiedOrder.delivery_fee), else_=0.0)), 0.0),
+            )
             .join(Channel, UnifiedOrder.channel_id == Channel.id)
             .join(Store, UnifiedOrder.store_id == Store.id)
-            .options(selectinload(UnifiedOrder.channel), selectinload(UnifiedOrder.store))
-            .order_by(desc(UnifiedOrder.order_time))
         )
         if criteria:
-            stmt = stmt.where(*criteria)
+            summary_stmt = summary_stmt.where(*criteria)
+        sum_row = (await db.execute(summary_stmt)).one()
 
-        res = await db.execute(stmt)
-        pg_orders: List[UnifiedOrder] = list(res.scalars().all())
+        pg_total = int(sum_row[0] or 0)
+        pg_completed = int(sum_row[1] or 0)
+        pg_cancelled = int(sum_row[2] or 0)
+        pg_gross_rev = float(sum_row[3] or 0.0)
+        pg_completed_rev = float(sum_row[4] or 0.0)
+        pg_subtotal = float(sum_row[5] or 0.0)
+        pg_discounts = float(sum_row[6] or 0.0)
+        pg_delivery_fees = float(sum_row[7] or 0.0)
 
+        # Lightweight key projection for MongoDB deduplication
+        keys_stmt = (
+            select(
+                UnifiedOrder.channel_order_id,
+                UnifiedOrder.order_code,
+                UnifiedOrder.display_order_id,
+            )
+            .join(Channel, UnifiedOrder.channel_id == Channel.id)
+            .join(Store, UnifiedOrder.store_id == Store.id)
+        )
+        if criteria:
+            keys_stmt = keys_stmt.where(*criteria)
         existing_keys: Set[str] = set()
-        for po in pg_orders:
-            if po.channel_order_id:
-                existing_keys.add(str(po.channel_order_id).strip())
-            if po.order_code:
-                existing_keys.add(str(po.order_code).strip())
-            if po.display_order_id:
-                existing_keys.add(str(po.display_order_id).strip())
+        if isinstance(db, AsyncSession):
+            keys_res = await db.execute(keys_stmt)
+            for ch_oid, o_code, disp_id in keys_res.all():
+                if ch_oid:
+                    existing_keys.add(str(ch_oid).strip())
+                if o_code:
+                    existing_keys.add(str(o_code).strip())
+                if disp_id:
+                    existing_keys.add(str(disp_id).strip())
 
-        hrv_orders = cls._fetch_haravan_orders_for_report(
+        hrv_orders = await asyncio.to_thread(
+            cls._fetch_haravan_orders_for_report,
             db=db,
-            from_date=from_date,
-            to_date=to_date,
+            from_date=resolved_from,
+            to_date=resolved_to,
             channel_code=channel_code,
             store_code=store_code,
             existing_keys=existing_keys,
         )
-        orders: List[Any] = list(pg_orders) + list(hrv_orders)
 
-        # 1. Financial Summary
-        total_orders = len(orders)
-        completed_orders = sum(1 for o in orders if o.status == UnifiedOrderStatus.DELIVERED)
-        cancelled_orders = sum(
-            1 for o in orders if o.status == UnifiedOrderStatus.CANCELLED
-        )
+        # Combine PG SQL aggregates + Haravan Mongo orders
+        hrv_total = len(hrv_orders)
+        hrv_completed = sum(1 for o in hrv_orders if o.status == UnifiedOrderStatus.DELIVERED)
+        hrv_cancelled = sum(1 for o in hrv_orders if o.status == UnifiedOrderStatus.CANCELLED)
+        hrv_non_cancelled = [o for o in hrv_orders if o.status != UnifiedOrderStatus.CANCELLED]
+
+        total_orders = pg_total + hrv_total
+        completed_orders = pg_completed + hrv_completed
+        cancelled_orders = pg_cancelled + hrv_cancelled
         active_orders = total_orders - completed_orders - cancelled_orders
 
-        non_cancelled = [
-            o for o in orders if o.status != UnifiedOrderStatus.CANCELLED
-        ]
-
-        total_gross_revenue = sum(float(o.total_amount or 0.0) for o in non_cancelled)
-        completed_revenue = sum(
-            float(o.total_amount or 0.0) for o in orders if o.status == UnifiedOrderStatus.DELIVERED
+        total_gross_revenue = pg_gross_rev + sum(float(o.total_amount or 0.0) for o in hrv_non_cancelled)
+        completed_revenue = pg_completed_rev + sum(
+            float(o.total_amount or 0.0) for o in hrv_orders if o.status == UnifiedOrderStatus.DELIVERED
         )
-        total_subtotal = sum(float(o.subtotal_amount or 0.0) for o in non_cancelled)
-        total_discounts = sum(float(o.discount_amount or 0.0) for o in non_cancelled)
-        total_delivery_fees = sum(float(o.delivery_fee or 0.0) for o in non_cancelled)
+        total_subtotal = pg_subtotal + sum(float(o.subtotal_amount or 0.0) for o in hrv_non_cancelled)
+        total_discounts = pg_discounts + sum(float(o.discount_amount or 0.0) for o in hrv_non_cancelled)
+        total_delivery_fees = pg_delivery_fees + sum(float(o.delivery_fee or 0.0) for o in hrv_non_cancelled)
 
         # Platform commission estimated ~20%
         estimated_commission = round(total_gross_revenue * 0.20, 2)
@@ -312,7 +362,8 @@ class ReportService:
 
         completion_rate = round((completed_orders / total_orders * 100), 1) if total_orders > 0 else 0.0
         cancellation_rate = round((cancelled_orders / total_orders * 100), 1) if total_orders > 0 else 0.0
-        aov = round(total_gross_revenue / len(non_cancelled), 2) if non_cancelled else 0.0
+        non_cancelled_count = (pg_total - pg_cancelled) + len(hrv_non_cancelled)
+        aov = round(total_gross_revenue / non_cancelled_count, 2) if non_cancelled_count else 0.0
 
         summary = FinancialSummary(
             total_gross_revenue=total_gross_revenue,
@@ -331,7 +382,7 @@ class ReportService:
             average_order_value=aov,
         )
 
-        # 2. Channel Analytics Breakdown
+        # 2. Channel Analytics Breakdown (SQL GROUP BY)
         channels_res = await db.execute(select(Channel).order_by(Channel.code))
         all_channels = channels_res.scalars().all()
 
@@ -348,7 +399,41 @@ class ReportService:
             for c in all_channels
         }
 
-        for o in orders:
+        ch_agg_stmt = (
+            select(
+                Channel.code,
+                Channel.name,
+                func.count(UnifiedOrder.id),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.DELIVERED, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.CANCELLED, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((UnifiedOrder.status != UnifiedOrderStatus.CANCELLED, UnifiedOrder.total_amount), else_=0.0)), 0.0),
+            )
+            .join(Channel, UnifiedOrder.channel_id == Channel.id)
+            .join(Store, UnifiedOrder.store_id == Store.id)
+            .group_by(Channel.code, Channel.name)
+        )
+        if criteria:
+            ch_agg_stmt = ch_agg_stmt.where(*criteria)
+        for ch_code, ch_name, cnt, comp_cnt, canc_cnt, rev in (await db.execute(ch_agg_stmt)).all():
+            if not ch_code:
+                continue
+            if ch_code not in channel_map:
+                channel_map[ch_code] = ChannelAnalyticsItem(
+                    channel_code=ch_code,
+                    channel_name=ch_name or ch_code,
+                    order_count=0,
+                    completed_count=0,
+                    cancelled_count=0,
+                    revenue=0.0,
+                    share_percentage=0.0,
+                )
+            item = channel_map[ch_code]
+            item.order_count += int(cnt or 0)
+            item.completed_count += int(comp_cnt or 0)
+            item.cancelled_count += int(canc_cnt or 0)
+            item.revenue += float(rev or 0.0)
+
+        for o in hrv_orders:
             ch_code = o.channel_code
             if not ch_code:
                 continue
@@ -376,7 +461,7 @@ class ReportService:
             for item in channel_items:
                 item.share_percentage = round((item.revenue / total_gross_revenue * 100), 1)
 
-        # 3. Store Analytics Breakdown
+        # 3. Store Analytics Breakdown (SQL GROUP BY)
         stores_res = await db.execute(select(Store).order_by(Store.code))
         all_stores = stores_res.scalars().all()
 
@@ -393,7 +478,41 @@ class ReportService:
             for s in all_stores
         }
 
-        for o in orders:
+        st_agg_stmt = (
+            select(
+                Store.code,
+                Store.name,
+                func.count(UnifiedOrder.id),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.DELIVERED, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((UnifiedOrder.status == UnifiedOrderStatus.CANCELLED, 1), else_=0)), 0),
+                func.coalesce(func.sum(case((UnifiedOrder.status != UnifiedOrderStatus.CANCELLED, UnifiedOrder.total_amount), else_=0.0)), 0.0),
+            )
+            .join(Channel, UnifiedOrder.channel_id == Channel.id)
+            .join(Store, UnifiedOrder.store_id == Store.id)
+            .group_by(Store.code, Store.name)
+        )
+        if criteria:
+            st_agg_stmt = st_agg_stmt.where(*criteria)
+        for st_code, st_name, cnt, comp_cnt, canc_cnt, rev in (await db.execute(st_agg_stmt)).all():
+            if not st_code:
+                continue
+            if st_code not in store_map:
+                store_map[st_code] = StoreAnalyticsItem(
+                    store_code=st_code,
+                    store_name=st_name or f"Chi nhánh {st_code}",
+                    order_count=0,
+                    completed_count=0,
+                    cancelled_count=0,
+                    revenue=0.0,
+                    share_percentage=0.0,
+                )
+            s_item = store_map[st_code]
+            s_item.order_count += int(cnt or 0)
+            s_item.completed_count += int(comp_cnt or 0)
+            s_item.cancelled_count += int(canc_cnt or 0)
+            s_item.revenue += float(rev or 0.0)
+
+        for o in hrv_orders:
             st_code = o.store_code
             if not st_code:
                 continue
@@ -421,10 +540,9 @@ class ReportService:
             for s_item in store_items:
                 s_item.share_percentage = round((s_item.revenue / total_gross_revenue * 100), 1)
 
-        # 4. Daily Trends
+        # 4. Daily Trends (lightweight 3-column projection instead of full ORM objects)
         daily_dict: Dict[str, DailyTrendItem] = {}
 
-        # Default to last 7 days timeline in Vietnam timezone (+07:00) if no specific date range
         today_vn = datetime.now(VN_TZ).date()
         start_date = from_date or (today_vn - timedelta(days=6))
         end_date = to_date or today_vn
@@ -435,7 +553,31 @@ class ReportService:
             daily_dict[ds] = DailyTrendItem(date=ds, revenue=0.0, order_count=0, completed_count=0)
             curr_d += timedelta(days=1)
 
-        for o in orders:
+        trend_stmt = (
+            select(UnifiedOrder.order_time, UnifiedOrder.status, UnifiedOrder.total_amount)
+            .join(Channel, UnifiedOrder.channel_id == Channel.id)
+            .join(Store, UnifiedOrder.store_id == Store.id)
+        )
+        if criteria:
+            trend_stmt = trend_stmt.where(*criteria)
+        for o_time, o_status, o_total in (await db.execute(trend_stmt)).all():
+            if o_time:
+                dt_vn = (
+                    o_time.astimezone(VN_TZ)
+                    if o_time.tzinfo
+                    else o_time.replace(tzinfo=timezone.utc).astimezone(VN_TZ)
+                )
+                ds = dt_vn.strftime("%Y-%m-%d")
+                if ds not in daily_dict:
+                    daily_dict[ds] = DailyTrendItem(date=ds, revenue=0.0, order_count=0, completed_count=0)
+                d_item = daily_dict[ds]
+                d_item.order_count += 1
+                if o_status == UnifiedOrderStatus.DELIVERED:
+                    d_item.completed_count += 1
+                if o_status != UnifiedOrderStatus.CANCELLED:
+                    d_item.revenue += float(o_total or 0.0)
+
+        for o in hrv_orders:
             if o.order_time:
                 dt_vn = (
                     o.order_time.astimezone(VN_TZ)
@@ -455,8 +597,8 @@ class ReportService:
         daily_trends = sorted(daily_dict.values(), key=lambda x: x.date)
 
         return FullAnalyticsReport(
-            filter_from=from_date.isoformat() if from_date else None,
-            filter_to=to_date.isoformat() if to_date else None,
+            filter_from=resolved_from.isoformat(),
+            filter_to=resolved_to.isoformat(),
             summary=summary,
             channels=channel_items,
             stores=store_items,
@@ -476,7 +618,8 @@ class ReportService:
         page_size: int = 20,
     ) -> Tuple[List[ReconciliationOrderItem], int]:
         """Fetch paginated financial reconciliation orders."""
-        criteria = cls._build_filter_criteria(from_date, to_date, channel_code, store_code)
+        resolved_from, resolved_to = cls._resolve_date_window(from_date, to_date)
+        criteria = cls._build_filter_criteria(resolved_from, resolved_to, channel_code, store_code)
 
         if search:
             search_clean = f"%{search.strip()}%"
@@ -514,50 +657,57 @@ class ReportService:
         orders: List[Any] = list(res.scalars().all())
 
         # Merge Haravan MongoDB orders when running against a live AsyncSession
-        existing_keys: Set[str] = {
-            str(x).strip()
-            for po in orders
-            for x in (po.channel_order_id, po.order_code, po.display_order_id)
-            if x
-        }
-        hrv_orders = cls._fetch_haravan_orders_for_report(
+        existing_keys: Set[str] = set()
+        if isinstance(db, AsyncSession):
+            keys_stmt = (
+                select(
+                    UnifiedOrder.channel_order_id,
+                    UnifiedOrder.order_code,
+                    UnifiedOrder.display_order_id,
+                )
+                .join(Channel, UnifiedOrder.channel_id == Channel.id)
+                .join(Store, UnifiedOrder.store_id == Store.id)
+            )
+            if criteria:
+                keys_stmt = keys_stmt.where(*criteria)
+            for ch_oid, o_code, disp_id in (await db.execute(keys_stmt)).all():
+                if ch_oid:
+                    existing_keys.add(str(ch_oid).strip())
+                if o_code:
+                    existing_keys.add(str(o_code).strip())
+                if disp_id:
+                    existing_keys.add(str(disp_id).strip())
+
+        hrv_orders = await asyncio.to_thread(
+            cls._fetch_haravan_orders_for_report,
             db=db,
-            from_date=from_date,
-            to_date=to_date,
+            from_date=resolved_from,
+            to_date=resolved_to,
             channel_code=channel_code,
             store_code=store_code,
             search=search,
             existing_keys=existing_keys,
         )
         if hrv_orders:
-            # Fetch full matching PG list to sort & paginate uniformly across PG + Mongo
-            full_stmt = (
+            # Fetch at most page * page_size top PG rows to merge-sort uniformly without loading all rows
+            top_n = page * page_size
+            top_stmt = (
                 select(UnifiedOrder)
                 .join(Channel, UnifiedOrder.channel_id == Channel.id)
                 .join(Store, UnifiedOrder.store_id == Store.id)
                 .options(selectinload(UnifiedOrder.channel), selectinload(UnifiedOrder.store))
                 .order_by(desc(UnifiedOrder.order_time))
+                .limit(top_n)
             )
             if criteria:
-                full_stmt = full_stmt.where(*criteria)
-            full_pg = list((await db.execute(full_stmt)).scalars().all())
-            dedup_keys = {
-                str(x).strip()
-                for po in full_pg
-                for x in (po.channel_order_id, po.order_code, po.display_order_id)
-                if x
-            }
-            hrv_filtered = [
-                ho
-                for ho in hrv_orders
-                if ho.channel_order_id not in dedup_keys and ho.order_code not in dedup_keys
-            ]
-            combined = full_pg + hrv_filtered
+                top_stmt = top_stmt.where(*criteria)
+            top_pg = list((await db.execute(top_stmt)).scalars().all())
+            combined = top_pg + hrv_orders
             combined.sort(
                 key=lambda x: x.order_time or datetime.min.replace(tzinfo=timezone.utc),
                 reverse=True,
             )
-            total_count = len(combined)
+            total_count = int(total_count) + len(hrv_orders)
             start_idx = (page - 1) * page_size
             orders = combined[start_idx : start_idx + page_size]
 
@@ -596,6 +746,45 @@ class ReportService:
         return items, total_count
 
     @classmethod
+    def _write_csv_row(cls, writer: Any, o: Any) -> None:
+        tot = float(o.total_amount or 0.0)
+        if o.status == UnifiedOrderStatus.CANCELLED:
+            comm = 0.0
+            net = 0.0
+        else:
+            comm = round(tot * 0.20, 2)
+            net = round(tot - comm, 2)
+
+        if o.order_time:
+            dt_vn = (
+                o.order_time.astimezone(VN_TZ)
+                if o.order_time.tzinfo
+                else o.order_time.replace(tzinfo=timezone.utc).astimezone(VN_TZ)
+            )
+            order_time_str = dt_vn.strftime("%d/%m/%Y %H:%M:%S")
+        else:
+            order_time_str = ""
+
+        writer.writerow([
+            cls._sanitize_csv_cell(o.order_code),
+            cls._sanitize_csv_cell(o.channel_order_id),
+            cls._sanitize_csv_cell(o.display_order_id or ""),
+            cls._sanitize_csv_cell(o.channel_code or ""),
+            cls._sanitize_csv_cell(o.store_code or ""),
+            cls._sanitize_csv_cell(o.store_name or ""),
+            order_time_str,
+            cls._sanitize_csv_cell(o.customer_name or ""),
+            f"{float(o.subtotal_amount or 0.0):.0f}",
+            f"{float(o.discount_amount or 0.0):.0f}",
+            f"{float(o.delivery_fee or 0.0):.0f}",
+            f"{tot:.0f}",
+            f"{comm:.0f}",
+            f"{net:.0f}",
+            o.status.value,
+            cls._sanitize_csv_cell(o.cancellation_reason or "")
+        ])
+
+    @classmethod
     async def export_reconciliation_csv(
         cls,
         db: AsyncSession,
@@ -605,40 +794,8 @@ class ReportService:
         store_code: Optional[str] = None,
     ) -> str:
         """Generate CSV string with UTF-8 BOM encoding for direct opening in Microsoft Excel."""
-        criteria = cls._build_filter_criteria(from_date, to_date, channel_code, store_code)
-
-        stmt = (
-            select(UnifiedOrder)
-            .join(Channel, UnifiedOrder.channel_id == Channel.id)
-            .join(Store, UnifiedOrder.store_id == Store.id)
-            .options(selectinload(UnifiedOrder.channel), selectinload(UnifiedOrder.store))
-            .order_by(desc(UnifiedOrder.order_time))
-        )
-        if criteria:
-            stmt = stmt.where(*criteria)
-
-        res = await db.execute(stmt)
-        pg_orders = list(res.scalars().all())
-        existing_keys: Set[str] = {
-            str(x).strip()
-            for po in pg_orders
-            for x in (po.channel_order_id, po.order_code, po.display_order_id)
-            if x
-        }
-        hrv_orders = cls._fetch_haravan_orders_for_report(
-            db=db,
-            from_date=from_date,
-            to_date=to_date,
-            channel_code=channel_code,
-            store_code=store_code,
-            existing_keys=existing_keys,
-        )
-        orders: List[Any] = pg_orders + hrv_orders
-        if hrv_orders:
-            orders.sort(
-                key=lambda x: x.order_time or datetime.min.replace(tzinfo=timezone.utc),
-                reverse=True,
-            )
+        resolved_from, resolved_to = cls._resolve_date_window(from_date, to_date)
+        criteria = cls._build_filter_criteria(resolved_from, resolved_to, channel_code, store_code)
 
         output = io.StringIO()
         # UTF-8 BOM so Excel opens Vietnamese characters correctly
@@ -666,43 +823,57 @@ class ReportService:
             "Lý Do Hủy (nếu có)"
         ])
 
-        for o in orders:
-            tot = float(o.total_amount or 0.0)
-            if o.status == UnifiedOrderStatus.CANCELLED:
-                comm = 0.0
-                net = 0.0
-            else:
-                comm = round(tot * 0.20, 2)
-                net = round(tot - comm, 2)
+        # Stream PG orders in bounded batches to avoid loading all rows into memory
+        batch_size = 1000
+        offset = 0
+        existing_keys: Set[str] = set()
+        while True:
+            stmt = (
+                select(UnifiedOrder)
+                .join(Channel, UnifiedOrder.channel_id == Channel.id)
+                .join(Store, UnifiedOrder.store_id == Store.id)
+                .options(selectinload(UnifiedOrder.channel), selectinload(UnifiedOrder.store))
+                .order_by(desc(UnifiedOrder.order_time))
+                .offset(offset)
+                .limit(batch_size)
+            )
+            if criteria:
+                stmt = stmt.where(*criteria)
 
-            if o.order_time:
-                dt_vn = (
-                    o.order_time.astimezone(VN_TZ)
-                    if o.order_time.tzinfo
-                    else o.order_time.replace(tzinfo=timezone.utc).astimezone(VN_TZ)
-                )
-                order_time_str = dt_vn.strftime("%d/%m/%Y %H:%M:%S")
-            else:
-                order_time_str = ""
+            res = await db.execute(stmt)
+            batch = list(res.scalars().all())
+            if not batch:
+                break
 
-            writer.writerow([
-                cls._sanitize_csv_cell(o.order_code),
-                cls._sanitize_csv_cell(o.channel_order_id),
-                cls._sanitize_csv_cell(o.display_order_id or ""),
-                cls._sanitize_csv_cell(o.channel_code or ""),
-                cls._sanitize_csv_cell(o.store_code or ""),
-                cls._sanitize_csv_cell(o.store_name or ""),
-                order_time_str,
-                cls._sanitize_csv_cell(o.customer_name or ""),
-                f"{float(o.subtotal_amount or 0.0):.0f}",
-                f"{float(o.discount_amount or 0.0):.0f}",
-                f"{float(o.delivery_fee or 0.0):.0f}",
-                f"{tot:.0f}",
-                f"{comm:.0f}",
-                f"{net:.0f}",
-                o.status.value,
-                cls._sanitize_csv_cell(o.cancellation_reason or "")
-            ])
+            for o in batch:
+                if o.channel_order_id:
+                    existing_keys.add(str(o.channel_order_id).strip())
+                if o.order_code:
+                    existing_keys.add(str(o.order_code).strip())
+                if o.display_order_id:
+                    existing_keys.add(str(o.display_order_id).strip())
+                cls._write_csv_row(writer, o)
+
+            if len(batch) < batch_size:
+                break
+            offset += len(batch)
+
+        hrv_orders = await asyncio.to_thread(
+            cls._fetch_haravan_orders_for_report,
+            db=db,
+            from_date=resolved_from,
+            to_date=resolved_to,
+            channel_code=channel_code,
+            store_code=store_code,
+            existing_keys=existing_keys,
+        )
+        if hrv_orders:
+            hrv_orders.sort(
+                key=lambda x: x.order_time or datetime.min.replace(tzinfo=timezone.utc),
+                reverse=True,
+            )
+            for o in hrv_orders:
+                cls._write_csv_row(writer, o)
 
         return output.getvalue()
 

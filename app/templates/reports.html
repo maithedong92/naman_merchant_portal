@@ -76,6 +76,7 @@
                         <option value="SHOPEEFOOD">ShopeeFood</option>
                         <option value="GRABMART">GrabMart</option>
                         <option value="SHOPEEMART">ShopeeMart</option>
+                        <option value="HARAVAN">Haravan / Web</option>
                     </select>
                 </div>
 
@@ -337,9 +338,38 @@
         loadAllReportData();
     }
 
+    function setupReportsStoreScoping(userArg) {
+        const user = userArg || (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        if (!user || !user.role) return false;
+        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+        const prevStore = reportFilters.store_code;
+        const storeSelectEl = document.getElementById('filter-store-code');
+
+        if (!isSuperAdmin && user.store_code) {
+            reportFilters.store_code = user.store_code;
+            if (storeSelectEl) {
+                storeSelectEl.value = user.store_code;
+                storeSelectEl.disabled = true;
+                storeSelectEl.classList.add('opacity-75', 'cursor-not-allowed');
+            }
+        } else if (storeSelectEl) {
+            storeSelectEl.disabled = false;
+            storeSelectEl.classList.remove('opacity-75', 'cursor-not-allowed');
+        }
+        return prevStore !== reportFilters.store_code;
+    }
+
     function onFilterChange() {
         reportFilters.channel_code = document.getElementById('filter-channel-code').value;
-        reportFilters.store_code = document.getElementById('filter-store-code').value;
+        const user = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+        if (user && user.role && !isSuperAdmin && user.store_code) {
+            reportFilters.store_code = user.store_code;
+            const storeSelectEl = document.getElementById('filter-store-code');
+            if (storeSelectEl) storeSelectEl.value = user.store_code;
+        } else {
+            reportFilters.store_code = document.getElementById('filter-store-code').value;
+        }
         reportFilters.page = 1;
         loadAllReportData();
     }
@@ -359,39 +389,36 @@
         loadReconciliationData();
     }
 
-    // Export CSV
-    function exportReconciliationCsv() {
+    // Export CSV (authenticated fetch -> Blob download)
+    async function exportReconciliationCsv() {
+        if (!TokenManager.getToken()) {
+            showToast("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.", "error");
+            return;
+        }
         let url = `/api/v1/reports/export?`;
         if (reportFilters.from_date) url += `&from_date=${encodeURIComponent(reportFilters.from_date)}`;
         if (reportFilters.to_date) url += `&to_date=${encodeURIComponent(reportFilters.to_date)}`;
         if (reportFilters.channel_code) url += `&channel_code=${encodeURIComponent(reportFilters.channel_code)}`;
         if (reportFilters.store_code) url += `&store_code=${encodeURIComponent(reportFilters.store_code)}`;
 
-        const token = TokenManager.getToken();
-        if (token) {
-            authFetch(url)
-                .then(async res => {
-                    if (!res.ok) {
-                        throw new Error(`HTTP ${res.status}`);
-                    }
-                    return res.blob();
-                })
-                .then(blob => {
-                    const downloadUrl = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = downloadUrl;
-                    a.download = `naman_doi_soat_${new Date().toISOString().slice(0, 10)}.csv`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 5000);
-                    showToast("Đã tải xuống tệp đối soát thành công!", "success");
-                })
-                .catch(err => {
-                    showToast("Lỗi khi tải tệp đối soát", "error");
-                });
-        } else {
-            window.location.href = url;
+        showToast("Đang chuẩn bị tệp CSV đối soát...", "info");
+        try {
+            const res = await authFetch(url);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            const blob = await res.blob();
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `naman_doi_soat_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 5000);
+            showToast("Đã tải xuống tệp đối soát thành công!", "success");
+        } catch (err) {
+            showToast("Lỗi khi tải tệp đối soát", "error");
         }
     }
 
@@ -410,9 +437,12 @@
                 if (data.success && data.data) {
                     renderAnalytics(data.data);
                 }
+            } else {
+                showToast(`Không thể tải dữ liệu phân tích (HTTP ${res.status})`, 'error');
             }
         } catch(e) {
             console.error("Lỗi khi tải analytics:", e);
+            showToast('Lỗi kết nối khi tải dữ liệu phân tích', 'error');
         }
     }
 
@@ -626,6 +656,9 @@
         if (reportFilters.search) url += `&search=${encodeURIComponent(reportFilters.search)}`;
 
         const tbody = document.getElementById('reconcile-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="9" class="py-8 text-center text-[#787774] text-xs">Đang tải dữ liệu đối soát...</td></tr>';
+        }
         try {
             const res = await authFetch(url);
             if (res.ok) {
@@ -635,10 +668,13 @@
                     renderReconciliationPagination(data.data.meta);
                 }
             } else {
-                tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-[#D44C47] text-xs">Không thể tải dữ liệu đối soát</td></tr>';
+                const errMsg = `Không thể tải dữ liệu đối soát (HTTP ${res.status})`;
+                showToast(errMsg, 'error');
+                tbody.innerHTML = `<tr><td colspan="9" class="py-6 text-center text-[#D44C47] text-xs space-y-2"><div>${escapeHtml(errMsg)}</div><button type="button" onclick="loadReconciliationData()" class="px-2.5 py-1 rounded bg-white border border-[#FFE2DD] text-[#D44C47] text-xs font-medium hover:bg-[#FFE2DD]/30">Thử lại</button></td></tr>`;
             }
         } catch(e) {
-            tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-[#D44C47] text-xs">Lỗi kết nối khi tải đối soát</td></tr>';
+            showToast('Lỗi kết nối khi tải đối soát', 'error');
+            tbody.innerHTML = '<tr><td colspan="9" class="py-6 text-center text-[#D44C47] text-xs space-y-2"><div>Lỗi kết nối khi tải đối soát</div><button type="button" onclick="loadReconciliationData()" class="px-2.5 py-1 rounded bg-white border border-[#FFE2DD] text-[#D44C47] text-xs font-medium hover:bg-[#FFE2DD]/30">Thử lại</button></td></tr>';
         }
     }
 
@@ -736,8 +772,17 @@
         });
     }
 
+    window.addEventListener('currentUserLoaded', (e) => {
+        const scopeChanged = setupReportsStoreScoping(e.detail);
+        if (scopeChanged) {
+            reportFilters.page = 1;
+            loadAllReportData();
+        }
+    });
+
     // On Load
     document.addEventListener('DOMContentLoaded', () => {
+        setupReportsStoreScoping();
         setQuickRange('last_7_days');
     });
 </script>

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 import io
@@ -113,7 +114,7 @@ async def recommend_store_for_order(
 async def get_arito_status(
     current_user: User = Depends(require_super_admin),
 ):
-    status_info = arito_service.check_connection()
+    status_info = await asyncio.to_thread(arito_service.check_connection)
     return APIResponse.ok(
         data=status_info,
         message=status_info.get("message", "Kiểm tra Arito hoàn tất."),
@@ -421,6 +422,8 @@ async def upload_order_file(
             message="Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'.",
             error_code="INVALID_FILE_TYPE",
         )
+
+    await haravan_order_service.get_order_detail(order_id, current_user)
 
     file_bytes = await file.read(file_service.MAX_FILE_SIZE + 1)
     if not file_bytes:

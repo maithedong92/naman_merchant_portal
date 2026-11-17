@@ -170,7 +170,7 @@
                         <th class="py-3 px-4">Mã SKU / Barcode</th>
                         <th class="py-3 px-4">Danh Mục</th>
                         <th class="py-3 px-4 text-right">Giá Niêm Yết</th>
-                        <th class="py-3 px-4 text-center">Tồn Khả Dụng</th>
+                        <th class="py-3 px-4 text-center">Tồn Kho (Thực-Giữ)</th>
                         <th class="py-3 px-4">Đồng Bộ Sàn</th>
                         <th class="py-3 px-4 text-center">Thao Tác Bật/Tắt Món</th>
                     </tr>
@@ -310,15 +310,56 @@
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
     }
 
+    function formatStockQty(val) {
+        const num = Number(val);
+        if (!Number.isFinite(num)) return '0';
+        return Number.isInteger(num) ? String(num) : String(parseFloat(num.toFixed(2)));
+    }
+
+    // Store Scoping for non-SUPER_ADMIN branch users
+    function setupInventoryStoreScoping(userArg) {
+        const user = userArg || (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        if (!user || !user.role) return false;
+        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+        const prevStore = currentStoreCode;
+
+        const pills = document.querySelectorAll('.store-tab-pill');
+        if (!isSuperAdmin && user.store_code) {
+            currentStoreCode = user.store_code;
+            pills.forEach(btn => {
+                const storeVal = btn.getAttribute('data-store');
+                if (storeVal === user.store_code) {
+                    btn.disabled = false;
+                    btn.classList.remove('hidden', 'opacity-50', 'cursor-not-allowed');
+                    btn.className = "store-tab-pill px-3.5 py-1.5 rounded-xl font-bold transition-all bg-white text-slate-900 shadow-xs";
+                } else {
+                    btn.disabled = true;
+                    btn.classList.add('hidden', 'opacity-50', 'cursor-not-allowed');
+                }
+            });
+        } else {
+            pills.forEach(btn => {
+                btn.disabled = false;
+                btn.classList.remove('hidden', 'opacity-50', 'cursor-not-allowed');
+            });
+        }
+        return prevStore !== currentStoreCode;
+    }
+
     // Switch Branch Tab
     function switchStoreBranch(storeCode) {
+        const user = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+        if (user && user.role && !isSuperAdmin && user.store_code && storeCode !== user.store_code) {
+            storeCode = user.store_code;
+        }
         currentStoreCode = storeCode;
         currentPage = 1;
 
         document.querySelectorAll('.store-tab-pill').forEach(btn => {
             if (btn.getAttribute('data-store') === storeCode) {
                 btn.className = "store-tab-pill px-3.5 py-1.5 rounded-xl font-bold transition-all bg-white text-slate-900 shadow-xs";
-            } else {
+            } else if (!btn.classList.contains('hidden')) {
                 btn.className = "store-tab-pill px-3.5 py-1.5 rounded-xl font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-white/60";
             }
         });
@@ -377,6 +418,9 @@
         if (currentSearch) url += `&search=${encodeURIComponent(currentSearch)}`;
 
         const tbody = document.getElementById('inventory-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" class="py-10 text-center text-slate-400 text-xs font-medium"><span class="inline-flex items-center space-x-2"><svg class="w-4 h-4 animate-spin text-emerald-600" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg><span>Đang tải dữ liệu tồn kho...</span></span></td></tr>';
+        }
         try {
             const res = await authFetch(url);
             if (res.ok) {
@@ -387,11 +431,15 @@
                     renderPagination(json.data.paginated.meta);
                 }
             } else {
-                tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-rose-600 font-semibold">Không thể tải dữ liệu tồn kho.</td></tr>';
+                const errJson = await res.json().catch(() => ({}));
+                const errMsg = errJson.detail || errJson.message || `Không thể tải dữ liệu tồn kho (HTTP ${res.status}).`;
+                showToast(errMsg, 'error');
+                tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-rose-600 font-semibold space-y-2"><div>${escapeHtml(errMsg)}</div><button type="button" onclick="loadInventoryOverview()" class="px-3 py-1 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50 transition-colors">Thử lại</button></td></tr>`;
             }
         } catch(e) {
             console.error(e);
-            tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-rose-600 font-semibold">Lỗi kết nối khi tải tồn kho.</td></tr>';
+            showToast('Lỗi kết nối khi tải tồn kho.', 'error');
+            tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-rose-600 font-semibold space-y-2"><div>Lỗi kết nối khi tải tồn kho.</div><button type="button" onclick="loadInventoryOverview()" class="px-3 py-1 rounded-xl bg-white border border-rose-200 text-rose-700 text-xs font-bold hover:bg-rose-50 transition-colors">Thử lại</button></td></tr>';
         }
     }
 
@@ -431,11 +479,22 @@
                 ? '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">Hết hàng</span>'
                 : '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Đang bán</span>';
 
+            const safeName = escapeHtml(item.name);
+            const safeSku = escapeHtml(item.sku);
+            const safeUnit = escapeHtml(item.unit);
+            const safeBarcode = escapeHtml(item.barcode || '—');
+            const safeCategory = escapeHtml(item.category_name);
+            const rawImage = typeof item.image_url === 'string' ? item.image_url.trim() : '';
+            const isValidImageUrl = /^(https?:\/\/|\/(?!\/))/i.test(rawImage);
+            const imageHtml = isValidImageUrl
+                ? `<img src="${escapeHtml(rawImage)}" alt="${safeName}" class="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0">`
+                : `<div class="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-slate-400" aria-label="${safeName}"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>`;
+
             const toggleBtn = isOutOfStock
-                ? `<button onclick="toggleItemStock('${item.sku}', false)" class="px-3 py-1 rounded-xl text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-100 transition-all shadow-2xs">
+                ? `<button data-sku="${safeSku}" data-out="false" onclick="toggleItemStock(this.dataset.sku, this.dataset.out === 'true')" class="px-3 py-1 rounded-xl text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-100 transition-all shadow-2xs">
                      <span>Bật bán lại</span>
                    </button>`
-                : `<button onclick="toggleItemStock('${item.sku}', true)" class="px-3 py-1 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all">
+                : `<button data-sku="${safeSku}" data-out="true" onclick="toggleItemStock(this.dataset.sku, this.dataset.out === 'true')" class="px-3 py-1 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all">
                      <span>Tắt món</span>
                    </button>`;
 
@@ -444,38 +503,41 @@
             tr.innerHTML = `
                 <td class="py-3 px-4">
                     <div class="flex items-center space-x-3">
-                        <img src="${item.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=80&q=80'}" alt="${item.name}" class="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0">
+                        ${imageHtml}
                         <div>
-                            <div class="font-bold text-slate-900 text-xs">${item.name}</div>
-                            <div class="text-[11px] font-medium text-slate-500">ĐVT: ${item.unit}</div>
+                            <div class="font-bold text-slate-900 text-xs">${safeName}</div>
+                            <div class="text-[11px] font-medium text-slate-500">ĐVT: ${safeUnit}</div>
                         </div>
                     </div>
                 </td>
                 <td class="py-3 px-4 font-mono">
-                    <div class="font-bold text-slate-900 text-xs">${item.sku}</div>
-                    <div class="text-[11px] text-slate-400">${item.barcode || '—'}</div>
+                    <div class="font-bold text-slate-900 text-xs">${safeSku}</div>
+                    <div class="text-[11px] text-slate-400">${safeBarcode}</div>
                 </td>
                 <td class="py-3 px-4">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">${item.category_name}</span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">${safeCategory}</span>
                 </td>
                 <td class="py-3 px-4 text-right font-mono font-bold text-slate-900 text-xs tabular-nums">
                     ${formatVND(item.base_price)}
                 </td>
                 <td class="py-3 px-4 text-center">
-                    <div class="inline-flex items-center justify-center space-x-1.5">
-                        <span class="font-mono font-bold ${isOutOfStock ? 'text-rose-600' : 'text-slate-900'} text-xs">${item.available_stock}</span>
-                        <button onclick="openQuickStockModal('${item.sku}', '${item.name.replace(/'/g, "\\'")}', ${item.available_stock})" class="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Chỉnh sửa tồn kho">
-                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                        </button>
+                    <div class="inline-flex flex-col items-center">
+                        <div class="inline-flex items-center justify-center space-x-1.5">
+                            <span class="font-mono font-bold ${isOutOfStock ? 'text-rose-600' : 'text-slate-900'} text-xs" title="Thực tế: ${formatStockQty(item.total_stock ?? item.available_stock ?? 0)} | Giữ chỗ: ${formatStockQty(item.reserved_stock ?? 0)} | An toàn: ${formatStockQty(item.safety_stock ?? 0)} | Khả dụng: ${formatStockQty(item.available_stock ?? 0)}">${formatStockQty(item.total_stock ?? item.available_stock ?? 0)}-${formatStockQty(item.reserved_stock ?? 0)}</span>
+                            <button data-sku="${safeSku}" data-name="${safeName}" data-stock="${Number(item.available_stock) || 0}" onclick="openQuickStockModal(this.dataset.sku, this.dataset.name, Number(this.dataset.stock))" class="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Chỉnh sửa tồn kho">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            </button>
+                        </div>
+                        <div class="text-[10px] font-mono text-slate-400">Khả dụng: ${formatStockQty(item.available_stock ?? 0)}${Number(item.safety_stock || 0) > 0 ? ' • AT: ' + formatStockQty(item.safety_stock) : ''}</div>
                     </div>
                 </td>
                 <td class="py-3 px-4">
                     <div class="flex flex-col space-y-1">
                         <div class="flex items-center space-x-2 text-xs text-slate-500 font-medium">
                             <span class="w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500' : 'bg-emerald-500'}"></span>
-                            <span>${syncTime}</span>
+                            <span>${escapeHtml(syncTime)}</span>
                         </div>
-                        <button onclick="openSkuChannelsModal('${item.sku}', '${item.name.replace(/'/g, "\\'")}')" class="inline-flex items-center space-x-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline w-fit">
+                        <button data-sku="${safeSku}" data-name="${safeName}" onclick="openSkuChannelsModal(this.dataset.sku, this.dataset.name)" class="inline-flex items-center space-x-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline w-fit">
                             <span>Kênh & Giá Poppies &rarr;</span>
                         </button>
                     </div>
@@ -640,17 +702,22 @@
                         </button>
                     `;
                     data.data.forEach(c => {
+                        const safeId = escapeHtml(c.id);
+                        const safeName = escapeHtml(c.name);
                         html += `
-                            <button type="button" onclick="setCategoryFilter('${c.id}')" class="cat-pill px-3 py-1 rounded-full text-xs font-semibold transition-all ${currentCategoryId === c.id ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'}" data-cat="${c.id}">
-                                ${c.name}
+                            <button type="button" onclick="setCategoryFilter(this.dataset.cat)" class="cat-pill px-3 py-1 rounded-full text-xs font-semibold transition-all ${currentCategoryId === c.id ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200'}" data-cat="${safeId}">
+                                ${safeName}
                             </button>
                         `;
                     });
                     container.innerHTML = html;
                 }
+            } else {
+                showToast(`Không thể tải danh mục sản phẩm (HTTP ${res.status})`, 'error');
             }
         } catch(e) {
             console.error(e);
+            showToast('Lỗi kết nối khi tải danh mục sản phẩm', 'error');
         }
     }
 
@@ -715,7 +782,7 @@
         snaps.forEach(s => {
             snapRows += `
                 <div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
-                    <span class="font-mono font-bold text-slate-800">${s.channel_code}</span>
+                    <span class="font-mono font-bold text-slate-800">${escapeHtml(s.channel_code)}</span>
                     <span class="text-slate-600">Khớp <strong>${(s.matched_skus_count || 0).toLocaleString()}</strong> SKU • <strong>${s.prices_updated || 0}</strong> giá riêng • <strong>${s.blocked_skus_count || 0}</strong> cấm bán</span>
                 </div>
             `;
@@ -723,7 +790,7 @@
 
         const mergedHtml = merged.length > 0
             ? `<div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-medium">
-                 Đã chuẩn hóa & gộp mã kênh cũ: <strong>${merged.map(m => m.from_code + ' → ' + m.to_code).join(', ')}</strong>
+                 Đã chuẩn hóa & gộp mã kênh cũ: <strong>${merged.map(m => escapeHtml(m.from_code) + ' → ' + escapeHtml(m.to_code)).join(', ')}</strong>
                </div>`
             : '';
 
@@ -830,23 +897,27 @@
                         ? (c.custom_price !== null && c.custom_price !== undefined
                             ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">Giá riêng sàn</span>'
                             : '<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">Theo giá chuẩn</span>')
-                        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">Kế thừa ${c.inherited_from || 'STORE'}</span>`;
+                        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">Kế thừa ${escapeHtml(c.inherited_from || 'STORE')}</span>`;
 
                     const effPrice = c.allowed_in_context ? formatVND(c.effective_price) : '<span class="text-rose-500 font-semibold">Ngưng bán</span>';
                     const checkedAttr = c.is_published ? 'checked' : '';
+                    const safeChannelCode = escapeHtml(c.channel_code);
+                    const safeChannelName = escapeHtml(c.channel_name);
+                    const safeAritoCode = escapeHtml(c.arito_channel_code || '—');
+                    const safeOvSku = escapeHtml(ov.sku);
 
                     rowsHtml += `
                         <tr class="hover:bg-slate-50">
                             <td class="py-2.5 pr-3">
-                                <span class="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded mr-1.5">${c.channel_code}</span>
-                                <span class="font-semibold text-slate-700">${c.channel_name}</span>
+                                <span class="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded mr-1.5">${safeChannelCode}</span>
+                                <span class="font-semibold text-slate-700">${safeChannelName}</span>
                             </td>
-                            <td class="py-2.5 px-3 font-mono font-bold text-slate-600">${c.arito_channel_code || '—'}</td>
+                            <td class="py-2.5 px-3 font-mono font-bold text-slate-600">${safeAritoCode}</td>
                             <td class="py-2.5 px-3">${srcBadge}</td>
                             <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${effPrice}</td>
                             <td class="py-2.5 pl-3 text-center">
                                 <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" ${checkedAttr} class="sr-only peer" onchange="toggleSkuChannelPublish('${ov.sku}', '${c.channel_code}', this)">
+                                    <input type="checkbox" ${checkedAttr} class="sr-only peer" data-sku="${safeOvSku}" data-channel="${safeChannelCode}" onchange="toggleSkuChannelPublish(this.dataset.sku, this.dataset.channel, this)">
                                     <div class="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
                                 </label>
                             </td>
@@ -855,7 +926,9 @@
                 });
                 tbody.innerHTML = rowsHtml;
             } else {
-                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-600 font-semibold">${json.message || 'Không thể tải dữ liệu kênh'}</td></tr>`;
+                const errMsg = json.message || 'Không thể tải dữ liệu kênh';
+                showToast(errMsg, 'error');
+                tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-rose-600 font-semibold">${escapeHtml(errMsg)}</td></tr>`;
             }
         } catch(e) {
             tbody.innerHTML = '<tr><td colspan="5" class="py-8 text-center text-rose-600 font-semibold">Lỗi kết nối khi tải dữ liệu kênh.</td></tr>';
@@ -921,8 +994,18 @@
         }
     }
 
+    // React to live user profile changes
+    window.addEventListener('currentUserLoaded', (e) => {
+        const scopeChanged = setupInventoryStoreScoping(e.detail);
+        if (scopeChanged) {
+            currentPage = 1;
+            loadInventoryOverview();
+        }
+    });
+
     // Init
     document.addEventListener('DOMContentLoaded', () => {
+        setupInventoryStoreScoping();
         loadCategories();
         loadInventoryOverview();
         checkPoppiesHealth();

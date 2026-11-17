@@ -35,6 +35,15 @@ class AuthService:
     def __init__(self):
         self._mongo_client: Optional[MongoClient] = None
 
+    def close(self) -> None:
+        """Close the MongoDB client connection pool on shutdown."""
+        if self._mongo_client is not None:
+            try:
+                self._mongo_client.close()
+            except Exception:
+                pass
+            self._mongo_client = None
+
     def _get_mongo_user_collection(self):
         """Return MongoDB collection handle for naman_internal_app.user."""
         if self._mongo_client is None:
@@ -187,6 +196,7 @@ class AuthService:
             select(User)
             .where(func.lower(User.username) == mapped["username"].lower())
             .options(selectinload(User.store))
+            .with_for_update()
         )
         user = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -300,7 +310,7 @@ class AuthService:
                     User.username == ident,
                     User.email == ident.lower(),
                 )
-            ).options(selectinload(User.store))
+            ).options(selectinload(User.store)).with_for_update()
             result = await db.execute(stmt)
             user = result.scalar_one_or_none()
 
@@ -389,6 +399,12 @@ class AuthService:
         user.failed_login_attempts = 0
         user.locked_until = None
         user.last_login_at = now
+        # Upgrade legacy unsalted MD5/SHA-256 hash in MongoDB/PostgreSQL to bcrypt on successful login
+        if target_hash and not str(target_hash).strip().startswith("$2"):
+            upgraded_hash = hash_password(password)
+            if mongo_doc is not None and mongo_doc.get("_id") is not None:
+                await asyncio.to_thread(self._update_mongo_password_sync, mongo_doc["_id"], upgraded_hash)
+            user.hashed_password = upgraded_hash
 
         # Generate access and refresh tokens
         token_payload = {
@@ -398,6 +414,7 @@ class AuthService:
             "store_id": user.store_id,
             "store_code": user.store_code,
             "is_superuser": user.is_superuser,
+            "ver": int(getattr(user, "token_version", 0) or 0),
         }
         access_token, access_exp = create_access_token(token_payload)
         refresh_raw, refresh_hash, refresh_exp = create_refresh_token({"sub": user.id})
@@ -457,9 +474,9 @@ class AuthService:
         if not user_id:
             raise UnauthorizedError("Payload token không chứa mã người dùng.")
 
-        # 2. Check token in database
+        # 2. Check token in database (lock row to prevent concurrent refresh races)
         hashed = hash_token(refresh_token_str)
-        stmt = select(RefreshToken).where(RefreshToken.token_hash == hashed)
+        stmt = select(RefreshToken).where(RefreshToken.token_hash == hashed).with_for_update()
         result = await db.execute(stmt)
         token_record = result.scalar_one_or_none()
 
@@ -483,6 +500,11 @@ class AuthService:
             all_tokens_result = await db.execute(revoke_all_stmt)
             for tok in all_tokens_result.scalars().all():
                 tok.revoked_at = now
+
+            user_stmt = select(User).where(User.id == user_id).with_for_update()
+            user_obj = (await db.execute(user_stmt)).scalar_one_or_none()
+            if user_obj is not None:
+                user_obj.token_version = int(getattr(user_obj, "token_version", 0) or 0) + 1
 
             await self.log_security_event(
                 db=db,
@@ -513,7 +535,8 @@ class AuthService:
                 else:
                     user.is_active = False
             except Exception as refresh_mongo_ex:
-                logger.warning(f"Không thể đối chiếu lại MongoDB khi refresh token cho '{user.username}': {refresh_mongo_ex}")
+                logger.error(f"Không thể đối chiếu lại MongoDB khi refresh token cho '{user.username}': {refresh_mongo_ex}")
+                raise UnauthorizedError("Không thể xác minh trạng thái tài khoản trên hệ thống nội bộ. Vui lòng đăng nhập lại.")
 
         if not user or not user.is_active:
             token_record.revoked_at = now
@@ -529,7 +552,9 @@ class AuthService:
             "username": user.username,
             "role": user.role,
             "store_id": user.store_id,
+            "store_code": user.store_code,
             "is_superuser": user.is_superuser,
+            "ver": int(getattr(user, "token_version", 0) or 0),
         }
         new_access_token, access_exp = create_access_token(token_payload)
         new_refresh_raw, new_refresh_hash, new_refresh_exp = create_refresh_token({"sub": user.id})
@@ -597,6 +622,8 @@ class AuthService:
             for tok in result.scalars().all():
                 tok.revoked_at = now
 
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+
         await self.log_security_event(
             db=db,
             event_type="LOGOUT",
@@ -617,34 +644,97 @@ class AuthService:
         user_agent: Optional[str] = None,
     ) -> None:
         """Change user password in MongoDB naman_internal_app.user and PG shadow, invalidating active refresh sessions."""
-        mongo_doc: Optional[Dict[str, Any]] = None
-        target_hash = user.hashed_password
-        if settings.AUTH_MONGO_ENABLED:
-            mongo_doc = await asyncio.to_thread(self._find_mongo_user_sync, user.username)
-            if mongo_doc:
-                target_hash = str(mongo_doc.get("password") or "")
+        now = datetime.now(timezone.utc)
+        locked_user = (
+            await db.execute(select(User).where(User.id == user.id).with_for_update())
+        ).scalar_one_or_none()
+        if not locked_user:
+            raise UnauthorizedError("Người dùng không tồn tại trong hệ thống.")
+        user = locked_user
 
-        if not verify_password(current_password, target_hash):
+        if user.locked_until and user.locked_until > now:
+            remaining_mins = int((user.locked_until - now).total_seconds() // 60) + 1
             await self.log_security_event(
                 db=db,
-                event_type="PASSWORD_CHANGE_FAILED",
+                event_type="PASSWORD_CHANGE_BLOCKED_LOCKED",
                 user_id=user.id,
                 username=user.username,
                 ip_address=ip_address,
                 user_agent=user_agent,
-                details={"reason": "INCORRECT_CURRENT_PASSWORD"},
+                details={"remaining_minutes": remaining_mins},
             )
             await db.commit()
+            raise UnauthorizedError(
+                f"Tài khoản đang bị tạm khóa do nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau {remaining_mins} phút."
+            )
+
+        mongo_doc: Optional[Dict[str, Any]] = None
+        target_hash = user.hashed_password
+        if settings.AUTH_MONGO_ENABLED:
+            try:
+                mongo_doc = await asyncio.to_thread(self._find_mongo_user_sync, user.username)
+            except Exception as mongo_ex:
+                logger.error(f"Lỗi kết nối MongoDB naman_internal_app.user khi đổi mật khẩu '{user.username}': {mongo_ex}")
+                raise UnauthorizedError("Không thể kết nối máy chủ xác thực nội bộ Nam An (MongoDB). Vui lòng thử lại sau.")
+            if not mongo_doc:
+                raise UnauthorizedError("Không tìm thấy tài khoản trên hệ thống xác thực nội bộ.")
+            target_hash = str(mongo_doc.get("password") or "")
+
+        if not verify_password(current_password, target_hash):
+            user.failed_login_attempts = int(getattr(user, "failed_login_attempts", 0) or 0) + 1
+            is_locked = False
+            if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+                user.locked_until = now + timedelta(minutes=settings.ACCOUNT_LOCKOUT_MINUTES)
+                is_locked = True
+                await self.log_security_event(
+                    db=db,
+                    event_type="ACCOUNT_LOCKED",
+                    user_id=user.id,
+                    username=user.username,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={
+                        "reason": "INCORRECT_CURRENT_PASSWORD",
+                        "failed_attempts": user.failed_login_attempts,
+                        "lockout_minutes": settings.ACCOUNT_LOCKOUT_MINUTES,
+                    },
+                )
+            else:
+                await self.log_security_event(
+                    db=db,
+                    event_type="PASSWORD_CHANGE_FAILED",
+                    user_id=user.id,
+                    username=user.username,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={
+                        "reason": "INCORRECT_CURRENT_PASSWORD",
+                        "failed_attempts": user.failed_login_attempts,
+                    },
+                )
+            await db.commit()
+            if is_locked:
+                raise UnauthorizedError(
+                    f"Bạn đã nhập sai mật khẩu {user.failed_login_attempts} lần. Tài khoản tạm thời bị khóa trong {settings.ACCOUNT_LOCKOUT_MINUTES} phút."
+                )
             raise ValidationError("Mật khẩu hiện tại không chính xác.")
 
         if current_password == new_password:
             raise ValidationError("Mật khẩu mới không được trùng với mật khẩu hiện tại.")
 
-        now = datetime.now(timezone.utc)
         new_hashed = hash_password(new_password)
-        if settings.AUTH_MONGO_ENABLED and mongo_doc and mongo_doc.get("_id") is not None:
-            await asyncio.to_thread(self._update_mongo_password_sync, mongo_doc["_id"], new_hashed)
+        if settings.AUTH_MONGO_ENABLED:
+            if not mongo_doc or mongo_doc.get("_id") is None:
+                raise UnauthorizedError("Không tìm thấy tài khoản trên hệ thống xác thực nội bộ.")
+            try:
+                await asyncio.to_thread(self._update_mongo_password_sync, mongo_doc["_id"], new_hashed)
+            except Exception as mongo_ex:
+                logger.error(f"Lỗi cập nhật mật khẩu trên MongoDB cho '{user.username}': {mongo_ex}")
+                raise UnauthorizedError("Không thể cập nhật mật khẩu trên máy chủ xác thực nội bộ Nam An (MongoDB). Vui lòng thử lại sau.")
         user.hashed_password = new_hashed
+        user.failed_login_attempts = 0
+        user.locked_until = None
+        user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
 
         # Invalidate all existing refresh tokens for security
         stmt = select(RefreshToken).where(
@@ -792,6 +882,7 @@ class AuthService:
 
         if user_in.password:
             user.hashed_password = hash_password(user_in.password)
+            user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
             # Revoke refresh tokens on admin password reset
             now = datetime.now(timezone.utc)
             stmt = select(RefreshToken).where(
@@ -922,6 +1013,10 @@ class AuthService:
             stmt_user = select(User).where(User.username == settings.INITIAL_ADMIN_USERNAME)
             user_res = await db.execute(stmt_user)
             if user_res.scalars().first():
+                return None
+
+            if not settings.INITIAL_ADMIN_PASSWORD:
+                logger.warning("INITIAL_ADMIN_PASSWORD chưa được cấu hình; bỏ qua bước tạo SuperAdmin mặc định.")
                 return None
 
             admin_user = User(

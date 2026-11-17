@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.api.deps import get_current_user, require_super_admin, require_store_manager, get_db
+from app.core.database import get_optional_db
 from app.main import app
 from app.models.channel import Channel
 from app.models.store import Store, StoreChannelMapping
@@ -40,6 +41,7 @@ async def test_e2e_shopeemart_complete_pipeline(client, mock_admin_user):
     app.dependency_overrides[get_current_user] = lambda: mock_admin_user
     app.dependency_overrides[require_super_admin] = lambda: mock_admin_user
     app.dependency_overrides[require_store_manager] = lambda: mock_admin_user
+    app.dependency_overrides[get_optional_db] = lambda: AsyncMock()
 
     try:
         # Step 1: Add new SKU to ShopeeMart Master Catalog
@@ -105,7 +107,18 @@ async def test_e2e_shopeemart_complete_pipeline(client, mock_admin_user):
                 ]
             }
         }
-        res_hook = client.post("/shopeemart/webhooks/order", json=order_webhook_payload)
+        with (
+            patch("app.modules.shopeemart.router.shopeemart_client.verify_webhook_signature", return_value=True),
+            patch(
+                "app.modules.shopeemart.router.adapter.handle_order_webhook",
+                new=AsyncMock(return_value={"code": 0, "message": "success"}),
+            ),
+        ):
+            res_hook = client.post(
+                "/shopeemart/webhooks/order",
+                json=order_webhook_payload,
+                headers={"Authorization": "valid_test_sig"},
+            )
         assert res_hook.status_code == 200
         assert res_hook.json()["code"] == 0
 

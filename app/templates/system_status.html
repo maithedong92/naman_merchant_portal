@@ -321,9 +321,12 @@
                 if (data.success && data.data) {
                     renderHealthComponents(data.data);
                 }
+            } else {
+                showToast(`Không thể tải trạng thái hệ thống (HTTP ${res.status})`, 'error');
             }
         } catch(e) {
             console.error("Lỗi khi tải system health:", e);
+            showToast('Lỗi kết nối khi tải trạng thái hệ thống', 'error');
         }
     }
 
@@ -343,14 +346,14 @@
             card.innerHTML = `
                 <div>
                     <div class="flex items-center justify-between mb-1.5">
-                        <span class="font-medium text-xs text-[#37352F]">${c.name}</span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${badgeClass}">${c.status}</span>
+                        <span class="font-medium text-xs text-[#37352F]">${escapeHtml(c.name)}</span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${badgeClass}">${escapeHtml(c.status)}</span>
                     </div>
-                    <p class="text-[11px] text-[#787774]">${c.details || 'Bình thường'}</p>
+                    <p class="text-[11px] text-[#787774]">${escapeHtml(c.details || 'Bình thường')}</p>
                 </div>
                 ${c.latency_ms !== null && c.latency_ms !== undefined ? `
                     <div class="mt-2 pt-1.5 border-t border-[#E9E9E7]/60 text-[11px] text-[#9B9A97] font-mono">
-                        Latency: <span class="font-semibold text-[#0F7B6C]">${c.latency_ms} ms</span>
+                        Latency: <span class="font-semibold text-[#0F7B6C]">${Number(c.latency_ms) || 0} ms</span>
                     </div>
                 ` : ''}
             `;
@@ -404,6 +407,9 @@
         if (search) url += `&search=${encodeURIComponent(search)}`;
 
         const tbody = document.getElementById('errors-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-[#787774] text-xs">Đang tải danh sách sự cố...</td></tr>';
+        }
         try {
             const res = await authFetch(url);
             if (res.ok) {
@@ -413,10 +419,13 @@
                     renderPagination(data.data.meta);
                 }
             } else {
-                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-[#D44C47] text-xs">Không thể tải danh sách lỗi (HTTP ${res.status})</td></tr>`;
+                const errMsg = `Không thể tải danh sách lỗi (HTTP ${res.status})`;
+                showToast(errMsg, 'error');
+                tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-[#D44C47] text-xs space-y-2"><div>${escapeHtml(errMsg)}</div><button type="button" onclick="loadErrorsTable()" class="px-2.5 py-1 rounded bg-white border border-[#FFE2DD] text-[#D44C47] text-xs font-medium hover:bg-[#FFE2DD]/30">Thử lại</button></td></tr>`;
             }
         } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-[#D44C47] text-xs">Lỗi kết nối khi tải dữ liệu</td></tr>`;
+            showToast('Lỗi kết nối khi tải danh sách lỗi', 'error');
+            tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-[#D44C47] text-xs space-y-2"><div>Lỗi kết nối khi tải dữ liệu</div><button type="button" onclick="loadErrorsTable()" class="px-2.5 py-1 rounded bg-white border border-[#FFE2DD] text-[#D44C47] text-xs font-medium hover:bg-[#FFE2DD]/30">Thử lại</button></td></tr>`;
         }
     }
 
@@ -461,41 +470,50 @@
             const timeStr = occurredDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
             const dateStr = occurredDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 
+            const safeId = escapeHtml(e.id);
+            const safeCode = escapeHtml(e.error_code);
+            const safeSev = escapeHtml(e.severity);
+            const safeMod = escapeHtml(e.module);
+            const safeMsg = escapeHtml(e.message);
+            const safeMethod = escapeHtml(e.http_method || '');
+            const safeEndpoint = escapeHtml(e.endpoint || '');
+            const safeStatus = escapeHtml(e.resolution_status);
+
             tr.innerHTML = `
                 <td class="py-2.5 pr-3">
                     <div class="font-mono font-medium text-[#37352F] text-xs flex items-center space-x-1.5">
-                        <span>${e.error_code}</span>
-                        ${e.occurrence_count > 1 ? `<span class="px-1.5 py-0.2 rounded bg-[#F1F1EF] text-[#787774] text-[10px] font-mono">x${e.occurrence_count}</span>` : ''}
+                        <span>${safeCode}</span>
+                        ${e.occurrence_count > 1 ? `<span class="px-1.5 py-0.2 rounded bg-[#F1F1EF] text-[#787774] text-[10px] font-mono">x${Number(e.occurrence_count) || 1}</span>` : ''}
                     </div>
-                    <div class="text-[10px] text-[#9B9A97] font-mono truncate max-w-[120px]">${e.id}</div>
+                    <div class="text-[10px] text-[#9B9A97] font-mono truncate max-w-[120px]">${safeId}</div>
                 </td>
                 <td class="py-2.5 px-3">
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${sevBadge}">${e.severity}</span>
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium ${sevBadge}">${safeSev}</span>
                 </td>
                 <td class="py-2.5 px-3">
-                    <span class="font-mono text-xs text-[#37352F]">${e.module}</span>
+                    <span class="font-mono text-xs text-[#37352F]">${safeMod}</span>
                 </td>
                 <td class="py-2.5 px-3 max-w-xs sm:max-w-md">
-                    <div class="font-medium text-[#37352F] text-xs truncate" title="${e.message}">${e.message}</div>
-                    ${e.endpoint ? `<div class="text-[11px] text-[#9B9A97] font-mono truncate mt-0.5">${e.http_method || ''} ${e.endpoint}</div>` : ''}
+                    <div class="font-medium text-[#37352F] text-xs truncate" title="${safeMsg}">${safeMsg}</div>
+                    ${e.endpoint ? `<div class="text-[11px] text-[#9B9A97] font-mono truncate mt-0.5">${safeMethod} ${safeEndpoint}</div>` : ''}
                 </td>
                 <td class="py-2.5 px-3 whitespace-nowrap text-[#787774] text-xs">
-                    <div>${timeStr}</div>
-                    <div class="text-[10px] text-[#9B9A97]">${dateStr}</div>
+                    <div>${escapeHtml(timeStr)}</div>
+                    <div class="text-[10px] text-[#9B9A97]">${escapeHtml(dateStr)}</div>
                 </td>
                 <td class="py-2.5 px-3 whitespace-nowrap">
-                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusBadge}">${e.resolution_status}</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusBadge}">${safeStatus}</span>
                 </td>
                 <td class="py-2.5 pl-3 text-right whitespace-nowrap space-x-1">
-                    <button onclick="viewErrorDetail('${e.id}')" class="px-2.5 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
+                    <button data-id="${safeId}" onclick="viewErrorDetail(this.dataset.id)" class="px-2.5 py-1 rounded text-xs font-medium text-[#37352F] bg-white border border-[#E9E9E7] hover:bg-[#F7F6F3] transition-colors shadow-2xs">
                         Chi tiết
                     </button>
                     ${e.resolution_status !== 'RESOLVED' ? `
-                        <button onclick="openResolveModal('${e.id}')" class="px-2.5 py-1 rounded text-xs font-medium bg-[#2F3437] text-white hover:bg-[#474C50] shadow-2xs transition-colors">
+                        <button data-id="${safeId}" onclick="openResolveModal(this.dataset.id)" class="px-2.5 py-1 rounded text-xs font-medium bg-[#2F3437] text-white hover:bg-[#474C50] shadow-2xs transition-colors">
                             Xử lý
                         </button>
                     ` : `
-                        <button onclick="reopenIncident('${e.id}')" class="px-2.5 py-1 rounded text-xs font-medium text-[#787774] bg-[#F1F1EF] hover:bg-[#E9E9E7] transition-colors">
+                        <button data-id="${safeId}" onclick="reopenIncident(this.dataset.id)" class="px-2.5 py-1 rounded text-xs font-medium text-[#787774] bg-[#F1F1EF] hover:bg-[#E9E9E7] transition-colors">
                             Mở lại
                         </button>
                     `}

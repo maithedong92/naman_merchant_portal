@@ -117,10 +117,17 @@ async def test_shopeemart_token_exchange_simulation():
     assert valid_token == token_resp.access_token
 
 
-def test_shopeemart_connection_status_endpoint(client):
-    """Test public connection status endpoint."""
-    response = client.get("/shopeemart/connection-status?shop_id=10001")
-    assert response.status_code == 200
+def test_shopeemart_connection_status_endpoint(client, mock_admin_user):
+    """Test authenticated connection status endpoint (and 401 when unauthenticated)."""
+    unauth = client.get("/shopeemart/connection-status?shop_id=10001")
+    assert unauth.status_code == 401
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_admin_user
+    try:
+        response = client.get("/shopeemart/connection-status?shop_id=10001")
+        assert response.status_code == 200
+    finally:
+        app.dependency_overrides.clear()
     data = response.json()
     assert data["success"] is True
     assert data["data"]["channel_code"] == "SHOPEEMART"

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_store_manager, require_super_admin
+from app.api.deps import check_store_access, get_current_user, require_store_manager, require_super_admin
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.responses import APIResponse
@@ -86,7 +86,7 @@ async def sync_and_match_channels_from_poppies(
         False,
         description="Đồng bộ kèm toàn bộ Master SKU & tồn kho CTTK từ Poppies ERP",
     ),
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -139,7 +139,7 @@ async def get_channel(
 async def update_channel_features(
     channel_code: str,
     payload: ChannelFeatureUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -192,19 +192,20 @@ async def create_channel(
 async def sync_channel_menu(
     channel_code: str,
     store_id: Optional[str] = Query(None, description="ID hoặc mã chi nhánh (mặc định 10001)"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger menu/catalog synchronization for a specific channel and store."""
     code_upper = channel_code.upper()
     adapter = channel_registry.get(code_upper)
     if not adapter:
-        raise NotFoundError(f"Không tìm thấy Adapter cho kênh '{code_upper}'.")
+        raise NotFoundError("ChannelAdapter", code_upper)
 
-    target_store_key = store_id or "10001"
+    target_store_key = store_id or current_user.store_id or "10001"
     store_stmt = select(Store).where((Store.id == target_store_key) | (Store.code == target_store_key))
     store_obj = (await db.execute(store_stmt)).scalar_one_or_none()
     effective_store_id = store_obj.id if store_obj else target_store_key
+    check_store_access(current_user, effective_store_id)
 
     mapping_stmt = (
         select(StoreChannelMapping)

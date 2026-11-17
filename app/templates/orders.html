@@ -813,7 +813,7 @@
         } else if (c === 'HARAVAN') {
             return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">Haravan</span>`;
         }
-        return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${c}</span>`;
+        return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">${escapeHtml(c)}</span>`;
     }
 
     // Haravan Source/Channel Badge Helper (Distinct Brand Colors)
@@ -851,7 +851,7 @@
             'CANCELLED': { label: 'Đã Hủy', class: 'bg-rose-50 text-rose-900 border border-rose-200 font-bold' },
         };
         const s = map[status] || { label: status, class: 'bg-slate-100 text-slate-800 font-bold' };
-        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap ${s.class}">${s.label}</span>`;
+        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap ${s.class}">${escapeHtml(s.label)}</span>`;
     }
 
     // Status Badge Helpers (Haravan Omnichannel Orders - Follow 100% PMDONHANG)
@@ -866,7 +866,7 @@
             'Đã hủy': { label: 'Đã Hủy', class: 'bg-rose-50 text-rose-900 border border-rose-200 font-bold' },
         };
         const s = map[status] || { label: status || 'Chờ xử lý', class: 'bg-slate-100 text-slate-800 font-bold' };
-        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap ${s.class}">${s.label}</span>`;
+        return `<span class="px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap ${s.class}">${escapeHtml(s.label)}</span>`;
     }
 
     // Dynamic Status Dropdown Switcher (Platform vs Haravan)
@@ -995,11 +995,11 @@
         if (!btnTable || !btnCard) return;
 
         if (currentViewMode === 'table') {
-            btnTable.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors bg-white text-[#37352F] shadow-xs";
-            btnCard.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors text-[#787774] hover:text-[#37352F]";
+            btnTable.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm transition-all flex items-center space-x-1.5";
+            btnCard.className = "px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-1.5";
         } else {
-            btnCard.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors bg-white text-[#37352F] shadow-xs";
-            btnTable.className = "px-2 py-1 rounded text-[11px] font-medium flex items-center space-x-1 transition-colors text-[#787774] hover:text-[#37352F]";
+            btnCard.className = "px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-900 shadow-sm transition-all flex items-center space-x-1.5";
+            btnTable.className = "px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-1.5";
         }
     }
 
@@ -1065,11 +1065,11 @@
             const tab = document.getElementById(stageMap[key]);
             if (!tab) return;
             if (key === activeStage) {
-                tab.classList.add('bg-[#F7F6F3]', 'border-[rgba(55,53,47,0.2)]', 'shadow-xs');
-                tab.classList.remove('border-transparent');
+                tab.classList.add('ring-2', 'ring-slate-900', 'bg-slate-50');
+                tab.classList.remove('border-slate-200/80');
             } else {
-                tab.classList.remove('bg-[#F7F6F3]', 'border-[rgba(55,53,47,0.2)]', 'shadow-xs');
-                tab.classList.add('border-transparent');
+                tab.classList.remove('ring-2', 'ring-slate-900', 'bg-slate-50');
+                tab.classList.add('border-slate-200/80');
             }
         });
     }
@@ -1102,6 +1102,27 @@
     }
 
     // Load Order Feed (Omnichannel: Platform + Haravan)
+    function renderOrdersFeedError(message) {
+        const container = document.getElementById('orders-container');
+        if (!container) return;
+        const safeMsg = escapeHtml(message || 'Không thể tải danh sách đơn hàng.');
+        container.innerHTML = `
+            <div class="p-10 text-center bg-white rounded-3xl border border-rose-200 apple-shadow space-y-3">
+                <div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div class="text-sm font-bold text-slate-900">Không thể tải dữ liệu đơn hàng</div>
+                <div class="text-xs text-rose-600 font-medium">${safeMsg}</div>
+                <button type="button" onclick="loadOrdersFeed(true)" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm inline-flex items-center space-x-1.5">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <span>Thử lại</span>
+                </button>
+            </div>
+        `;
+    }
+
     async function loadOrdersFeed(isManual = false) {
         if (_isLoadingFeed && !isManual) return;
         _isLoadingFeed = true;
@@ -1142,6 +1163,11 @@
                         renderHaravanSummary(items, json.data.total);
                         checkNewHaravanOrders(items);
                     }
+                } else {
+                    const errJson = await res.json().catch(() => ({}));
+                    const errMsg = errJson.detail || errJson.message || `Lỗi máy chủ khi tải đơn Haravan (HTTP ${res.status})`;
+                    renderOrdersFeedError(errMsg);
+                    if (isManual) showToast(errMsg, 'error');
                 }
             } else {
                 // Fetch Platform Orders from Unified Orders API (ShopeeFood, GrabMart, ShopeeMart)
@@ -1166,6 +1192,11 @@
                         renderPagination(ordersJson.data.meta);
                         checkNewPendingOrders(ordersJson.data.items || []);
                     }
+                } else {
+                    const errJson = await ordersRes.json().catch(() => ({}));
+                    const errMsg = errJson.detail || errJson.message || `Lỗi máy chủ khi tải đơn sàn (HTTP ${ordersRes.status})`;
+                    renderOrdersFeedError(errMsg);
+                    if (isManual) showToast(errMsg, 'error');
                 }
 
                 if (summaryRes.ok) {
@@ -1177,6 +1208,8 @@
             }
         } catch(e) {
             console.error("Lỗi khi tải đơn hàng:", e);
+            renderOrdersFeedError('Lỗi kết nối mạng khi tải danh sách đơn hàng.');
+            if (isManual) showToast('Lỗi kết nối mạng khi tải đơn hàng.', 'error');
         } finally {
             _isLoadingFeed = false;
             if (spinner && isManual) {
@@ -1191,7 +1224,7 @@
         document.getElementById('kpi-preparing-count').textContent = s.preparing_count;
         document.getElementById('kpi-ready-count').textContent = s.ready_count;
         document.getElementById('kpi-delivering-count').textContent = s.delivering_count;
-        document.getElementById('kpi-delivered-count').textContent = s.delivered_today_count;
+        document.getElementById('kpi-delivered-count').textContent = `${s.delivered_today_count || 0} đơn`;
         document.getElementById('kpi-revenue-today').textContent = formatVND(s.revenue_today);
         const totalAll = (s.pending_count || 0) + (s.preparing_count || 0) + (s.ready_count || 0) + (s.delivering_count || 0) + (s.delivered_today_count || 0);
         const allEl = document.getElementById('kpi-all-count');
@@ -1244,7 +1277,7 @@
         document.getElementById('kpi-preparing-count').textContent = assigned;
         document.getElementById('kpi-ready-count').textContent = packed;
         document.getElementById('kpi-delivering-count').textContent = shipped;
-        document.getElementById('kpi-delivered-count').textContent = completed;
+        document.getElementById('kpi-delivered-count').textContent = `${completed || 0} đơn`;
         document.getElementById('kpi-revenue-today').textContent = formatVND(revenue);
         const allEl = document.getElementById('kpi-all-count');
         if (allEl) allEl.textContent = total !== undefined ? total : items.length;
@@ -1311,7 +1344,7 @@
             items.slice(0, 3).forEach(it => {
                 itemsSnippet += `
                     <div class="flex items-center text-xs font-medium py-0.5 max-w-[220px] truncate">
-                        <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-900 font-mono font-bold text-[11px] mr-1.5 shrink-0">${it.quantity}x</span>
+                        <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-900 font-mono font-bold text-[11px] mr-1.5 shrink-0">${Number(it.quantity || 0)}x</span>
                         <span class="text-slate-800 truncate" title="${escapeHtml(it.item_name)}">${escapeHtml(it.item_name)}</span>
                     </div>
                 `;
@@ -1336,30 +1369,33 @@
 
             // Action Buttons (Streamlined, No Overlap, RBAC-gated)
             const readOnlyUser = isReadOnly();
+            const safeOrderId = escapeHtml(o.id);
+            const safeOrderCode = escapeHtml(o.order_code);
+            const safeAwbSn = escapeHtml(o.channel_order_id || o.display_order_id);
             let actionsHtml = `
                 <div class="inline-flex items-center justify-end gap-1.5">
                     ${!readOnlyUser && isPending ? `
-                        <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
-                        <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeOrderId}" data-code="${safeOrderCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
+                        <button data-id="${safeOrderId}" onclick="transitionOrderStatus(this.dataset.id, 'ACCEPTED', 'Xác nhận tiếp nhận đơn')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Xác Nhận
                         </button>
                     ` : ''}
 
                     ${!readOnlyUser && isAccepted ? `
-                        <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
-                        <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeOrderId}" data-code="${safeOrderCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap">Hủy</button>
+                        <button data-id="${safeOrderId}" onclick="transitionOrderStatus(this.dataset.id, 'READY', 'Đã soạn hàng xong, sẵn sàng bàn giao')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Báo Xong
                         </button>
                     ` : ''}
 
                     ${!readOnlyUser && isReady ? `
-                        <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeOrderId}" onclick="transitionOrderStatus(this.dataset.id, 'PICKED_UP', 'Đã bàn giao đơn hàng cho tài xế')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Giao Xế
                         </button>
                     ` : ''}
 
                     ${o.channel_code === 'SHOPEEMART' ? `
-                        <button onclick="openShopeeAwbModal('${escapeHtml(o.channel_order_id || o.display_order_id)}')" class="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all whitespace-nowrap" title="In Vận Đơn AWB Shopee">
+                        <button data-sn="${safeAwbSn}" onclick="openShopeeAwbModal(this.dataset.sn)" class="px-2 py-0.5 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition-all whitespace-nowrap" title="In Vận Đơn AWB Shopee">
                             AWB
                         </button>
                     ` : ''}
@@ -1367,9 +1403,9 @@
             `;
 
             rowsHtml += `
-                <tr onclick="handleOrderRowClick(event, '${escapeHtml(o.id)}')" class="transition-colors cursor-pointer ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
+                <tr data-id="${safeOrderId}" onclick="handleOrderRowClick(event, this.dataset.id)" class="transition-colors cursor-pointer ${isPending ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
                     <td class="py-2.5 px-3 whitespace-nowrap">
-                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${escapeHtml(o.id)}')" title="Bấm để xem chi tiết đơn hàng">
+                        <div class="cursor-pointer group/code" data-id="${safeOrderId}" onclick="openDetailsModal(this.dataset.id)" title="Bấm để xem chi tiết đơn hàng">
                             <div class="flex items-center gap-1.5">
                                 <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
                                     ${escapeHtml(o.order_code)}
@@ -1501,40 +1537,42 @@
             const totalAmount = Number(o.total_price || 0);
 
             // Action Buttons (Streamlined, strictly non-overlapping, RBAC-gated)
+            const safeHrvId = escapeHtml(o.id);
+            const safeHrvNum = escapeHtml(o.order_number || o.id);
             let actionsHtml = `
                 <div class="inline-flex items-center justify-end gap-1.5">
                     ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                        <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeHrvId}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Phân Tuyến
                         </button>
                     ` : ''}
 
                     ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-2 py-0.5 rounded-md border border-blue-200 hover:bg-blue-50 text-blue-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Đổi chi nhánh thực hiện đơn">
+                        <button data-id="${safeHrvId}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-2 py-0.5 rounded-md border border-blue-200 hover:bg-blue-50 text-blue-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Đổi chi nhánh thực hiện đơn">
                             Đổi CN
                         </button>
                     ` : ''}
 
                     ${!readOnlyUser && !isUnassigned && !canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                        <button onclick="openHaravanReassignModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
+                        <button data-id="${safeHrvId}" data-code="${safeHrvNum}" onclick="openHaravanReassignModal(this.dataset.id, this.dataset.code)" class="px-2 py-0.5 rounded-md border border-rose-200 hover:bg-rose-50 text-rose-700 text-[11px] font-bold transition-all whitespace-nowrap" title="Chi nhánh yêu cầu phân tuyến lại do thiếu tồn kho">
                             Y/C Đổi
                         </button>
                     ` : ''}
 
                     ${!readOnlyUser && !isUnassigned && procStatus === 'Đã phân tuyến' ? `
-                        <button onclick="executeHaravanPack('${escapeHtml(o.id)}')" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeHrvId}" onclick="executeHaravanPack(this.dataset.id)" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Đóng Gói
                         </button>
                     ` : ''}
 
                     ${!readOnlyUser && !isUnassigned && procStatus === 'Đã đóng gói' ? `
-                        <button onclick="openHaravanShipModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeHrvId}" data-code="${safeHrvNum}" onclick="openHaravanShipModal(this.dataset.id, this.dataset.code)" class="px-2.5 py-1 rounded-lg bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Gửi VĐ
                         </button>
                     ` : ''}
 
                     ${!readOnlyUser && !isUnassigned && procStatus === 'Đã gửi vận đơn' ? `
-                        <button onclick="openHaravanCompleteModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}', ${totalAmount})" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
+                        <button data-id="${safeHrvId}" data-code="${safeHrvNum}" data-total="${Number(totalAmount || 0)}" onclick="openHaravanCompleteModal(this.dataset.id, this.dataset.code, Number(this.dataset.total))" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition-all hover:scale-105 active:scale-95 whitespace-nowrap">
                             Hoàn Tất
                         </button>
                     ` : ''}
@@ -1542,9 +1580,9 @@
             `;
 
             rowsHtml += `
-                <tr onclick="handleOrderRowClick(event, '${escapeHtml(o.id)}')" class="transition-colors cursor-pointer ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
+                <tr data-id="${safeHrvId}" onclick="handleOrderRowClick(event, this.dataset.id)" class="transition-colors cursor-pointer ${isUnassigned ? 'bg-amber-50/40 hover:bg-amber-50/70 border-l-4 border-l-amber-500' : 'hover:bg-slate-50/90'}" title="Bấm vào dòng để xem chi tiết đơn hàng">
                     <td class="py-2.5 px-3 whitespace-nowrap">
-                        <div class="cursor-pointer group/code" onclick="openDetailsModal('${escapeHtml(o.id)}')" title="Bấm để xem chi tiết đơn hàng">
+                        <div class="cursor-pointer group/code" data-id="${safeHrvId}" onclick="openDetailsModal(this.dataset.id)" title="Bấm để xem chi tiết đơn hàng">
                             <div class="flex items-center gap-1.5">
                                 <span class="font-mono font-bold text-slate-900 text-xs sm:text-sm group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
                                     ${escapeHtml(o.order_number || ('#' + o.id))}
@@ -1677,7 +1715,7 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <div onclick="openDetailsModal('${escapeHtml(o.id)}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
+                            <div data-id="${escapeHtml(o.id)}" onclick="openDetailsModal(this.dataset.id)" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
                                 <span class="text-sm font-extrabold text-slate-900 font-mono group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
                                     ${escapeHtml(o.order_code)}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
@@ -1742,11 +1780,11 @@
                     <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-2">
                             ${o.channel_code === 'SHOPEEMART' ? `
-                                <button onclick="openShopeeAwbModal('${escapeHtml(o.channel_order_id || o.display_order_id)}')" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-xs font-bold text-pink-700 border border-pink-200 transition-all flex items-center space-x-1">
+                                <button data-sn="${escapeHtml(o.channel_order_id || o.display_order_id)}" onclick="openShopeeAwbModal(this.dataset.sn)" class="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-xs font-bold text-pink-700 border border-pink-200 transition-all flex items-center space-x-1">
                                     <span>Vận Đơn AWB</span>
                                 </button>
                             ` : ''}
-                            <button onclick="openDetailsModal('${escapeHtml(o.id)}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
+                            <button data-id="${escapeHtml(o.id)}" onclick="openDetailsModal(this.dataset.id)" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all">
                                 Chi tiết & Lịch sử
                             </button>
                         </div>
@@ -1754,25 +1792,25 @@
                         <!-- Status Transition Action Buttons -->
                         <div class="flex items-center space-x-2">
                             ${!readOnlyUser && isPending ? `
-                                <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                                <button data-id="${escapeHtml(o.id)}" data-code="${escapeHtml(o.order_code)}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
-                                <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" onclick="transitionOrderStatus(this.dataset.id, 'ACCEPTED', 'Nhận đơn từ quầy điều phối')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Xác Nhận Đơn</span>
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && isAccepted ? `
-                                <button onclick="openCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_code)}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                                <button data-id="${escapeHtml(o.id)}" data-code="${escapeHtml(o.order_code)}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
-                                <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'READY', 'Món ăn đã đóng gói xong')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" onclick="transitionOrderStatus(this.dataset.id, 'READY', 'Món ăn đã đóng gói xong')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Báo Sẵn Sàng</span>
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && isReady ? `
-                                <button onclick="transitionOrderStatus('${escapeHtml(o.id)}', 'PICKED_UP', 'Tài xế đã nhận hàng tại quầy')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" onclick="transitionOrderStatus(this.dataset.id, 'PICKED_UP', 'Tài xế đã nhận hàng tại quầy')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Giao Cho Tài Xế</span>
                                 </button>
                             ` : ''}
@@ -1918,7 +1956,7 @@
                     <div class="flex flex-wrap items-center justify-between gap-2 pb-3.5 border-b border-slate-100">
                         <div class="flex flex-wrap items-center gap-2">
                             ${channelBadge}
-                            <div onclick="openDetailsModal('${escapeHtml(o.id)}')" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
+                            <div data-id="${escapeHtml(o.id)}" onclick="openDetailsModal(this.dataset.id)" class="cursor-pointer group/code flex items-center gap-1.5" title="Bấm để xem chi tiết đơn hàng">
                                 <span class="text-sm font-extrabold text-slate-900 font-mono group-hover/code:text-emerald-700 group-hover/code:underline flex items-center gap-1">
                                     ${escapeHtml(o.order_number || ('#' + o.id))}
                                     <svg class="w-3.5 h-3.5 text-slate-400 group-hover/code:text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
@@ -1973,7 +2011,7 @@
                     <!-- Bottom Row: Action Buttons Follow PMDONHANG -->
                     <div class="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2.5">
                         <div class="flex items-center space-x-2">
-                            <button onclick="openDetailsModal('${escapeHtml(o.id)}')" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all flex items-center space-x-1.5 shadow-2xs">
+                            <button data-id="${escapeHtml(o.id)}" onclick="openDetailsModal(this.dataset.id)" class="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-all flex items-center space-x-1.5 shadow-2xs">
                                 <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                                 <span>Chi tiết & Lịch sử</span>
                             </button>
@@ -1982,43 +2020,43 @@
                         <!-- Status Action Buttons -->
                         <div class="flex flex-wrap items-center gap-2">
                             ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                                <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Phân Tuyến Cửa Hàng</span>
                                 </button>
                             ` : ''}
 
                             ${!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanAssignModal('${escapeHtml(o.id)}')" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all">
+                                <button data-id="${escapeHtml(o.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 text-blue-700 text-xs font-bold transition-all">
                                     Đổi Chi Nhánh
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && !isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanReassignModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                                <button data-id="${escapeHtml(o.id)}" data-code="${escapeHtml(o.order_number || o.id)}" onclick="openHaravanReassignModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Thiếu Hàng / Trả Đơn
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && procStatus === 'Đã phân tuyến' ? `
-                                <button onclick="executeHaravanPack('${escapeHtml(o.id)}')" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" onclick="executeHaravanPack(this.dataset.id)" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Đã Đóng Gói Xong</span>
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && procStatus === 'Đã đóng gói' ? `
-                                <button onclick="openHaravanShipModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" data-code="${escapeHtml(o.order_number || o.id)}" onclick="openHaravanShipModal(this.dataset.id, this.dataset.code)" class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Gửi Vận Đơn</span>
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
-                                <button onclick="openHaravanCompleteModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}', ${totalAmount})" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
+                                <button data-id="${escapeHtml(o.id)}" data-code="${escapeHtml(o.order_number || o.id)}" data-total="${Number(totalAmount || 0)}" onclick="openHaravanCompleteModal(this.dataset.id, this.dataset.code, Number(this.dataset.total))" class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 flex items-center space-x-1">
                                     <span>Hoàn Tất Đơn</span>
                                 </button>
                             ` : ''}
 
                             ${!readOnlyUser && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy' ? `
-                                <button onclick="openHaravanCancelModal('${escapeHtml(o.id)}', '${escapeHtml(o.order_number || o.id)}')" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
+                                <button data-id="${escapeHtml(o.id)}" data-code="${escapeHtml(o.order_number || o.id)}" onclick="openHaravanCancelModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 text-xs font-bold transition-all">
                                     Hủy Đơn
                                 </button>
                             ` : ''}
@@ -2098,13 +2136,13 @@
         document.querySelectorAll('.channel-pill').forEach(btn => {
             const btnKey = btn.getAttribute('data-channel');
             if (btnKey === activeKey) {
-                btn.className = "channel-pill px-2.5 py-1 rounded text-[12px] font-semibold transition-colors bg-[#2F3437] text-white flex items-center space-x-1";
+                btn.className = "channel-pill px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-900 text-white shadow-sm flex items-center space-x-1.5";
             } else if (btnKey === 'HARAVAN_UNASSIGNED') {
-                btn.className = "channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors bg-[#FBEDD6] text-[#CB912F] hover:bg-[#F8E5C4] flex items-center space-x-1";
+                btn.className = "channel-pill px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 flex items-center space-x-1.5";
             } else if (btnKey === 'INCOMPLETE') {
-                btn.className = "channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors bg-[#EDF3EC] text-[#448361] hover:bg-[#E2EDE1] flex items-center space-x-1";
+                btn.className = "channel-pill px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 flex items-center space-x-1.5";
             } else {
-                btn.className = "channel-pill px-2.5 py-1 rounded text-[12px] font-medium transition-colors text-[#787774] hover:bg-[rgba(55,53,47,0.05)] hover:text-[#37352F] flex items-center space-x-1";
+                btn.className = "channel-pill px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200/70 transition-all flex items-center space-x-1.5";
             }
         });
     }
@@ -2723,7 +2761,7 @@
                         <textarea id="detail-admin-note-input" rows="2" ${readOnlyUser ? 'readonly' : ''} class="w-full text-[12px] p-2 rounded border border-[rgba(55,53,47,0.15)] focus:border-[#2F3437] focus:outline-none bg-white text-[#37352F]" placeholder="Nhập ghi chú điều phối nội bộ...">${escapeHtml(internal.admin_notes || '')}</textarea>
                         ${!readOnlyUser ? `
                         <div class="flex justify-end mt-1.5">
-                            <button id="btn-save-admin-note" onclick="saveDetailAdminNote('${escapeHtml(order.id)}')" class="px-3 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                            <button id="btn-save-admin-note" data-id="${escapeHtml(order.id)}" onclick="saveDetailAdminNote(this.dataset.id)" class="px-3 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
                                 <span>💾</span>
                                 <span>Lưu Ghi Chú Nội Bộ</span>
                             </button>
@@ -2802,16 +2840,16 @@
                                 ${orderFileUploadedAt ? `<span>${formatDateTime(orderFileUploadedAt)}</span>` : ''}
                             </div>
                             <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
-                                <button type="button" onclick="downloadHaravanFile('${escapeHtml(order.id)}', 'order')" class="flex-1 py-1 px-2.5 rounded bg-[#E7F3F8] hover:bg-[#D3EBF5] text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="downloadHaravanFile(this.dataset.id, 'order')" class="flex-1 py-1 px-2.5 rounded bg-[#E7F3F8] hover:bg-[#D3EBF5] text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
                                     <span>👁️</span>
                                     <span>Xem / Tải về</span>
                                 </button>
                                 ${!readOnlyUser ? `
                                 <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'order')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
                                 </label>
-                                <button type="button" onclick="triggerDeleteOrderFile('${escapeHtml(order.id)}', 'order')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'order')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
                                 </button>
                                 ` : ''}
@@ -2822,7 +2860,7 @@
                                 <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#2383E2]/40 hover:border-[#2383E2] bg-[#E7F3F8]/30 hover:bg-[#E7F3F8]/60 text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Đơn Hàng (PDF/Ảnh)</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'order')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
                                 </label>
                                 ` : `<span class="text-[11px] text-[#9B9A97] italic">Chưa có tệp đính kèm</span>`}
                             </div>
@@ -2850,16 +2888,16 @@
                                 ${trackingFileUploadedAt ? `<span>${formatDateTime(trackingFileUploadedAt)}</span>` : ''}
                             </div>
                             <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
-                                <button type="button" onclick="downloadHaravanFile('${escapeHtml(order.id)}', 'tracking')" class="flex-1 py-1 px-2.5 rounded bg-[#EDF3EC] hover:bg-[#DBEADB] text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="downloadHaravanFile(this.dataset.id, 'tracking')" class="flex-1 py-1 px-2.5 rounded bg-[#EDF3EC] hover:bg-[#DBEADB] text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
                                     <span>👁️</span>
                                     <span>Xem / Tải về</span>
                                 </button>
                                 ${!readOnlyUser ? `
                                 <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'tracking')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
                                 </label>
-                                <button type="button" onclick="triggerDeleteOrderFile('${escapeHtml(order.id)}', 'tracking')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'tracking')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
                                 </button>
                                 ` : ''}
@@ -2870,7 +2908,7 @@
                                 <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#448361]/40 hover:border-[#448361] bg-[#EDF3EC]/30 hover:bg-[#EDF3EC]/60 text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Vận Đơn (PDF/Ảnh)</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" onchange="handleOrderFileUpload(event, '${escapeHtml(order.id)}', 'tracking')">
+                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
                                 </label>
                                 ` : `<span class="text-[11px] text-[#9B9A97] italic">Chưa có tệp đính kèm</span>`}
                             </div>
@@ -3099,47 +3137,47 @@
 
             <div class="flex flex-wrap items-center gap-2">
                 ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                    <button onclick="openHaravanAssignModal('${escapeHtml(order.id)}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>⚡</span>
                         <span>Phân Tuyến Cửa Hàng</span>
                     </button>
                 ` : ''}
 
                 ${(!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button onclick="openHaravanAssignModal('${escapeHtml(order.id)}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[12px] font-medium transition-colors">
+                    <button data-id="${escapeHtml(order.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[12px] font-medium transition-colors">
                         Đổi Chi Nhánh
                     </button>
                 ` : ''}
 
                 ${(!readOnlyUser && !isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button onclick="openHaravanReassignModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}')" class="px-2.5 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanReassignModal(this.dataset.id, this.dataset.code)" class="px-2.5 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         ⚠️ Yêu Cầu PT Lại
                     </button>
                 ` : ''}
 
                 ${!readOnlyUser && procStatus === 'Đã phân tuyến' ? `
-                    <button onclick="executeHaravanPack('${escapeHtml(order.id)}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" onclick="executeHaravanPack(this.dataset.id)" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>📦</span>
                         <span>Đã Đóng Gói Xong</span>
                     </button>
                 ` : ''}
 
                 ${!readOnlyUser && procStatus === 'Đã đóng gói' ? `
-                    <button onclick="openHaravanShipModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}')" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanShipModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>🚚</span>
                         <span>Gửi Vận Đơn</span>
                     </button>
                 ` : ''}
 
                 ${!readOnlyUser && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
-                    <button onclick="openHaravanCompleteModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}', ${Number(totalAmount || 0)})" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" data-total="${Number(totalAmount || 0)}" onclick="openHaravanCompleteModal(this.dataset.id, this.dataset.code, Number(this.dataset.total))" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>✅</span>
                         <span>Hoàn Tất Đơn</span>
                     </button>
                 ` : ''}
 
                 ${(!readOnlyUser && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button onclick="openHaravanCancelModal('${escapeHtml(order.id)}', '${escapeHtml(order.order_number || order.id)}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn Hàng
                     </button>
                 ` : ''}
@@ -3282,13 +3320,13 @@
         let footerHtml = `
             <div class="flex items-center space-x-2">
                 ${order.channel_code === 'SHOPEEMART' ? `
-                    <button onclick="openShopeeAwbModal('${safeSn}')" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
+                    <button data-sn="${safeSn}" onclick="openShopeeAwbModal(this.dataset.sn)" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
                         <span>📄</span>
                         <span>Vận Đơn AWB</span></button>
-                    <button onclick="downloadShopeeAwbPdf('${safeSn}')" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
+                    <button data-sn="${safeSn}" onclick="downloadShopeeAwbPdf(this.dataset.sn)" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
                     ${!readOnlyUser ? `
-                    <button onclick="handleShopeeBuyerCancellation('${safeSn}', 'ACCEPT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#EDF3EC] text-[11px] font-medium text-[#448361] transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
-                    <button onclick="handleShopeeBuyerCancellation('${safeSn}', 'REJECT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#FDEBEC] text-[11px] font-medium text-[#D44C47] transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
+                    <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'ACCEPT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#EDF3EC] text-[11px] font-medium text-[#448361] transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
+                    <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'REJECT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#FDEBEC] text-[11px] font-medium text-[#D44C47] transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
                     </button>
                     ` : ''}
                 ` : ''}
@@ -3296,20 +3334,20 @@
 
             <div class="flex flex-wrap items-center gap-2">
                 ${(!readOnlyUser && order.status === 'PENDING') ? `
-                    <button onclick="openCancelModal('${safeId}', '${safeCode}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn
                     </button>
-                    <button onclick="transitionOrderStatus('${safeId}', 'ACCEPTED', 'Nhận đơn từ quầy điều phối'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                    <button data-id="${safeId}" onclick="transitionOrderStatus(this.dataset.id, 'ACCEPTED', 'Nhận đơn từ quầy điều phối'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
                         <span>✓</span>
                         <span>Xác Nhận Đơn</span>
                     </button>
                 ` : ''}
 
                 ${(!readOnlyUser && (order.status === 'ACCEPTED' || order.status === 'PREPARING')) ? `
-                    <button onclick="openCancelModal('${safeId}', '${safeCode}')" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
                         Hủy Đơn
                     </button>
-                    <button onclick="transitionOrderStatus('${safeId}', 'READY', 'Món ăn đã đóng gói xong'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                    <button data-id="${safeId}" onclick="transitionOrderStatus(this.dataset.id, 'READY', 'Món ăn đã đóng gói xong'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
                         <span>📦</span>
                         <span>Báo Sẵn Sàng</span>
                     </button>
@@ -3509,7 +3547,7 @@
                                 <span class="text-base">💡</span>
                                 <span>Gợi ý hệ thống: Chi nhánh <strong>${escapeHtml(rec.store_name)} (${safeRecStore})</strong> có đủ <strong>${rec.fulfilled_items_count}/${rec.total_items_count}</strong> sản phẩm theo tồn Arito.</span>
                             </div>
-                            <button onclick="selectAssignStore('${safeRecStore}')" class="px-2.5 py-1 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium text-[11px] shrink-0 transition-colors">
+                            <button data-store="${safeRecStore}" onclick="selectAssignStore(this.dataset.store)" class="px-2.5 py-1 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium text-[11px] shrink-0 transition-colors">
                                 ⚡ Chọn chi nhánh này
                             </button>
                         `;

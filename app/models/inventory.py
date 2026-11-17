@@ -19,7 +19,7 @@ class StoreInventory(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     store_id: Mapped[str] = mapped_column(String(36), ForeignKey("stores.id"), nullable=False)
-    product_id: Mapped[str] = mapped_column(String(36), ForeignKey("products.id"), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(36), ForeignKey("products.id"), nullable=False, index=True)
     sku: Mapped[str] = mapped_column(String(100), nullable=False)
     
     total_stock: Mapped[float] = mapped_column(Numeric(12, 2), default=0.0, nullable=False)
@@ -38,9 +38,12 @@ class StoreInventory(Base, TimestampMixin):
 class InventoryStockLog(Base, TimestampMixin):
     """Audit log for stock movement and adjustments."""
     __tablename__ = "inventory_stock_logs"
+    __table_args__ = (
+        Index("ix_inventory_stock_logs_created_at", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
-    store_id: Mapped[str] = mapped_column(String(36), ForeignKey("stores.id"), nullable=False)
+    store_id: Mapped[str] = mapped_column(String(36), ForeignKey("stores.id"), nullable=False, index=True)
     sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     change_type: Mapped[str] = mapped_column(
         String(50), nullable=False, comment="SYNC, ORDER_RESERVE, ORDER_CANCEL, MANUAL"
@@ -49,6 +52,6 @@ class InventoryStockLog(Base, TimestampMixin):
     quantity_delta: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     quantity_after: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     reference_id: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True, comment="Order ID or Batch Sync ID"
+        String(100), nullable=True, index=True, comment="Order ID or Batch Sync ID"
     )
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

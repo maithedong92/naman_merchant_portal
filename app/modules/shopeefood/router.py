@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import secrets
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
@@ -11,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import check_store_access, get_current_active_user
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError
-from app.core.security import verify_hmac_sha256
+from app.core.security import redact_sensitive_headers, verify_hmac_sha256
 from app.core.config import get_settings
 from app.models.channel import Channel
 from app.models.operational_error import ErrorSeverity
@@ -65,41 +66,41 @@ async def receive_shopeefood_order_webhook(
     if request.url.query:
         public_url = f"{public_url}?{request.url.query}"
 
-    # Enforce signature check when Authorization header is provided, or when request arrives via reverse proxy
-    if authorization:
-        sig = (
-            authorization.replace("Signature ", "").strip()
-            if authorization.startswith("Signature ")
-            else authorization.strip()
-        )
-        full_url = str(request.url)
-        try:
-            valid = shopeefood_client.verify_hmac_sha256(
-                raw_body,
-                sig,
-                method=request.method,
-                full_url=full_url,
-                public_url=public_url,
-            )
-        except TypeError:
-            valid = shopeefood_client.verify_hmac_sha256(raw_body, sig)
-
-        if not valid:
-            body_str = raw_body.decode("utf-8", errors="ignore") if raw_body else ""
-            base_string = f"{request.method.upper()}|{full_url}|{body_str}"
-            valid = verify_hmac_sha256(settings.SHOPEEFOOD_APP_KEY, base_string, sig, is_hex_key=True)
-
-        if not valid:
-            logger.warning("ShopeeFood webhook signature verification failed.")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="ShopeeFood webhook signature verification failed",
-            )
-    elif request.headers.get("x-forwarded-proto") or request.headers.get("x-real-ip"):
-        logger.warning("ShopeeFood webhook rejected: missing Authorization signature header from external proxy.")
+    # Fail-closed: always require valid Authorization signature
+    if not authorization:
+        logger.warning("ShopeeFood webhook rejected: missing Authorization signature header.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing ShopeeFood Authorization signature header",
+        )
+
+    sig = (
+        authorization.replace("Signature ", "").strip()
+        if authorization.startswith("Signature ")
+        else authorization.strip()
+    )
+    full_url = str(request.url)
+    try:
+        valid = shopeefood_client.verify_hmac_sha256(
+            raw_body,
+            sig,
+            method=request.method,
+            full_url=full_url,
+            public_url=public_url,
+        )
+    except TypeError:
+        valid = shopeefood_client.verify_hmac_sha256(raw_body, sig)
+
+    if not valid and settings.SHOPEEFOOD_APP_KEY:
+        body_str = raw_body.decode("utf-8", errors="ignore") if raw_body else ""
+        base_string = f"{request.method.upper()}|{full_url}|{body_str}"
+        valid = verify_hmac_sha256(settings.SHOPEEFOOD_APP_KEY, base_string, sig, is_hex_key=True)
+
+    if not valid:
+        logger.warning("ShopeeFood webhook signature verification failed.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ShopeeFood webhook signature verification failed",
         )
 
     try:
@@ -121,11 +122,11 @@ async def receive_shopeefood_order_webhook(
                 stack_trace=traceback.format_exc(),
                 endpoint=str(request.url.path),
                 http_method="POST",
-                request_payload={"headers": headers, "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
+                request_payload={"headers": redact_sensitive_headers(headers), "body": raw_body.decode("utf-8", errors="ignore")[:2000]} if raw_body else None,
             )
         except Exception as log_ex:
             logger.error(f"Failed to record operational error: {log_ex}")
-        return {"result": "failed", "error": str(ex)}
+        return {"result": "failed", "error": "Lỗi xử lý webhook đơn hàng ShopeeFood."}
 
 
 # ==============================================================================
@@ -148,16 +149,24 @@ async def get_shopeefood_store_menu_json(
     - 17 Mai Chí Thọ: 10005
     - 303 Nguyễn Văn Trỗi: 10006
     """
-    # 1. Validate Basic Auth credentials
-    if not credentials:
+    # 1. Validate Basic Auth credentials from environment settings (fail-closed)
+    expected_user = (getattr(settings, "SHOPEEFOOD_MENU_USERNAME", "") or "").strip()
+    expected_pass = (getattr(settings, "SHOPEEFOOD_MENU_PASSWORD", "") or "").strip()
+    if (
+        not expected_user
+        or not expected_pass
+        or expected_user.startswith("your_")
+        or expected_pass.startswith("your_")
+        or not credentials
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Basic"}
         )
 
-    correct_username = secrets.compare_digest(credentials.username, "namanmarket")
-    correct_password = secrets.compare_digest(credentials.password, "shopeefoodapi")
+    correct_username = secrets.compare_digest(credentials.username, expected_user)
+    correct_password = secrets.compare_digest(credentials.password, expected_pass)
     if not (correct_username and correct_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -165,13 +174,14 @@ async def get_shopeefood_store_menu_json(
             headers={"WWW-Authenticate": "Basic"}
         )
 
+    safe_store_code = re.sub(r"[^A-Za-z0-9_-]", "", store_code)
     # 2. Check if cached menu exists
-    cached = adapter.get_cached_menu(store_code)
+    cached = adapter.get_cached_menu(safe_store_code)
     if cached:
         return Response(
             content=json.dumps(cached, ensure_ascii=False),
             media_type="application/json",
-            headers={"Content-Disposition": f'attachment; filename="{store_code}.json"'}
+            headers={"Content-Disposition": f'attachment; filename="{safe_store_code}.json"'}
         )
 
     # 3. Find matching store in database or build catalog
@@ -189,7 +199,7 @@ async def get_shopeefood_store_menu_json(
     return Response(
         content=json.dumps(catalog, ensure_ascii=False),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{store_code}.json"'}
+        headers={"Content-Disposition": f'attachment; filename="{safe_store_code}.json"'}
     )
 
 
@@ -238,8 +248,7 @@ async def trigger_shopeefood_menu_sync(
     except Exception as ex:
         logger.warning(f"Could not resolve store for ShopeeFood menu sync ({partner_store_id}): {ex}")
 
-    if getattr(current_user, "store_id", None):
-        check_store_access(current_user, resolved_store_id)
+    check_store_access(current_user, resolved_store_id)
 
     res = await adapter.sync_menu(
         store_id=resolved_store_id,
