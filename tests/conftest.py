@@ -9,6 +9,7 @@ os.environ["SHOPEEFOOD_MENU_USERNAME"] = "namanmarket"
 os.environ["SHOPEEFOOD_MENU_PASSWORD"] = "shopeefoodapi"
 os.environ["GRABMART_PARTNER_CLIENT_ID"] = "naman_grabmart_pos"
 os.environ["GRABMART_PARTNER_CLIENT_SECRET"] = "grabmart_secret_123"
+os.environ["GRABMART_CLIENT_SECRET"] = ""
 
 from app.core.config import get_settings
 

@@ -34,9 +34,15 @@ def mock_admin_user():
     )
 
 
-def test_admin_reports_html_route(client):
-    """GET /admin/reports renders HTML template successfully."""
-    response = client.get("/admin/reports")
+def test_admin_reports_html_route(client, mock_admin_user):
+    """GET /admin/reports redirects unauthenticated users and renders HTML when authenticated."""
+    unauth = client.get("/admin/reports", follow_redirects=False)
+    assert unauth.status_code == 302
+    assert "/admin/login" in unauth.headers["location"]
+
+    from unittest.mock import AsyncMock, patch
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        response = client.get("/admin/reports")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Báo Cáo Phân Tích & Đối Soát Doanh Thu" in response.text

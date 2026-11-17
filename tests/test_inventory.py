@@ -32,7 +32,15 @@ def mock_admin_user():
 
 def test_admin_inventory_html_renders(client):
     """Calling /admin/inventory returns HTML 200 OK with correct headings and elements."""
-    response = client.get("/admin/inventory")
+def test_admin_inventory_html_renders(client, mock_admin_user):
+    """Calling /admin/inventory redirects unauthenticated users to /admin/login and renders when authenticated."""
+    unauth = client.get("/admin/inventory", follow_redirects=False)
+    assert unauth.status_code == 302
+    assert "/admin/login" in unauth.headers["location"]
+
+    from unittest.mock import AsyncMock, patch
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        response = client.get("/admin/inventory")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Quản Lý Thực Đơn &amp; Tồn Kho Đa Kênh" in response.text or "Quản Lý Thực Đơn & Tồn Kho Đa Kênh" in response.text
@@ -40,9 +48,11 @@ def test_admin_inventory_html_renders(client):
     assert "21 Thảo Điền" in response.text
 
 
-def test_inventory_alias_html_renders(client):
-    """Calling /inventory also renders the inventory management page."""
-    response = client.get("/inventory")
+def test_inventory_alias_html_renders(client, mock_admin_user):
+    """Calling /inventory also renders the inventory management page when authenticated."""
+    from unittest.mock import AsyncMock, patch
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        response = client.get("/inventory")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "21 Thảo Điền" in response.text

@@ -45,17 +45,25 @@ def test_sanitize_payload_redacts_secrets():
     assert cleaned["nested"]["quantity"] == 10
 
 
-def test_admin_dashboard_html_renders(client):
-    """Calling /admin returns HTML with 200 OK."""
-    response = client.get("/admin")
+def test_admin_dashboard_html_renders(client, mock_admin_user):
+    """Calling /admin redirects unauthenticated users to /admin/login and renders when authenticated."""
+    unauth = client.get("/admin", follow_redirects=False)
+    assert unauth.status_code == 302
+    assert "/admin/login" in unauth.headers["location"]
+
+    from unittest.mock import patch
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        response = client.get("/admin")
     assert response.status_code == 200
     assert "Nam An Market" in response.text
     assert "text/html" in response.headers["content-type"]
 
 
-def test_system_status_html_renders(client):
-    """Calling /system-status returns HTML with 200 OK."""
-    response = client.get("/system-status")
+def test_system_status_html_renders(client, mock_admin_user):
+    """Calling /system-status requires SUPER_ADMIN and returns HTML with 200 OK when authenticated."""
+    from unittest.mock import patch
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        response = client.get("/system-status")
     assert response.status_code == 200
     assert "System Status &amp; Nhật Ký Lỗi" in response.text or "System Status" in response.text
     assert "text/html" in response.headers["content-type"]
@@ -69,9 +77,15 @@ def test_admin_login_html_renders(client):
     assert "text/html" in response.headers["content-type"]
 
 
-def test_root_redirects_to_admin(client):
-    """Calling / redirects to /admin."""
-    response = client.get("/", follow_redirects=False)
+def test_root_redirects_to_admin(client, mock_admin_user):
+    """Calling / redirects to /admin/login when unauthenticated, and /admin when authenticated."""
+    unauth = client.get("/", follow_redirects=False)
+    assert unauth.status_code == 302
+    assert unauth.headers["location"] == "/admin/login"
+
+    from unittest.mock import patch
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        response = client.get("/", follow_redirects=False)
     assert response.status_code == 302
     assert response.headers["location"] == "/admin"
 

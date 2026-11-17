@@ -10,16 +10,29 @@ from app.core.security import create_access_token
 
 @pytest.mark.asyncio
 async def test_admin_users_html_route():
-    """Verify that /admin/users and /users web routes render successfully."""
+    """Verify that /admin/users and /users redirect unauthenticated users and render for SUPER_ADMIN."""
+    admin = User(
+        id="admin-web-1",
+        username="admin",
+        email="admin@naman.com",
+        role=UserRole.SUPER_ADMIN.value,
+        is_active=True,
+        is_superuser=True,
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        res1 = await ac.get("/admin/users")
-        assert res1.status_code == 200
-        assert "Quản Lý Người Dùng & Phân Quyền Chi Nhánh" in res1.text
+        unauth = await ac.get("/admin/users", follow_redirects=False)
+        assert unauth.status_code == 302
+        assert "/admin/login" in unauth.headers["location"]
 
-        res2 = await ac.get("/users")
-        assert res2.status_code == 200
-        assert "Quản Lý Người Dùng & Phân Quyền Chi Nhánh" in res2.text
+        with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=admin):
+            res1 = await ac.get("/admin/users")
+            assert res1.status_code == 200
+            assert "Quản Lý Người Dùng & Phân Quyền Chi Nhánh" in res1.text
+
+            res2 = await ac.get("/users")
+            assert res2.status_code == 200
+            assert "Quản Lý Người Dùng & Phân Quyền Chi Nhánh" in res2.text
 
 
 @pytest.mark.asyncio

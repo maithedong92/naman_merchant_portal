@@ -306,8 +306,10 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
 
 def test_haravan_orders_html_ui_components():
     """Verify that orders.html contains Haravan Omnichannel filter pills and dispatch modals matching pmdonhang."""
+    from unittest.mock import AsyncMock, MagicMock, patch
     client = TestClient(app)
-    response = client.get("/admin/orders")
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=MagicMock(is_active=True, is_superuser=True, role="SUPER_ADMIN")):
+        response = client.get("/admin/orders")
     assert response.status_code == 200
     html = response.text
 

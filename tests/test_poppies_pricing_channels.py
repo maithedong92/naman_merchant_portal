@@ -943,15 +943,16 @@ def test_api_channels_sync_poppies_matching_and_ui_buttons(client):
             assert r_sync_pr.status_code == 200
             assert r_sync_pr.json()["success"] is True
 
-        # Verify UI pages render the new Poppies Sync & Matching buttons cleanly
-        inv_html = client.get("/inventory").text
-        assert "Đồng Bộ & Matching Poppies" in inv_html
-        assert "Matching Kênh & Giá" in inv_html
-        assert "modal-sku-channels" in inv_html
+        # Verify UI pages render the new Poppies Sync & Matching buttons cleanly when authenticated
+        with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=admin_user):
+            inv_html = client.get("/inventory").text
+            assert "Đồng Bộ & Matching Poppies" in inv_html
+            assert "Matching Kênh & Giá" in inv_html
+            assert "modal-sku-channels" in inv_html
 
-        adm_html = client.get("/admin").text
-        assert "Đồng Bộ & Matching Kênh Poppies" in adm_html
-        assert "Bảng Đối Soát & Matching Kênh Chuẩn Poppies ERP" in adm_html
+            adm_html = client.get("/admin").text
+            assert "Đồng Bộ & Matching Kênh Poppies" in adm_html
+            assert "Bảng Đối Soát & Matching Kênh Chuẩn Poppies ERP" in adm_html
     finally:
         app.dependency_overrides.clear()
 
