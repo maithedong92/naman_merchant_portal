@@ -353,13 +353,13 @@
             <button id="detail-tab-btn-basic" onclick="switchDetailTab('basic')" class="px-4 py-2.5 text-xs font-bold border-b-2 border-emerald-600 text-emerald-700 transition-all flex items-center space-x-2">
                 <span>Thông tin & Điều phối</span>
             </button>
-            <button id="detail-tab-btn-products" onclick="switchDetailTab('products')" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-900 transition-all flex items-center space-x-2">
+            <button id="detail-tab-btn-products" onclick="switchDetailTab('products')" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-2">
                 <span>Sản phẩm & Tồn kho Arito</span>
-                <span id="detail-tab-products-badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-mono font-bold">0</span>
+                <span id="detail-tab-products-badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-mono font-bold border border-slate-200">0</span>
             </button>
-            <button id="detail-tab-btn-history" onclick="switchDetailTab('history')" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-900 transition-all flex items-center space-x-2">
+            <button id="detail-tab-btn-history" onclick="switchDetailTab('history')" class="px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-2">
                 <span>Lịch sử thay đổi (Audit)</span>
-                <span id="detail-tab-history-badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-mono font-bold">0</span>
+                <span id="detail-tab-history-badge" class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-700 font-mono font-bold border border-slate-200">0</span>
             </button>
         </div>
 
@@ -2357,12 +2357,12 @@
             const pane = document.getElementById(`detail-tab-pane-${t}`);
             if (t === tabName) {
                 if (btn) {
-                    btn.className = "px-3.5 py-2 text-[12.5px] font-semibold border-b-2 border-[#37352F] text-[#37352F] transition-colors flex items-center space-x-1.5";
+                    btn.className = "px-4 py-2.5 text-xs font-bold border-b-2 border-emerald-600 text-emerald-700 transition-all flex items-center space-x-2";
                 }
                 if (pane) pane.classList.remove('hidden');
             } else {
                 if (btn) {
-                    btn.className = "px-3.5 py-2 text-[12.5px] font-medium border-b-2 border-transparent text-[#787774] hover:text-[#37352F] transition-colors flex items-center space-x-1.5";
+                    btn.className = "px-4 py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition-all flex items-center space-x-2";
                 }
                 if (pane) pane.classList.add('hidden');
             }
@@ -2570,7 +2570,7 @@
 
             if (history.length === 0) {
                 pane.innerHTML = `
-                    <div class="p-8 text-center text-[#787774] bg-[#F7F6F3] rounded-md border border-[rgba(55,53,47,0.06)]">
+                    <div class="p-8 text-center text-slate-600 bg-slate-50 rounded-xl border border-slate-200">
                         <div class="text-2xl mb-1.5">🕒</div>
                         <p class="text-[12px] font-medium">Chưa có bản ghi lịch sử nội bộ (MongoDB) cho đơn hàng này.</p>
                     </div>
@@ -2582,29 +2582,29 @@
             history.forEach(h => {
                 const time = formatDateTime(h.timestamp || h.created_at);
                 rows += `
-                    <tr class="hover:bg-[#F7F6F3]/50 transition-colors">
-                        <td class="py-2.5 px-3 text-[12px] font-mono text-[#787774] whitespace-nowrap">${time}</td>
+                    <tr class="hover:bg-slate-50/80 transition-colors">
+                        <td class="py-2.5 px-3 text-[12px] font-mono text-slate-600 whitespace-nowrap">${time}</td>
                         <td class="py-2.5 px-3 text-[12px]">
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#E7F3F8] text-[#2F7EA6] border border-[#BDE0F0]">${escapeHtml(h.action || 'Cập nhật')}</span>
+                            <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">${escapeHtml(h.action || 'Cập nhật')}</span>
                         </td>
-                        <td class="py-2.5 px-3 text-[12px] font-medium text-[#37352F]">${escapeHtml(h.user || 'Hệ thống')}</td>
-                        <td class="py-2.5 px-3 text-[12px] text-[#37352F] leading-relaxed">${escapeHtml(h.details || '--')}</td>
+                        <td class="py-2.5 px-3 text-[12px] font-semibold text-slate-900">${escapeHtml(h.user || 'Hệ thống')}</td>
+                        <td class="py-2.5 px-3 text-[12px] text-slate-800 leading-relaxed">${escapeHtml(h.details || '--')}</td>
                     </tr>
                 `;
             });
 
             pane.innerHTML = `
-                <div class="overflow-x-auto rounded-md border border-[rgba(55,53,47,0.09)]">
+                <div class="overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left text-[12px] border-collapse">
-                        <thead class="bg-[#F7F6F3] text-[11px] text-[#787774] border-b border-[rgba(55,53,47,0.09)] font-semibold uppercase tracking-wider">
+                        <thead class="bg-slate-50 text-[11px] text-slate-700 border-b border-slate-200 font-semibold uppercase tracking-wider">
                             <tr>
-                                <th class="py-2 px-3 w-40">Thời Gian</th>
-                                <th class="py-2 px-3 w-48">Hành Động</th>
-                                <th class="py-2 px-3 w-36">Người Thực Hiện</th>
-                                <th class="py-2 px-3">Chi Tiết Thay Đổi</th>
+                                <th class="py-2.5 px-3 w-40">Thời Gian</th>
+                                <th class="py-2.5 px-3 w-48">Hành Động</th>
+                                <th class="py-2.5 px-3 w-36">Người Thực Hiện</th>
+                                <th class="py-2.5 px-3">Chi Tiết Thay Đổi</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-[rgba(55,53,47,0.06)] bg-white text-[#37352F]">
+                        <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
                             ${rows}
                         </tbody>
                     </table>
@@ -2616,7 +2616,7 @@
 
             if (history.length === 0) {
                 pane.innerHTML = `
-                    <div class="p-8 text-center text-[#787774] bg-[#F7F6F3] rounded-md border border-[rgba(55,53,47,0.06)]">
+                    <div class="p-8 text-center text-slate-600 bg-slate-50 rounded-xl border border-slate-200">
                         <div class="text-2xl mb-1.5">🕒</div>
                         <p class="text-[12px] font-medium">Chưa có lịch sử trạng thái cho đơn hàng sàn này.</p>
                     </div>
@@ -2628,29 +2628,29 @@
             history.forEach(h => {
                 const time = formatDateTime(h.created_at);
                 rows += `
-                    <tr class="hover:bg-[#F7F6F3]/50 transition-colors">
-                        <td class="py-2.5 px-3 text-[12px] font-mono text-[#787774] whitespace-nowrap">${time}</td>
+                    <tr class="hover:bg-slate-50/80 transition-colors">
+                        <td class="py-2.5 px-3 text-[12px] font-mono text-slate-600 whitespace-nowrap">${time}</td>
                         <td class="py-2.5 px-3 text-[12px]">
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium bg-[#E7F3F8] text-[#2F7EA6] border border-[#BDE0F0]">${escapeHtml(h.to_status || 'Cập nhật')}</span>
+                            <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">${escapeHtml(h.to_status || 'Cập nhật')}</span>
                         </td>
-                        <td class="py-2.5 px-3 text-[12px] font-medium text-[#37352F]">${escapeHtml(h.changed_by || 'Hệ thống')}</td>
-                        <td class="py-2.5 px-3 text-[12px] text-[#37352F] leading-relaxed">${escapeHtml(h.note || '--')}</td>
+                        <td class="py-2.5 px-3 text-[12px] font-semibold text-slate-900">${escapeHtml(h.changed_by || 'Hệ thống')}</td>
+                        <td class="py-2.5 px-3 text-[12px] text-slate-800 leading-relaxed">${escapeHtml(h.note || '--')}</td>
                     </tr>
                 `;
             });
 
             pane.innerHTML = `
-                <div class="overflow-x-auto rounded-md border border-[rgba(55,53,47,0.09)]">
+                <div class="overflow-x-auto rounded-xl border border-slate-200">
                     <table class="w-full text-left text-[12px] border-collapse">
-                        <thead class="bg-[#F7F6F3] text-[11px] text-[#787774] border-b border-[rgba(55,53,47,0.09)] font-semibold uppercase tracking-wider">
+                        <thead class="bg-slate-50 text-[11px] text-slate-700 border-b border-slate-200 font-semibold uppercase tracking-wider">
                             <tr>
-                                <th class="py-2 px-3 w-40">Thời Gian</th>
-                                <th class="py-2 px-3 w-48">Trạng Thái Mới</th>
-                                <th class="py-2 px-3 w-36">Người Thực Hiện</th>
-                                <th class="py-2 px-3">Ghi Chú</th>
+                                <th class="py-2.5 px-3 w-40">Thời Gian</th>
+                                <th class="py-2.5 px-3 w-48">Trạng Thái Mới</th>
+                                <th class="py-2.5 px-3 w-36">Người Thực Hiện</th>
+                                <th class="py-2.5 px-3">Ghi Chú</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-[rgba(55,53,47,0.06)] bg-white text-[#37352F]">
+                        <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
                             ${rows}
                         </tbody>
                     </table>
@@ -2673,7 +2673,7 @@
 
         // 1. Header Badges
         document.getElementById('detail-modal-channel-badge').innerHTML = `<span>🌐</span><span>HARAVAN (${escapeHtml((order.source || 'Web').toUpperCase())})</span>`;
-        document.getElementById('detail-modal-channel-badge').className = "px-2 py-0.5 rounded text-[11px] font-semibold bg-[#E7F3F8] text-[#2F7EA6] inline-flex items-center space-x-1";
+        document.getElementById('detail-modal-channel-badge').className = "px-3 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200 inline-flex items-center space-x-1";
         document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_number || ('#' + order.id)}`;
         document.getElementById('detail-modal-id-badge').textContent = `#${order.id}`;
 
@@ -2695,26 +2695,26 @@
             let badgeClass = '';
             if (isActive) {
                 if (st.key === 'Hoàn thành') {
-                    badgeClass = 'bg-[#EDF3EC] text-[#448361] border-[#C5DEC9] ring-2 ring-[#448361]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-200 font-bold shadow-sm';
                 } else if (st.key === 'Đã hủy') {
-                    badgeClass = 'bg-[#FDEBEC] text-[#D44C47] border-[#F5B5B3] ring-2 ring-[#D44C47]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-200 font-bold shadow-sm';
                 } else if (st.key === 'Yêu cầu phân tuyến lại') {
-                    badgeClass = 'bg-[#FBEDD6] text-[#CB912F] border-[#E8CDA0] ring-2 ring-[#CB912F]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-200 font-bold shadow-sm';
                 } else {
-                    badgeClass = 'bg-[#E7F3F8] text-[#2F7EA6] border-[#BDE0F0] ring-2 ring-[#2F7EA6]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-sky-600 text-white border-sky-700 ring-2 ring-sky-200 font-bold shadow-sm';
                 }
             } else {
-                badgeClass = 'bg-[#F7F6F3] text-[#9B9A97] border-[rgba(55,53,47,0.06)] font-normal';
+                badgeClass = 'bg-slate-100 text-slate-600 border-slate-200 font-medium';
             }
 
             pipelineHtml += `
-                <span class="px-2.5 py-1 rounded text-[11px] border flex items-center space-x-1 transition-all ${badgeClass}">
+                <span class="px-2.5 py-1 rounded-lg text-[11px] border flex items-center space-x-1 transition-all ${badgeClass}">
                     <span>${isActive ? '●' : '○'}</span>
                     <span>${st.label}</span>
                 </span>
             `;
             if (idx < HARAVAN_STATUS_PIPELINE.length - 1) {
-                pipelineHtml += `<span class="text-[#D3D1CB] text-[10px]">›</span>`;
+                pipelineHtml += `<span class="text-slate-400 text-[11px] font-bold">›</span>`;
             }
         });
         pipelineHtml += '</div>';
@@ -2739,29 +2739,29 @@
 
         let basicHtml = `
             <!-- Notes Group (Customer Note Read-Only + Internal Admin Note Editable) -->
-            <div class="p-3.5 rounded-md border border-[#E8CDA0] bg-[#FDFCFB] space-y-2.5">
+            <div class="p-3.5 rounded-xl border border-amber-200 bg-amber-50/50 space-y-2.5">
                 <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-semibold uppercase tracking-wider text-[#CB912F] flex items-center space-x-1">
+                    <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 flex items-center space-x-1">
                         <span>📝</span>
                         <span>Ghi Chú Đơn Hàng</span>
                     </span>
-                    <span class="text-[10px] text-[#787774]">Lưu tự động vào MongoDB internal.admin_notes</span>
+                    <span class="text-[10.5px] text-slate-600 font-medium">Lưu tự động vào MongoDB internal.admin_notes</span>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <!-- Customer Note -->
                     <div>
-                        <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú từ khách hàng (Read-only):</label>
-                        <div class="p-2.5 rounded bg-white border border-[rgba(55,53,47,0.12)] text-[12px] text-[#37352F] min-h-[50px] max-h-28 overflow-y-auto leading-relaxed">
-                            ${order.note ? escapeHtml(order.note) : '<span class="text-[#9B9A97] italic">(Không có ghi chú từ khách hàng)</span>'}
+                        <label class="block text-[11px] font-semibold text-slate-700 mb-1">Ghi chú từ khách hàng (Read-only):</label>
+                        <div class="p-2.5 rounded-lg bg-white border border-slate-200 text-[12px] text-slate-900 min-h-[50px] max-h-28 overflow-y-auto leading-relaxed">
+                            ${order.note ? escapeHtml(order.note) : '<span class="text-slate-500 italic">(Không có ghi chú từ khách hàng)</span>'}
                         </div>
                     </div>
                     <!-- Admin Internal Note -->
                     <div>
-                        <label class="block text-[11px] font-semibold text-[#787774] mb-1">Ghi chú nội bộ Admin / Điều phối:</label>
-                        <textarea id="detail-admin-note-input" rows="2" ${readOnlyUser ? 'readonly' : ''} class="w-full text-[12px] p-2 rounded border border-[rgba(55,53,47,0.15)] focus:border-[#2F3437] focus:outline-none bg-white text-[#37352F]" placeholder="Nhập ghi chú điều phối nội bộ...">${escapeHtml(internal.admin_notes || '')}</textarea>
+                        <label class="block text-[11px] font-semibold text-slate-700 mb-1">Ghi chú nội bộ Admin / Điều phối:</label>
+                        <textarea id="detail-admin-note-input" rows="2" ${readOnlyUser ? 'readonly' : ''} class="w-full text-[12px] p-2.5 rounded-lg border border-slate-300 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 focus:outline-none bg-white text-slate-900 placeholder:text-slate-400" placeholder="Nhập ghi chú điều phối nội bộ...">${escapeHtml(internal.admin_notes || '')}</textarea>
                         ${!readOnlyUser ? `
                         <div class="flex justify-end mt-1.5">
-                            <button id="btn-save-admin-note" data-id="${escapeHtml(order.id)}" onclick="saveDetailAdminNote(this.dataset.id)" class="px-3 py-1 rounded bg-[#2F3437] hover:bg-[#191919] text-white text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                            <button id="btn-save-admin-note" data-id="${escapeHtml(order.id)}" onclick="saveDetailAdminNote(this.dataset.id)" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                                 <span>💾</span>
                                 <span>Lưu Ghi Chú Nội Bộ</span>
                             </button>
@@ -2772,26 +2772,26 @@
             </div>
 
             <!-- Basic Order & Customer Info Grid -->
-            <div class="p-3.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] space-y-2.5">
-                <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider">Thông Tin Đơn Hàng & Khách Hàng</div>
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Thông Tin Đơn Hàng & Khách Hàng</div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-[12px]">
-                    <div><span class="text-[#787774]">Mã đơn Haravan:</span> <strong class="font-mono text-[#37352F]">${escapeHtml(order.order_number || ('#' + order.id))}</strong></div>
-                    <div><span class="text-[#787774]">Nguồn đơn:</span> <span class="font-medium text-[#37352F]">${escapeHtml(order.source || 'Website')}</span></div>
-                    <div><span class="text-[#787774]">Ngày đặt:</span> <span class="text-[#37352F]">${formatDateTime(order.created_at)}</span></div>
-                    <div><span class="text-[#787774]">Khách hàng:</span> <strong class="text-[#37352F]">${escapeHtml(custName)}</strong></div>
-                    <div><span class="text-[#787774]">Số điện thoại:</span> ${custPhone !== '--' ? `<a href="tel:${escapeHtml(custPhone)}" class="text-[#2F7EA6] font-medium hover:underline">📞 ${escapeHtml(custPhone)}</a>` : '<span class="text-[#9B9A97]">--</span>'}</div>
-                    <div><span class="text-[#787774]">Trạng thái thanh toán:</span> <span class="font-medium text-[#37352F]">${escapeHtml(order.financial_status || 'Chưa thanh toán')}</span></div>
-                    <div class="md:col-span-2 lg:col-span-3"><span class="text-[#787774]">Địa chỉ giao hàng:</span> <span class="text-[#37352F]">${escapeHtml(deliveryAddr)}</span></div>
+                    <div><span class="text-slate-600">Mã đơn Haravan:</span> <strong class="font-mono text-slate-900">${escapeHtml(order.order_number || ('#' + order.id))}</strong></div>
+                    <div><span class="text-slate-600">Nguồn đơn:</span> <span class="font-semibold text-slate-900">${escapeHtml(order.source || 'Website')}</span></div>
+                    <div><span class="text-slate-600">Ngày đặt:</span> <span class="text-slate-900 font-medium">${formatDateTime(order.created_at)}</span></div>
+                    <div><span class="text-slate-600">Khách hàng:</span> <strong class="text-slate-900">${escapeHtml(custName)}</strong></div>
+                    <div><span class="text-slate-600">Số điện thoại:</span> ${custPhone !== '--' ? `<a href="tel:${escapeHtml(custPhone)}" class="text-sky-700 font-semibold hover:underline">📞 ${escapeHtml(custPhone)}</a>` : '<span class="text-slate-500">--</span>'}</div>
+                    <div><span class="text-slate-600">Trạng thái thanh toán:</span> <span class="font-semibold text-slate-900">${escapeHtml(order.financial_status || 'Chưa thanh toán')}</span></div>
+                    <div class="md:col-span-2 lg:col-span-3"><span class="text-slate-600">Địa chỉ giao hàng:</span> <span class="text-slate-900 font-medium">${escapeHtml(deliveryAddr)}</span></div>
                 </div>
-                <div class="pt-2 border-t border-[rgba(55,53,47,0.06)] flex flex-wrap items-center justify-between text-[12px]">
-                    <div class="text-[#787774] space-x-3">
-                        <span>Tạm tính: <strong>${formatVND(subtotal)}</strong></span>
-                        ${discount > 0 ? `<span class="text-[#D44C47]">-KM: <strong>${formatVND(discount)}</strong></span>` : ''}
-                        ${shippingFee > 0 ? `<span>+Phí ship: <strong>${formatVND(shippingFee)}</strong></span>` : ''}
+                <div class="pt-2.5 border-t border-slate-200 flex flex-wrap items-center justify-between text-[12px]">
+                    <div class="text-slate-700 space-x-3">
+                        <span>Tạm tính: <strong class="text-slate-900 font-mono">${formatVND(subtotal)}</strong></span>
+                        ${discount > 0 ? `<span class="text-rose-700 font-semibold">-KM: <strong class="font-mono">${formatVND(discount)}</strong></span>` : ''}
+                        ${shippingFee > 0 ? `<span>+Phí ship: <strong class="text-slate-900 font-mono">${formatVND(shippingFee)}</strong></span>` : ''}
                     </div>
                     <div>
-                        <span class="text-[#787774] mr-1">Tổng tiền:</span>
-                        <span class="text-base font-bold font-mono text-[#37352F]">${formatVND(totalAmount)}</span>
+                        <span class="text-slate-600 font-medium mr-1">Tổng tiền:</span>
+                        <span class="text-base font-bold font-mono text-slate-900">${formatVND(totalAmount)}</span>
                     </div>
                 </div>
             </div>
@@ -2809,108 +2809,108 @@
 
         basicHtml += `
             <!-- Attachment Files Section (Follow 100% pmdonhang) -->
-            <div class="p-3.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] space-y-3">
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div class="flex items-center justify-between">
-                    <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider flex items-center space-x-1.5">
+                    <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
                         <span>📎</span>
                         <span>Tệp Đính Kèm (Hóa Đơn & Vận Đơn)</span>
                     </div>
-                    <span class="text-[11px] text-[#9B9A97] italic">PDF, PNG, JPG, WEBP (tối đa 15MB)</span>
+                    <span class="text-[11px] text-slate-500 italic">PDF, PNG, JPG, WEBP (tối đa 15MB)</span>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     <!-- 1. Order File (Hóa đơn / Đơn gốc) -->
-                    <div class="p-3 rounded-md bg-white border border-[rgba(55,53,47,0.12)] flex flex-col justify-between space-y-2.5">
+                    <div class="p-3 rounded-xl bg-white border border-slate-200 flex flex-col justify-between space-y-2.5">
                         <div class="flex items-start justify-between gap-2">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xl">📄</span>
                                 <div>
-                                    <div class="text-[12px] font-semibold text-[#37352F]">File Đơn Hàng / Hóa Đơn</div>
-                                    <div class="text-[11px] text-[#787774] truncate max-w-[200px]" title="${escapeHtml(orderFileName)}">
-                                        ${orderFile ? `<span class="text-[#2F7EA6] font-mono font-medium">${escapeHtml(orderFileName)}</span>` : '<span class="italic text-[#9B9A97]">Chưa có file đính kèm</span>'}
+                                    <div class="text-[12px] font-semibold text-slate-900">File Đơn Hàng / Hóa Đơn</div>
+                                    <div class="text-[11px] text-slate-600 truncate max-w-[200px]" title="${escapeHtml(orderFileName)}">
+                                        ${orderFile ? `<span class="text-sky-700 font-mono font-semibold">${escapeHtml(orderFileName)}</span>` : '<span class="italic text-slate-500">Chưa có file đính kèm</span>'}
                                     </div>
                                 </div>
                             </div>
-                            ${orderFile ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#EDF3EC] text-[#448361] shrink-0">Đã có file</span>` : `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F7F6F3] text-[#9B9A97] shrink-0">Chưa có</span>`}
+                            ${orderFile ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">Đã có file</span>` : `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">Chưa có</span>`}
                         </div>
 
                         ${orderFile ? `
-                            <div class="text-[10.5px] text-[#787774] bg-[#F7F6F3] p-1.5 rounded flex items-center justify-between">
-                                <span>Bởi: <strong>${escapeHtml(orderFileUploadedBy || 'admin')}</strong></span>
+                            <div class="text-[10.5px] text-slate-600 bg-slate-50 border border-slate-200/70 p-1.5 rounded-lg flex items-center justify-between">
+                                <span>Bởi: <strong class="text-slate-900">${escapeHtml(orderFileUploadedBy || 'admin')}</strong></span>
                                 ${orderFileUploadedAt ? `<span>${formatDateTime(orderFileUploadedAt)}</span>` : ''}
                             </div>
-                            <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
-                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="downloadHaravanFile(this.dataset.id, 'order')" class="flex-1 py-1 px-2.5 rounded bg-[#E7F3F8] hover:bg-[#D3EBF5] text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                            <div class="flex items-center space-x-2 pt-1.5 border-t border-slate-200">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="downloadHaravanFile(this.dataset.id, 'order')" class="flex-1 py-1.5 px-2.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-semibold text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
                                     <span>👁️</span>
                                     <span>Xem / Tải về</span>
                                 </button>
                                 ${!readOnlyUser ? `
-                                <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
+                                <label class="cursor-pointer py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
                                     <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
                                 </label>
-                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'order')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'order')" class="py-1.5 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
                                 </button>
                                 ` : ''}
                             </div>
                         ` : `
-                            <div class="pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                            <div class="pt-1.5 border-t border-slate-200">
                                 ${!readOnlyUser ? `
-                                <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#2383E2]/40 hover:border-[#2383E2] bg-[#E7F3F8]/30 hover:bg-[#E7F3F8]/60 text-[#2F7EA6] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
+                                <label class="cursor-pointer w-full py-2 px-3 rounded-lg border border-dashed border-sky-400 hover:border-sky-600 bg-sky-50/60 hover:bg-sky-100/70 text-sky-800 text-[11px] font-semibold text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Đơn Hàng (PDF/Ảnh)</span>
                                     <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
                                 </label>
-                                ` : `<span class="text-[11px] text-[#9B9A97] italic">Chưa có tệp đính kèm</span>`}
+                                ` : `<span class="text-[11px] text-slate-500 italic">Chưa có tệp đính kèm</span>`}
                             </div>
                         `}
                     </div>
 
                     <!-- 2. Tracking File (Vận đơn / Phiếu gửi hàng) -->
-                    <div class="p-3 rounded-md bg-white border border-[rgba(55,53,47,0.12)] flex flex-col justify-between space-y-2.5">
+                    <div class="p-3 rounded-xl bg-white border border-slate-200 flex flex-col justify-between space-y-2.5">
                         <div class="flex items-start justify-between gap-2">
                             <div class="flex items-center space-x-2">
                                 <span class="text-xl">🏷️</span>
                                 <div>
-                                    <div class="text-[12px] font-semibold text-[#37352F]">File Vận Đơn / Phiếu Gửi Hàng</div>
-                                    <div class="text-[11px] text-[#787774] truncate max-w-[200px]" title="${escapeHtml(trackingFileName)}">
-                                        ${trackingFile ? `<span class="text-[#448361] font-mono font-medium">${escapeHtml(trackingFileName)}</span>` : '<span class="italic text-[#9B9A97]">Chưa có file đính kèm</span>'}
+                                    <div class="text-[12px] font-semibold text-slate-900">File Vận Đơn / Phiếu Gửi Hàng</div>
+                                    <div class="text-[11px] text-slate-600 truncate max-w-[200px]" title="${escapeHtml(trackingFileName)}">
+                                        ${trackingFile ? `<span class="text-emerald-700 font-mono font-semibold">${escapeHtml(trackingFileName)}</span>` : '<span class="italic text-slate-500">Chưa có file đính kèm</span>'}
                                     </div>
                                 </div>
                             </div>
-                            ${trackingFile ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#EDF3EC] text-[#448361] shrink-0">Đã có file</span>` : `<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#F7F6F3] text-[#9B9A97] shrink-0">Chưa có</span>`}
+                            ${trackingFile ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">Đã có file</span>` : `<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">Chưa có</span>`}
                         </div>
 
                         ${trackingFile ? `
-                            <div class="text-[10.5px] text-[#787774] bg-[#F7F6F3] p-1.5 rounded flex items-center justify-between">
-                                <span>Bởi: <strong>${escapeHtml(trackingFileUploadedBy || 'admin')}</strong></span>
+                            <div class="text-[10.5px] text-slate-600 bg-slate-50 border border-slate-200/70 p-1.5 rounded-lg flex items-center justify-between">
+                                <span>Bởi: <strong class="text-slate-900">${escapeHtml(trackingFileUploadedBy || 'admin')}</strong></span>
                                 ${trackingFileUploadedAt ? `<span>${formatDateTime(trackingFileUploadedAt)}</span>` : ''}
                             </div>
-                            <div class="flex items-center space-x-2 pt-1 border-t border-[rgba(55,53,47,0.06)]">
-                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="downloadHaravanFile(this.dataset.id, 'tracking')" class="flex-1 py-1 px-2.5 rounded bg-[#EDF3EC] hover:bg-[#DBEADB] text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
+                            <div class="flex items-center space-x-2 pt-1.5 border-t border-slate-200">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="downloadHaravanFile(this.dataset.id, 'tracking')" class="flex-1 py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[11px] font-semibold text-center transition-colors flex items-center justify-center space-x-1" title="Tải về hoặc xem trực tiếp">
                                     <span>👁️</span>
                                     <span>Xem / Tải về</span>
                                 </button>
                                 ${!readOnlyUser ? `
-                                <label class="cursor-pointer py-1 px-2.5 rounded border border-[rgba(55,53,47,0.15)] hover:bg-[#F7F6F3] text-[#37352F] text-[11px] font-medium transition-colors flex items-center space-x-1" title="Thay thế file khác">
+                                <label class="cursor-pointer py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
                                     <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
                                 </label>
-                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'tracking')" class="py-1 px-2 rounded border border-[rgba(212,76,71,0.2)] hover:bg-[#FDEBEC] text-[#D44C47] text-[11px] font-medium transition-colors" title="Gỡ bỏ file này">
+                                <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'tracking')" class="py-1.5 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
                                 </button>
                                 ` : ''}
                             </div>
                         ` : `
-                            <div class="pt-1 border-t border-[rgba(55,53,47,0.06)]">
+                            <div class="pt-1.5 border-t border-slate-200">
                                 ${!readOnlyUser ? `
-                                <label class="cursor-pointer w-full py-2 px-3 rounded border border-dashed border-[#448361]/40 hover:border-[#448361] bg-[#EDF3EC]/30 hover:bg-[#EDF3EC]/60 text-[#448361] text-[11px] font-medium text-center transition-colors flex items-center justify-center space-x-1.5">
+                                <label class="cursor-pointer w-full py-2 px-3 rounded-lg border border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/60 hover:bg-emerald-100/70 text-emerald-800 text-[11px] font-semibold text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Vận Đơn (PDF/Ảnh)</span>
                                     <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
                                 </label>
-                                ` : `<span class="text-[11px] text-[#9B9A97] italic">Chưa có tệp đính kèm</span>`}
+                                ` : `<span class="text-[11px] text-slate-500 italic">Chưa có tệp đính kèm</span>`}
                             </div>
                         `}
                     </div>
@@ -2926,33 +2926,33 @@
 
         basicHtml += `
             <!-- Store Assignment Info -->
-            <div class="p-3.5 rounded-md ${assignedStore ? 'bg-[#E7F3F8]/40 border border-[#BDE0F0]' : 'bg-[#FBEDD6]/40 border border-[#E8CDA0]'} space-y-1.5 text-[12px]">
+            <div class="p-3.5 rounded-xl ${assignedStore ? 'bg-sky-50/70 border border-sky-200' : 'bg-amber-50/70 border border-amber-200'} space-y-1.5 text-[12px]">
                 <div class="flex items-center justify-between">
-                    <span class="font-semibold ${assignedStore ? 'text-[#2F7EA6]' : 'text-[#CB912F]'} flex items-center space-x-1.5">
+                    <span class="font-bold ${assignedStore ? 'text-sky-800' : 'text-amber-800'} flex items-center space-x-1.5">
                         <span>📍</span>
                         <span>Thông Tin Phân Tuyến Cửa Hàng</span>
                     </span>
-                    ${assignedStore ? `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#E7F3F8] text-[#2F7EA6]">Chi nhánh ${escapeHtml(assignedStore)}</span>` : `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#FBEDD6] text-[#CB912F]">⚠️ Chưa Phân Tuyến</span>`}
+                    ${assignedStore ? `<span class="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-sky-100 text-sky-800 border border-sky-200">Chi nhánh ${escapeHtml(assignedStore)}</span>` : `<span class="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">⚠️ Chưa Phân Tuyến</span>`}
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[#37352F]">
-                    <div><span class="text-[#787774]">Lý do phân tuyến:</span> <strong>${escapeHtml(internal.assignment_reason || '--')}</strong></div>
-                    <div><span class="text-[#787774]">Thời gian:</span> ${internal.assigned_at ? formatDateTime(internal.assigned_at) : '--'} ${internal.assigned_by ? `<span class="text-[#787774]">(${escapeHtml(internal.assigned_by)})</span>` : ''}</div>
-                    <div class="md:col-span-2"><span class="text-[#787774]">Ghi chú phân tuyến:</span> ${escapeHtml(internal.assignment_note || 'Không có')}</div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-slate-900">
+                    <div><span class="text-slate-600">Lý do phân tuyến:</span> <strong>${escapeHtml(internal.assignment_reason || '--')}</strong></div>
+                    <div><span class="text-slate-600">Thời gian:</span> ${internal.assigned_at ? formatDateTime(internal.assigned_at) : '--'} ${internal.assigned_by ? `<span class="text-slate-600">(${escapeHtml(internal.assigned_by)})</span>` : ''}</div>
+                    <div class="md:col-span-2"><span class="text-slate-600">Ghi chú phân tuyến:</span> ${escapeHtml(internal.assignment_note || 'Không có')}</div>
                 </div>
             </div>
         `;
 
         if (internal.reassignment_reason) {
             basicHtml += `
-                <div class="p-3.5 rounded-md bg-[#FDEBEC]/60 border border-[#F5B5B3] space-y-1 text-[12px] text-[#D44C47]">
-                    <div class="font-semibold flex items-center space-x-1.5">
+                <div class="p-3.5 rounded-xl bg-rose-50/80 border border-rose-200 space-y-1 text-[12px] text-rose-800">
+                    <div class="font-bold flex items-center space-x-1.5">
                         <span>⚠️</span>
                         <span>Yêu Cầu Phân Tuyến Lại (Thiếu Hàng / Quá Tải)</span>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Lý do yêu cầu:</span> <strong class="text-[#D44C47]">${escapeHtml(internal.reassignment_reason)}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian:</span> ${reassignAt ? formatDateTime(reassignAt) : '--'} ${reassignBy ? `<span class="text-[#787774]">(${escapeHtml(reassignBy)})</span>` : ''}</div>
-                        <div class="md:col-span-2"><span class="text-[#787774]">Chi tiết ghi chú:</span> ${escapeHtml(internal.reassignment_note || 'Không có')}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-slate-900">
+                        <div><span class="text-slate-600">Lý do yêu cầu:</span> <strong class="text-rose-700">${escapeHtml(internal.reassignment_reason)}</strong></div>
+                        <div><span class="text-slate-600">Thời gian:</span> ${reassignAt ? formatDateTime(reassignAt) : '--'} ${reassignBy ? `<span class="text-slate-600">(${escapeHtml(reassignBy)})</span>` : ''}</div>
+                        <div class="md:col-span-2"><span class="text-slate-600">Chi tiết ghi chú:</span> ${escapeHtml(internal.reassignment_note || 'Không có')}</div>
                     </div>
                 </div>
             `;
@@ -2960,15 +2960,15 @@
 
         if (internal.tracking_code || shipCarrier) {
             basicHtml += `
-                <div class="p-3.5 rounded-md bg-[#F4EFF7]/50 border border-[#E0D2E8] space-y-1 text-[12px]">
-                    <div class="font-semibold text-[#9065B0] flex items-center space-x-1.5">
+                <div class="p-3.5 rounded-xl bg-violet-50/70 border border-violet-200 space-y-1 text-[12px]">
+                    <div class="font-bold text-violet-800 flex items-center space-x-1.5">
                         <span>🚚</span>
                         <span>Thông Tin Vận Đơn & Giao Hàng</span>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Đơn vị vận chuyển:</span> <strong>${escapeHtml(shipCarrier || 'Nam An Market')}</strong></div>
-                        <div><span class="text-[#787774]">Mã vận đơn:</span> <strong class="font-mono text-[#9065B0]">${escapeHtml(internal.tracking_code || 'Chưa phát hành')}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian gửi:</span> ${internal.shipped_at ? formatDateTime(internal.shipped_at) : '--'} ${internal.shipped_by ? `<span class="text-[#787774]">(${escapeHtml(internal.shipped_by)})</span>` : ''}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-slate-900">
+                        <div><span class="text-slate-600">Đơn vị vận chuyển:</span> <strong>${escapeHtml(shipCarrier || 'Nam An Market')}</strong></div>
+                        <div><span class="text-slate-600">Mã vận đơn:</span> <strong class="font-mono text-violet-800">${escapeHtml(internal.tracking_code || 'Chưa phát hành')}</strong></div>
+                        <div><span class="text-slate-600">Thời gian gửi:</span> ${internal.shipped_at ? formatDateTime(internal.shipped_at) : '--'} ${internal.shipped_by ? `<span class="text-slate-600">(${escapeHtml(internal.shipped_by)})</span>` : ''}</div>
                     </div>
                 </div>
             `;
@@ -2984,18 +2984,18 @@
 
         if (procStatus === 'Hoàn thành' || compTotal !== undefined) {
             basicHtml += `
-                <div class="p-3.5 rounded-md bg-[#EDF3EC]/60 border border-[#C5DEC9] space-y-1 text-[12px]">
-                    <div class="font-semibold text-[#448361] flex items-center space-x-1.5">
+                <div class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1 text-[12px]">
+                    <div class="font-bold text-emerald-800 flex items-center space-x-1.5">
                         <span>✅</span>
                         <span>Thông Tin Hoàn Thành Đơn Hàng</span>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Tổng tiền thực tế:</span> <strong class="font-mono">${formatVND(Number(compTotal ?? order.total_price ?? 0))}</strong></div>
-                        <div><span class="text-[#787774]">Phí ship thực tế:</span> <strong class="font-mono">${formatVND(Number(compShip || 0))}</strong></div>
-                        <div><span class="text-[#787774]">ĐVVC thực tế:</span> <strong>${escapeHtml(compCarrier)}</strong></div>
-                        <div><span class="text-[#787774]">Mã VĐ thực tế:</span> <strong class="font-mono">${escapeHtml(compTracking)}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian hoàn tất:</span> ${compAt ? formatDateTime(compAt) : '--'} ${compBy ? `<span class="text-[#787774]">(${escapeHtml(compBy)})</span>` : ''}</div>
-                        <div><span class="text-[#787774]">Ghi chú:</span> ${escapeHtml(compNote)}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 text-slate-900">
+                        <div><span class="text-slate-600">Tổng tiền thực tế:</span> <strong class="font-mono">${formatVND(Number(compTotal ?? order.total_price ?? 0))}</strong></div>
+                        <div><span class="text-slate-600">Phí ship thực tế:</span> <strong class="font-mono">${formatVND(Number(compShip || 0))}</strong></div>
+                        <div><span class="text-slate-600">ĐVVC thực tế:</span> <strong>${escapeHtml(compCarrier)}</strong></div>
+                        <div><span class="text-slate-600">Mã VĐ thực tế:</span> <strong class="font-mono">${escapeHtml(compTracking)}</strong></div>
+                        <div><span class="text-slate-600">Thời gian hoàn tất:</span> ${compAt ? formatDateTime(compAt) : '--'} ${compBy ? `<span class="text-slate-600">(${escapeHtml(compBy)})</span>` : ''}</div>
+                        <div><span class="text-slate-600">Ghi chú:</span> ${escapeHtml(compNote)}</div>
                     </div>
                 </div>
             `;
@@ -3008,15 +3008,15 @@
 
         if (procStatus === 'Đã hủy' || cancelReason) {
             basicHtml += `
-                <div class="p-3.5 rounded-md bg-[#FDEBEC] border border-[#F5B5B3] space-y-1 text-[12px] text-[#D44C47]">
-                    <div class="font-semibold flex items-center space-x-1.5">
+                <div class="p-3.5 rounded-xl bg-rose-50 border border-rose-200 space-y-1 text-[12px] text-rose-800">
+                    <div class="font-bold flex items-center space-x-1.5">
                         <span>❌</span>
                         <span>Thông Tin Hủy Đơn Hàng</span>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-[#37352F]">
-                        <div><span class="text-[#787774]">Lý do hủy:</span> <strong class="text-[#D44C47]">${escapeHtml(cancelReason || '--')}</strong></div>
-                        <div><span class="text-[#787774]">Thời gian hủy:</span> ${cancelAt ? formatDateTime(cancelAt) : '--'} ${cancelBy ? `<span class="text-[#787774]">(${escapeHtml(cancelBy)})</span>` : ''}</div>
-                        <div class="md:col-span-2"><span class="text-[#787774]">Ghi chú hủy:</span> ${escapeHtml(cancelNote)}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1 text-slate-900">
+                        <div><span class="text-slate-600">Lý do hủy:</span> <strong class="text-rose-700">${escapeHtml(cancelReason || '--')}</strong></div>
+                        <div><span class="text-slate-600">Thời gian hủy:</span> ${cancelAt ? formatDateTime(cancelAt) : '--'} ${cancelBy ? `<span class="text-slate-600">(${escapeHtml(cancelBy)})</span>` : ''}</div>
+                        <div class="md:col-span-2"><span class="text-slate-600">Ghi chú hủy:</span> ${escapeHtml(cancelNote)}</div>
                     </div>
                 </div>
             `;
@@ -3048,51 +3048,51 @@
             let stockCellsHtml = '';
             branchLocations.forEach(b => {
                 if (isLoadingLiveStock) {
-                    stockCellsHtml += `<td class="py-2.5 px-2 text-center text-[#9B9A97] text-[11px] animate-pulse">...</td>`;
+                    stockCellsHtml += `<td class="py-2.5 px-2 text-center text-slate-500 text-[11px] animate-pulse">...</td>`;
                 } else {
                     const st = getStockForLocation(liveStock, snapshotStock, item.sku, b.code);
                     const stDisplay = Number(Number(st || 0).toFixed(2)).toString();
                     let badge = '';
                     if (st >= reqQty) {
-                        badge = `<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-mono tabular-nums whitespace-nowrap font-semibold bg-[#EDF3EC] text-[#448361]" title="Tồn Arito: ${st}">${stDisplay}</span>`;
+                        badge = `<span class="inline-block px-1.5 py-0.5 rounded-md text-[11px] font-mono tabular-nums whitespace-nowrap bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold" title="Tồn Arito: ${st}">${stDisplay}</span>`;
                     } else if (st > 0) {
-                        badge = `<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-mono tabular-nums whitespace-nowrap font-semibold bg-[#FBEDD6] text-[#CB912F]" title="Tồn Arito: ${st}">${stDisplay}</span>`;
+                        badge = `<span class="inline-block px-1.5 py-0.5 rounded-md text-[11px] font-mono tabular-nums whitespace-nowrap bg-amber-50 text-amber-800 border border-amber-300 font-bold" title="Tồn Arito: ${st}">${stDisplay}</span>`;
                     } else {
-                        badge = `<span class="font-mono text-[11px] text-[#9B9A97]">-</span>`;
+                        badge = `<span class="font-mono text-[11px] text-slate-400 font-semibold">-</span>`;
                     }
                     stockCellsHtml += `<td class="py-2.5 px-2 text-center">${badge}</td>`;
                 }
             });
 
             productsRowsHtml += `
-                <tr class="hover:bg-[#F7F6F3]/50 transition-colors">
-                    <td class="py-2.5 px-2 text-center text-[11px] text-[#787774] font-mono">${idx + 1}</td>
-                    <td class="py-2.5 px-3 font-medium text-[#37352F]">
+                <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="py-2.5 px-2 text-center text-[11px] text-slate-600 font-mono">${idx + 1}</td>
+                    <td class="py-2.5 px-3 font-medium text-slate-900">
                         <div>${escapeHtml(item.title || item.name || 'Sản phẩm')}</div>
-                        ${item.variant_title ? `<div class="text-[10px] text-[#787774]">${escapeHtml(item.variant_title)}</div>` : ''}
+                        ${item.variant_title ? `<div class="text-[10.5px] text-slate-600">${escapeHtml(item.variant_title)}</div>` : ''}
                     </td>
-                    <td class="py-2.5 px-2 font-mono text-[11px] text-[#787774]">
-                        ${item.sku ? `<span class="bg-[#F7F6F3] px-1.5 py-0.5 rounded border border-[rgba(55,53,47,0.06)]">${escapeHtml(item.sku)}</span>` : '--'}
+                    <td class="py-2.5 px-2 font-mono text-[11px] text-slate-800">
+                        ${item.sku ? `<span class="bg-slate-100 text-slate-900 font-semibold px-1.5 py-0.5 rounded border border-slate-200">${escapeHtml(item.sku)}</span>` : '--'}
                     </td>
-                    <td class="py-2.5 px-2 text-center font-bold font-mono text-[#37352F]">${reqQty}</td>
-                    <td class="py-2.5 px-3 text-right font-mono text-[#787774]">${formatVND(price)}</td>
-                    <td class="py-2.5 px-3 text-right font-mono font-semibold text-[#37352F]">${formatVND(lineTotal)}</td>
+                    <td class="py-2.5 px-2 text-center font-bold font-mono text-slate-900">${reqQty}</td>
+                    <td class="py-2.5 px-3 text-right font-mono text-slate-700">${formatVND(price)}</td>
+                    <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${formatVND(lineTotal)}</td>
                     ${stockCellsHtml}
-                    <td class="py-2.5 px-3 text-[11px] text-[#787774] max-w-[140px] truncate" title="${escapeHtml(item.note || '')}">${escapeHtml(item.note || '--')}</td>
+                    <td class="py-2.5 px-3 text-[11px] text-slate-600 max-w-[140px] truncate" title="${escapeHtml(item.note || '')}">${escapeHtml(item.note || '--')}</td>
                 </tr>
             `;
         });
 
         const productsPaneHtml = `
             ${isLoadingLiveStock ? `
-                <div class="p-2 rounded bg-[#E7F3F8]/60 text-[11px] text-[#2F7EA6] border border-[#BDE0F0] flex items-center space-x-1.5 mb-2">
+                <div class="p-2.5 rounded-xl bg-sky-50 text-[11px] text-sky-800 border border-sky-200 flex items-center space-x-1.5 mb-2">
                     <span class="animate-spin text-sm">⚡</span>
-                    <span class="font-medium">Đang tra cứu số lượng tồn kho thời gian thực từ cơ sở dữ liệu Arito ERP...</span>
+                    <span class="font-semibold">Đang tra cứu số lượng tồn kho thời gian thực từ cơ sở dữ liệu Arito ERP...</span>
                 </div>
             ` : ''}
-            <div class="overflow-x-auto rounded-md border border-[rgba(55,53,47,0.09)]">
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="w-full text-left text-[12px] border-collapse">
-                    <thead class="bg-[#F7F6F3] text-[11px] text-[#787774] border-b border-[rgba(55,53,47,0.09)] font-semibold uppercase tracking-wider">
+                    <thead class="bg-slate-50 text-[11px] text-slate-700 border-b border-slate-200 font-semibold uppercase tracking-wider">
                         <tr>
                             <th class="py-2.5 px-2 text-center w-8">#</th>
                             <th class="py-2.5 px-3">Tên Sản Phẩm</th>
@@ -3100,26 +3100,26 @@
                             <th class="py-2.5 px-2 text-center">SL</th>
                             <th class="py-2.5 px-3 text-right">Đơn Giá</th>
                             <th class="py-2.5 px-3 text-right">Thành Tiền</th>
-                            <th class="py-2.5 px-2 text-center bg-[#F1F1EF] text-[#37352F]" title="Siêu thị 21 Thảo Điền">10001A<br><span class="text-[9px] font-normal text-[#787774]">Thảo Điền</span></th>
-                            <th class="py-2.5 px-2 text-center bg-[#F1F1EF] text-[#37352F]" title="Siêu thị 46 Hưng Phúc Q7">10004A<br><span class="text-[9px] font-normal text-[#787774]">Hưng Phúc</span></th>
-                            <th class="py-2.5 px-2 text-center bg-[#F1F1EF] text-[#37352F]" title="Siêu thị 17 Mai Chí Thọ">10005A<br><span class="text-[9px] font-normal text-[#787774]">Mai Chí Thọ</span></th>
-                            <th class="py-2.5 px-2 text-center bg-[#F1F1EF] text-[#37352F]" title="Siêu thị 303 Nguyễn Văn Trỗi">10006A<br><span class="text-[9px] font-normal text-[#787774]">NV Trỗi</span></th>
-                            <th class="py-2.5 px-2 text-center bg-[#F1F1EF] text-[#37352F]" title="Kho Tổng">10008A<br><span class="text-[9px] font-normal text-[#787774]">Kho Tổng</span></th>
+                            <th class="py-2.5 px-2 text-center bg-slate-100 text-slate-900" title="Siêu thị 21 Thảo Điền">10001A<br><span class="text-[9.5px] font-medium text-slate-600">Thảo Điền</span></th>
+                            <th class="py-2.5 px-2 text-center bg-slate-100 text-slate-900" title="Siêu thị 46 Hưng Phúc Q7">10004A<br><span class="text-[9.5px] font-medium text-slate-600">Hưng Phúc</span></th>
+                            <th class="py-2.5 px-2 text-center bg-slate-100 text-slate-900" title="Siêu thị 17 Mai Chí Thọ">10005A<br><span class="text-[9.5px] font-medium text-slate-600">Mai Chí Thọ</span></th>
+                            <th class="py-2.5 px-2 text-center bg-slate-100 text-slate-900" title="Siêu thị 303 Nguyễn Văn Trỗi">10006A<br><span class="text-[9.5px] font-medium text-slate-600">NV Trỗi</span></th>
+                            <th class="py-2.5 px-2 text-center bg-slate-100 text-slate-900" title="Kho Tổng">10008A<br><span class="text-[9.5px] font-medium text-slate-600">Kho Tổng</span></th>
                             <th class="py-2.5 px-3">Ghi Chú</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-[rgba(55,53,47,0.06)] bg-white text-[#37352F]">
-                        ${productsRowsHtml || '<tr><td colspan="12" class="p-6 text-center text-[#787774]">Không có sản phẩm nào.</td></tr>'}
+                    <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
+                        ${productsRowsHtml || '<tr><td colspan="12" class="p-6 text-center text-slate-600">Không có sản phẩm nào.</td></tr>'}
                     </tbody>
-                    <tfoot class="bg-[#F7F6F3] border-t border-[rgba(55,53,47,0.09)] font-semibold text-[12px]">
+                    <tfoot class="bg-slate-50 border-t border-slate-200 font-semibold text-[12px]">
                         <tr>
-                            <td colspan="3" class="py-2.5 px-3 text-right text-[#787774]">Tổng cộng (${(order.line_items || []).length} mặt hàng):</td>
-                            <td class="py-2.5 px-2 text-center font-bold font-mono text-[#37352F]">${totalItemsQty}</td>
-                            <td colspan="2" class="py-2.5 px-3 text-right font-bold font-mono text-[#37352F]">${formatVND(subtotal)}</td>
-                            <td colspan="6" class="py-2.5 px-3 text-[11px] text-[#787774] font-normal">
-                                <span class="inline-flex items-center space-x-1 mr-3"><span class="w-2 h-2 rounded-full bg-[#448361]"></span><span>Đủ hàng (≥ SL đặt)</span></span>
-                                <span class="inline-flex items-center space-x-1 mr-3"><span class="w-2 h-2 rounded-full bg-[#CB912F]"></span><span>Thiếu số lượng</span></span>
-                                <span class="inline-flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-[#9B9A97]"></span><span>Hết hàng / Không có</span></span>
+                            <td colspan="3" class="py-2.5 px-3 text-right text-slate-700">Tổng cộng (${(order.line_items || []).length} mặt hàng):</td>
+                            <td class="py-2.5 px-2 text-center font-bold font-mono text-slate-900">${totalItemsQty}</td>
+                            <td colspan="2" class="py-2.5 px-3 text-right font-bold font-mono text-slate-900">${formatVND(subtotal)}</td>
+                            <td colspan="6" class="py-2.5 px-3 text-[11px] text-slate-600 font-medium">
+                                <span class="inline-flex items-center space-x-1 mr-3"><span class="w-2 h-2 rounded-full bg-emerald-600"></span><span>Đủ hàng (≥ SL đặt)</span></span>
+                                <span class="inline-flex items-center space-x-1 mr-3"><span class="w-2 h-2 rounded-full bg-amber-500"></span><span>Thiếu số lượng</span></span>
+                                <span class="inline-flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-slate-400"></span><span>Hết hàng / Không có</span></span>
                             </td>
                         </tr>
                     </tfoot>
@@ -3138,52 +3138,52 @@
 
             <div class="flex flex-wrap items-center gap-2">
                 ${canDispatch && (isUnassigned || procStatus === 'Đơn hàng mới' || procStatus === 'Yêu cầu phân tuyến lại') ? `
-                    <button data-id="${escapeHtml(order.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>⚡</span>
                         <span>Phân Tuyến Cửa Hàng</span>
                     </button>
                 ` : ''}
 
                 ${(!isUnassigned && canDispatch && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button data-id="${escapeHtml(order.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[#2F7EA6] text-[12px] font-medium transition-colors">
+                    <button data-id="${escapeHtml(order.id)}" onclick="openHaravanAssignModal(this.dataset.id)" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[12px] font-semibold transition-colors">
                         Đổi Chi Nhánh
                     </button>
                 ` : ''}
 
                 ${(!readOnlyUser && !isUnassigned && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanReassignModal(this.dataset.id, this.dataset.code)" class="px-2.5 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanReassignModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         ⚠️ Yêu Cầu PT Lại
                     </button>
                 ` : ''}
 
                 ${!readOnlyUser && procStatus === 'Đã phân tuyến' ? `
-                    <button data-id="${escapeHtml(order.id)}" onclick="executeHaravanPack(this.dataset.id)" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" onclick="executeHaravanPack(this.dataset.id)" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>📦</span>
                         <span>Đã Đóng Gói Xong</span>
                     </button>
                 ` : ''}
 
                 ${!readOnlyUser && procStatus === 'Đã đóng gói' ? `
-                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanShipModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanShipModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>🚚</span>
                         <span>Gửi Vận Đơn</span>
                     </button>
                 ` : ''}
 
                 ${!readOnlyUser && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
-                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" data-total="${Number(totalAmount || 0)}" onclick="openHaravanCompleteModal(this.dataset.id, this.dataset.code, Number(this.dataset.total))" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1.5 shadow-sm">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" data-total="${Number(totalAmount || 0)}" onclick="openHaravanCompleteModal(this.dataset.id, this.dataset.code, Number(this.dataset.total))" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>✅</span>
                         <span>Hoàn Tất Đơn</span>
                     </button>
                 ` : ''}
 
                 ${(!readOnlyUser && procStatus !== 'Hoàn thành' && procStatus !== 'Đã hủy') ? `
-                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         Hủy Đơn Hàng
                     </button>
                 ` : ''}
 
-                <button onclick="closeDetailsModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">
+                <button onclick="closeDetailsModal()" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[12px] font-semibold transition-colors">
                     Đóng Cửa Sổ
                 </button>
             </div>
@@ -3216,24 +3216,24 @@
             let badgeClass = '';
             if (isActive) {
                 if (st.key === 'DELIVERED') {
-                    badgeClass = 'bg-[#EDF3EC] text-[#448361] border-[#C5DEC9] ring-2 ring-[#448361]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-200 font-bold shadow-sm';
                 } else if (st.key === 'CANCELLED') {
-                    badgeClass = 'bg-[#FDEBEC] text-[#D44C47] border-[#F5B5B3] ring-2 ring-[#D44C47]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-rose-600 text-white border-rose-700 ring-2 ring-rose-200 font-bold shadow-sm';
                 } else {
-                    badgeClass = 'bg-[#E7F3F8] text-[#2F7EA6] border-[#BDE0F0] ring-2 ring-[#2F7EA6]/25 font-bold shadow-sm';
+                    badgeClass = 'bg-sky-600 text-white border-sky-700 ring-2 ring-sky-200 font-bold shadow-sm';
                 }
             } else {
-                badgeClass = 'bg-[#F7F6F3] text-[#9B9A97] border-[rgba(55,53,47,0.06)] font-normal';
+                badgeClass = 'bg-slate-100 text-slate-600 border-slate-200 font-medium';
             }
 
             pipelineHtml += `
-                <span class="px-2.5 py-1 rounded text-[11px] border flex items-center space-x-1 transition-all ${badgeClass}">
+                <span class="px-2.5 py-1 rounded-lg text-[11px] border flex items-center space-x-1 transition-all ${badgeClass}">
                     <span>${isActive ? '●' : '○'}</span>
                     <span>${st.label}</span>
                 </span>
             `;
             if (idx < PLATFORM_STATUS_FLOW.length - 1) {
-                pipelineHtml += `<span class="text-[#D3D1CB] text-[10px]">›</span>`;
+                pipelineHtml += `<span class="text-slate-400 text-[11px] font-bold">›</span>`;
             }
         });
         pipelineHtml += '</div>';
@@ -3244,26 +3244,26 @@
 
         // TAB 1: Basic Info
         const basicHtml = `
-            <div class="p-3.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] space-y-2.5">
-                <div class="text-[11px] font-semibold text-[#787774] uppercase tracking-wider">Thông Tin Đơn Sàn</div>
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Thông Tin Đơn Sàn</div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-[12px]">
-                    <div><span class="text-[#787774]">Mã đơn nội bộ:</span> <strong class="font-mono text-[#37352F]">${escapeHtml(order.order_code)}</strong></div>
-                    <div><span class="text-[#787774]">Mã sàn:</span> <strong class="font-mono text-[#37352F]">${escapeHtml(order.channel_order_id)}</strong></div>
-                    <div><span class="text-[#787774]">Chi nhánh:</span> <span class="font-medium text-[#37352F]">${escapeHtml(order.store_name || order.store_code)}</span></div>
-                    <div><span class="text-[#787774]">Khách hàng:</span> <strong class="text-[#37352F]">${escapeHtml(order.customer_name || 'Khách vãng lai')}</strong></div>
-                    <div><span class="text-[#787774]">SĐT khách:</span> ${order.customer_phone ? `<a href="tel:${escapeHtml(order.customer_phone)}" class="text-[#2F7EA6] font-medium hover:underline">📞 ${escapeHtml(order.customer_phone)}</a>` : '--'}</div>
-                    <div><span class="text-[#787774]">Tài xế nhận:</span> ${order.driver_name ? `<strong>${escapeHtml(order.driver_name)}</strong> (${escapeHtml(order.driver_phone || '')})` : '<span class="text-[#9B9A97] italic">Chưa có tài xế</span>'}</div>
-                    <div class="md:col-span-2 lg:col-span-3"><span class="text-[#787774]">Địa chỉ giao hàng:</span> <span class="text-[#37352F]">${escapeHtml(order.delivery_address || '--')}</span></div>
+                    <div><span class="text-slate-600">Mã đơn nội bộ:</span> <strong class="font-mono text-slate-900">${escapeHtml(order.order_code)}</strong></div>
+                    <div><span class="text-slate-600">Mã sàn:</span> <strong class="font-mono text-slate-900">${escapeHtml(order.channel_order_id)}</strong></div>
+                    <div><span class="text-slate-600">Chi nhánh:</span> <span class="font-semibold text-slate-900">${escapeHtml(order.store_name || order.store_code)}</span></div>
+                    <div><span class="text-slate-600">Khách hàng:</span> <strong class="text-slate-900">${escapeHtml(order.customer_name || 'Khách vãng lai')}</strong></div>
+                    <div><span class="text-slate-600">SĐT khách:</span> ${order.customer_phone ? `<a href="tel:${escapeHtml(order.customer_phone)}" class="text-sky-700 font-semibold hover:underline">📞 ${escapeHtml(order.customer_phone)}</a>` : '<span class="text-slate-500">--</span>'}</div>
+                    <div><span class="text-slate-600">Tài xế nhận:</span> ${order.driver_name ? `<strong class="text-slate-900">${escapeHtml(order.driver_name)}</strong> (${escapeHtml(order.driver_phone || '')})` : '<span class="text-slate-500 italic">Chưa có tài xế</span>'}</div>
+                    <div class="md:col-span-2 lg:col-span-3"><span class="text-slate-600">Địa chỉ giao hàng:</span> <span class="text-slate-900 font-medium">${escapeHtml(order.delivery_address || '--')}</span></div>
                 </div>
-                <div class="pt-2 border-t border-[rgba(55,53,47,0.06)] flex flex-wrap items-center justify-between text-[12px]">
-                    <div class="text-[#787774] space-x-3">
-                        <span>Tạm tính: <strong>${formatVND(order.subtotal_amount)}</strong></span>
-                        ${order.discount_amount > 0 ? `<span class="text-[#D44C47]">-KM: <strong>${formatVND(order.discount_amount)}</strong></span>` : ''}
-                        ${order.delivery_fee > 0 ? `<span>+Ship: <strong>${formatVND(order.delivery_fee)}</strong></span>` : ''}
+                <div class="pt-2.5 border-t border-slate-200 flex flex-wrap items-center justify-between text-[12px]">
+                    <div class="text-slate-700 space-x-3">
+                        <span>Tạm tính: <strong class="text-slate-900 font-mono">${formatVND(order.subtotal_amount)}</strong></span>
+                        ${order.discount_amount > 0 ? `<span class="text-rose-700 font-semibold">-KM: <strong class="font-mono">${formatVND(order.discount_amount)}</strong></span>` : ''}
+                        ${order.delivery_fee > 0 ? `<span>+Ship: <strong class="text-slate-900 font-mono">${formatVND(order.delivery_fee)}</strong></span>` : ''}
                     </div>
                     <div>
-                        <span class="text-[#787774] mr-1">Tổng thanh toán:</span>
-                        <span class="text-base font-bold font-mono text-[#37352F]">${formatVND(order.total_amount)}</span>
+                        <span class="text-slate-600 font-medium mr-1">Tổng thanh toán:</span>
+                        <span class="text-base font-bold font-mono text-slate-900">${formatVND(order.total_amount)}</span>
                     </div>
                 </div>
             </div>
@@ -3277,24 +3277,24 @@
             const qty = Number(it.quantity || 1);
             const total = price * qty;
             itemsRows += `
-                <tr class="hover:bg-[#F7F6F3]/50 transition-colors">
-                    <td class="py-2.5 px-2 text-center text-[11px] text-[#787774] font-mono">${idx + 1}</td>
-                    <td class="py-2.5 px-3 font-medium text-[#37352F]">
+                <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="py-2.5 px-2 text-center text-[11px] text-slate-600 font-mono">${idx + 1}</td>
+                    <td class="py-2.5 px-3 font-medium text-slate-900">
                         <div>${escapeHtml(it.item_name || it.name || it.title || 'Sản phẩm')}</div>
-                        ${it.sku ? `<div class="text-[10.5px] font-mono text-[#787774] mt-0.5">SKU: ${escapeHtml(it.sku)}</div>` : ''}
-                        ${it.modifiers && it.modifiers.length ? `<div class="text-[11px] text-[#787774] mt-0.5">${it.modifiers.map(m => `+ ${escapeHtml(m.name)}`).join(', ')}</div>` : ''}
+                        ${it.sku ? `<div class="text-[10.5px] font-mono text-slate-600 mt-0.5">SKU: ${escapeHtml(it.sku)}</div>` : ''}
+                        ${it.modifiers && it.modifiers.length ? `<div class="text-[11px] text-slate-600 mt-0.5">${it.modifiers.map(m => `+ ${escapeHtml(m.name)}`).join(', ')}</div>` : ''}
                     </td>
-                    <td class="py-2.5 px-2 text-center font-bold font-mono text-[#37352F]">${qty}</td>
-                    <td class="py-2.5 px-3 text-right font-mono text-[#787774]">${formatVND(price)}</td>
-                    <td class="py-2.5 px-3 text-right font-mono font-semibold text-[#37352F]">${formatVND(total)}</td>
+                    <td class="py-2.5 px-2 text-center font-bold font-mono text-slate-900">${qty}</td>
+                    <td class="py-2.5 px-3 text-right font-mono text-slate-700">${formatVND(price)}</td>
+                    <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${formatVND(total)}</td>
                 </tr>
             `;
         });
 
         document.getElementById('detail-tab-pane-products').innerHTML = `
-            <div class="overflow-x-auto rounded-md border border-[rgba(55,53,47,0.09)]">
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="w-full text-left text-[12px] border-collapse">
-                    <thead class="bg-[#F7F6F3] text-[11px] text-[#787774] border-b border-[rgba(55,53,47,0.09)] font-semibold uppercase tracking-wider">
+                    <thead class="bg-slate-50 text-[11px] text-slate-700 border-b border-slate-200 font-semibold uppercase tracking-wider">
                         <tr>
                             <th class="py-2.5 px-2 text-center w-8">#</th>
                             <th class="py-2.5 px-3">Tên Món / Sản Phẩm</th>
@@ -3303,8 +3303,8 @@
                             <th class="py-2.5 px-3 text-right w-32">Thành Tiền</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-[rgba(55,53,47,0.06)] bg-white text-[#37352F]">
-                        ${itemsRows || '<tr><td colspan="5" class="p-6 text-center text-[#787774]">Không có món nào.</td></tr>'}
+                    <tbody class="divide-y divide-slate-200 bg-white text-slate-900">
+                        ${itemsRows || '<tr><td colspan="5" class="p-6 text-center text-slate-600">Không có món nào.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -3321,13 +3321,13 @@
         let footerHtml = `
             <div class="flex items-center space-x-2">
                 ${order.channel_code === 'SHOPEEMART' ? `
-                    <button data-sn="${safeSn}" onclick="openShopeeAwbModal(this.dataset.sn)" class="px-2.5 py-1.5 rounded-md bg-[#FBF1F5] hover:bg-[#F7E2ED] text-[12px] font-medium text-[#C14C8A] border border-[#F2CADF] transition-colors flex items-center space-x-1">
+                    <button data-sn="${safeSn}" onclick="openShopeeAwbModal(this.dataset.sn)" class="px-3 py-1.5 rounded-lg bg-pink-50 hover:bg-pink-100 text-[12px] font-semibold text-pink-800 border border-pink-200 transition-colors flex items-center space-x-1">
                         <span>📄</span>
                         <span>Vận Đơn AWB</span></button>
-                    <button data-sn="${safeSn}" onclick="downloadShopeeAwbPdf(this.dataset.sn)" class="px-2.5 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[rgba(55,53,47,0.06)] text-[12px] font-medium text-[#37352F] transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
+                    <button data-sn="${safeSn}" onclick="downloadShopeeAwbPdf(this.dataset.sn)" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-[12px] font-semibold text-slate-700 transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
                     ${!readOnlyUser ? `
-                    <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'ACCEPT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#EDF3EC] text-[11px] font-medium text-[#448361] transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
-                    <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'REJECT')" class="px-2 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] hover:bg-[#FDEBEC] text-[11px] font-medium text-[#D44C47] transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
+                    <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'ACCEPT')" class="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-semibold text-emerald-800 transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
+                    <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'REJECT')" class="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-[11px] font-semibold text-rose-700 transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
                     </button>
                     ` : ''}
                 ` : ''}
@@ -3335,26 +3335,26 @@
 
             <div class="flex flex-wrap items-center gap-2">
                 ${(!readOnlyUser && order.status === 'PENDING') ? `
-                    <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         Hủy Đơn
                     </button>
-                    <button data-id="${safeId}" onclick="transitionOrderStatus(this.dataset.id, 'ACCEPTED', 'Nhận đơn từ quầy điều phối'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                    <button data-id="${safeId}" onclick="transitionOrderStatus(this.dataset.id, 'ACCEPTED', 'Nhận đơn từ quầy điều phối'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1 shadow-sm">
                         <span>✓</span>
                         <span>Xác Nhận Đơn</span>
                     </button>
                 ` : ''}
 
                 ${(!readOnlyUser && (order.status === 'ACCEPTED' || order.status === 'PREPARING')) ? `
-                    <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-md border border-[#EB5757]/30 hover:bg-[#FDEBEC] text-[#D44C47] text-[12px] font-medium transition-colors">
+                    <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         Hủy Đơn
                     </button>
-                    <button data-id="${safeId}" onclick="transitionOrderStatus(this.dataset.id, 'READY', 'Món ăn đã đóng gói xong'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white text-[12px] font-medium transition-colors flex items-center space-x-1 shadow-sm">
+                    <button data-id="${safeId}" onclick="transitionOrderStatus(this.dataset.id, 'READY', 'Món ăn đã đóng gói xong'); closeDetailsModal();" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1 shadow-sm">
                         <span>📦</span>
                         <span>Báo Sẵn Sàng</span>
                     </button>
                 ` : ''}
 
-                <button onclick="closeDetailsModal()" class="px-3 py-1.5 rounded-md border border-[rgba(55,53,47,0.12)] text-[#37352F] text-[12px] font-medium hover:bg-[rgba(55,53,47,0.06)] transition-colors">
+                <button onclick="closeDetailsModal()" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-[12px] font-semibold transition-colors">
                     Đóng Cửa Sổ
                 </button>
             </div>
