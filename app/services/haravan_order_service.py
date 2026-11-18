@@ -179,6 +179,9 @@ class HaravanOrderService:
                     {"internal.assigned_store": {"$exists": False}},
                     {"internal.assigned_store": ""},
                 ]
+                query["cancelled_status"] = {"$ne": "cancelled"}
+                if not status or status == "Tất cả trạng thái":
+                    query["internal.order_processing_status"] = {"$nin": ["Hoàn thành", "Đã hủy"]}
             elif store_code:
                 query["internal.assigned_store"] = store_code
 
