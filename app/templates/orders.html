@@ -2689,7 +2689,7 @@
             { key: 'Đã hủy', label: '❌ Đã Hủy' }
         ];
 
-        let pipelineHtml = '<div class="flex items-center space-x-1.5 min-w-max pb-1">';
+        let pipelineHtml = '<div class="flex flex-wrap items-center gap-1.5 pb-1">';
         HARAVAN_STATUS_PIPELINE.forEach((st, idx) => {
             const isActive = (procStatus === st.key);
             let badgeClass = '';
@@ -3051,11 +3051,12 @@
                     stockCellsHtml += `<td class="py-2.5 px-2 text-center text-[#9B9A97] text-[11px] animate-pulse">...</td>`;
                 } else {
                     const st = getStockForLocation(liveStock, snapshotStock, item.sku, b.code);
+                    const stDisplay = Number(Number(st || 0).toFixed(2)).toString();
                     let badge = '';
                     if (st >= reqQty) {
-                        badge = `<span class="px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold bg-[#EDF3EC] text-[#448361]">${st}</span>`;
+                        badge = `<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-mono tabular-nums whitespace-nowrap font-semibold bg-[#EDF3EC] text-[#448361]" title="Tồn Arito: ${st}">${stDisplay}</span>`;
                     } else if (st > 0) {
-                        badge = `<span class="px-1.5 py-0.5 rounded text-[11px] font-mono font-semibold bg-[#FBEDD6] text-[#CB912F]">${st}</span>`;
+                        badge = `<span class="inline-block px-1.5 py-0.5 rounded text-[11px] font-mono tabular-nums whitespace-nowrap font-semibold bg-[#FBEDD6] text-[#CB912F]" title="Tồn Arito: ${st}">${stDisplay}</span>`;
                     } else {
                         badge = `<span class="font-mono text-[11px] text-[#9B9A97]">-</span>`;
                     }
@@ -3209,7 +3210,7 @@
             { key: 'CANCELLED', label: '❌ Đã Hủy' }
         ];
 
-        let pipelineHtml = '<div class="flex items-center space-x-1.5 min-w-max pb-1">';
+        let pipelineHtml = '<div class="flex flex-wrap items-center gap-1.5 pb-1">';
         PLATFORM_STATUS_FLOW.forEach((st, idx) => {
             const isActive = (order.status === st.key);
             let badgeClass = '';
