@@ -322,7 +322,7 @@ class PoppiesClient:
         if since_version:
             params["since_version"] = since_version
 
-        urls_to_try: List[str] = [
+        urls_to_try: List[str] = self._get_ump_urls("pricing/snapshots") + [
             f"{self.pos_pricing_base_url}/snapshots",
             "http://host.docker.internal:6515/api/v1/pos/pricing/snapshots",
             "http://127.0.0.1:6515/api/v1/pos/pricing/snapshots",
@@ -394,6 +394,34 @@ class PoppiesClient:
             details={"branch_code": branch_code, "channel_code": canonical_channel},
         )
 
+    def _derive_api_v1_root(self, url: str) -> Optional[str]:
+        """Extract `.../api/v1` root from a configured Poppies endpoint URL."""
+        if not url:
+            return None
+        idx = url.find("/api/v1/")
+        if idx != -1:
+            return url[: idx + len("/api/v1")]
+        if url.endswith("/api/v1"):
+            return url
+        return None
+
+    def _get_ump_urls(self, suffix: str) -> List[str]:
+        """Return deduplicated candidate URLs under `/api/v1/ump/{suffix}`."""
+        clean_suffix = suffix.lstrip("/")
+        roots: List[str] = []
+        for candidate_base in (self.pos_pricing_base_url, self.base_url, self.pricing_base_url):
+            root = self._derive_api_v1_root(candidate_base)
+            if root:
+                roots.append(root)
+        roots.extend([
+            "http://host.docker.internal:6515/api/v1",
+            "http://127.0.0.1:6515/api/v1",
+            "https://poppies.namanmarket.com/api/v1",
+        ])
+        candidates = [f"{r}/ump/{clean_suffix}" for r in roots]
+        seen = set()
+        return [u for u in candidates if not (u in seen or seen.add(u))]
+
     def _get_master_data_urls(self, suffix: str) -> List[str]:
         """Return deduplicated candidate URLs for Poppies POS Master Data Gateway."""
         clean_suffix = suffix.lstrip("/")
@@ -407,17 +435,21 @@ class PoppiesClient:
         return [u for u in candidates if not (u in seen or seen.add(u))]
 
     async def get_health(self) -> Dict[str, Any]:
-        """Check Poppies ERP Master Data API health probe."""
-        urls_to_try = self._get_master_data_urls("health")
+        """Check Poppies ERP UMP/Master Data API health probe (preferring `/api/v1/ump/health`)."""
+        urls_to_try = self._get_ump_urls("health") + self._get_master_data_urls("health")
+        seen = set()
+        unique_urls = [u for u in urls_to_try if not (u in seen or seen.add(u))]
         headers = self._get_headers()
 
         last_err = None
         client = self._get_client()
-        for url in urls_to_try:
+        for url in unique_urls:
             try:
                 resp = await client.get(url, headers=headers)
                 if resp.status_code == 200:
                     return resp.json()
+                elif resp.status_code == 404:
+                    continue
             except Exception as ex:
                 last_err = ex
 
@@ -442,7 +474,12 @@ class PoppiesClient:
 
         last_err = None
         client = self._get_client()
-        for url in self._get_master_data_urls(f"sku/{encoded_sku}"):
+        urls_to_try = self._get_ump_urls(f"master-data/sku/{encoded_sku}") + self._get_master_data_urls(
+            f"sku/{encoded_sku}"
+        )
+        seen = set()
+        unique_urls = [u for u in urls_to_try if not (u in seen or seen.add(u))]
+        for url in unique_urls:
             try:
                 resp = await client.get(
                     url,
@@ -453,7 +490,7 @@ class PoppiesClient:
                     body = resp.json()
                     return body.get("item")
                 elif resp.status_code == 404:
-                    return None
+                    continue
             except Exception as ex:
                 last_err = ex
 
@@ -478,13 +515,18 @@ class PoppiesClient:
 
         last_err: Optional[Exception] = None
         client = self._get_client()
-        for url in self._get_master_data_urls("snapshot"):
+        urls_to_try = self._get_ump_urls("master-data/snapshot") + self._get_master_data_urls("snapshot")
+        seen = set()
+        unique_urls = [u for u in urls_to_try if not (u in seen or seen.add(u))]
+        for url in unique_urls:
             try:
                 resp = await client.get(
                     url,
                     params=params,
                     headers=self._get_headers(),
                 )
+                if resp.status_code == 404:
+                    continue
                 resp.raise_for_status()
                 return resp.json()
             except Exception as ex:
@@ -493,6 +535,158 @@ class PoppiesClient:
         if last_err:
             raise last_err
         raise PoppiesUpstreamError("Không thể kết nối Poppies Master Data Snapshot.")
+
+    async def get_master_data_snapshot(
+        self,
+        branch_code: str = "10001",
+        status_filter: str = "01",
+        limit: int = 500,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """Alias for `get_snapshot` preferring `/api/v1/ump/master-data/snapshot`."""
+        return await self.get_snapshot(
+            branch_code=branch_code,
+            status_filter=status_filter,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_conversion_rates(
+        self,
+        skus: Optional[List[str]] = None,
+        search: Optional[str] = None,
+        source: Optional[str] = None,
+        since: Optional[str] = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Fetch SKU conversion rates from Poppies UMP endpoint:
+        GET /api/v1/ump/conversion-rates
+        """
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        if skus:
+            cleaned = [str(s).strip() for s in skus if str(s).strip()]
+            if cleaned:
+                params["skus"] = ",".join(cleaned)
+        if search:
+            params["search"] = search
+        if source:
+            params["source"] = source
+        if since:
+            params["since"] = since
+
+        last_err: Optional[Exception] = None
+        client = self._get_client()
+        for url in self._get_ump_urls("conversion-rates"):
+            try:
+                resp = await client.get(url, params=params, headers=self._get_headers())
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 404:
+                    continue
+                resp.raise_for_status()
+            except Exception as ex:
+                last_err = ex
+
+        if last_err:
+            raise last_err
+        raise PoppiesUpstreamError("Không thể kết nối Poppies UMP Conversion Rates API.")
+
+    async def get_conversion_rate_by_sku(self, sku: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch conversion rate metadata for 1 SKU from Poppies UMP endpoint:
+        GET /api/v1/ump/conversion-rates/{sku}
+        """
+        if not sku or ".." in sku or not re.fullmatch(r"[A-Za-z0-9._-]+", sku):
+            raise ValueError("Invalid sku")
+        encoded_sku = quote(sku, safe="")
+
+        last_err: Optional[Exception] = None
+        client = self._get_client()
+        for url in self._get_ump_urls(f"conversion-rates/{encoded_sku}"):
+            try:
+                resp = await client.get(url, headers=self._get_headers())
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 404:
+                    continue
+                resp.raise_for_status()
+            except Exception as ex:
+                last_err = ex
+
+        if last_err:
+            raise last_err
+        return None
+
+    async def resolve_pricing(
+        self,
+        skus: List[str],
+        branch_code: str = "10001",
+        channel_code: str = "STORE",
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """
+        Resolve live pricing & conversion rates via Poppies UMP endpoint:
+        POST /api/v1/ump/pricing/resolve
+        """
+        canonical_channel = normalize_channel_code(channel_code)
+        payload: Dict[str, Any] = {
+            "skus": [str(s).strip() for s in skus if str(s).strip()],
+            "branch_code": branch_code,
+            "channel_code": canonical_channel,
+            **extra,
+        }
+        headers = self._get_headers()
+        headers["Content-Type"] = "application/json"
+
+        last_err: Optional[Exception] = None
+        client = self._get_client()
+        for url in self._get_ump_urls("pricing/resolve"):
+            try:
+                resp = await client.post(url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 404:
+                    continue
+                resp.raise_for_status()
+            except Exception as ex:
+                last_err = ex
+
+        if last_err:
+            raise last_err
+        raise PoppiesUpstreamError("Không thể kết nối Poppies UMP Pricing Resolve API.")
+
+    async def get_master_data_changes(
+        self,
+        since: Optional[str] = None,
+        limit: int = 500,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Fetch incremental master data changes (including conversionRate updates):
+        GET /api/v1/ump/master-data/changes
+        """
+        params: Dict[str, Any] = {"limit": limit, "offset": offset}
+        if since:
+            params["since"] = since
+
+        last_err: Optional[Exception] = None
+        client = self._get_client()
+        for url in self._get_ump_urls("master-data/changes"):
+            try:
+                resp = await client.get(url, params=params, headers=self._get_headers())
+                if resp.status_code == 200:
+                    return resp.json()
+                elif resp.status_code == 404:
+                    continue
+                resp.raise_for_status()
+            except Exception as ex:
+                last_err = ex
+
+        if last_err:
+            raise last_err
+        raise PoppiesUpstreamError("Không thể kết nối Poppies UMP Master Data Changes API.")
 
     async def get_cttk_records(
         self,

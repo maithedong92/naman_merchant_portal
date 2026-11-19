@@ -20,6 +20,7 @@ from app.services.error_service import error_service
 from app.services.order_service import OrderService
 from app.services.poppies_channel_push import (
     apply_channel_governance_to_stock_items,
+    compute_channel_sale_price,
     load_channel_governance_for_products,
 )
 from app.modules.shopeefood.service import shopeefood_client
@@ -101,7 +102,7 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 break
 
             ch_map = map_by_pid.get(str(product.id))
-            item_price = (
+            erp_price = (
                 float(ch_map.custom_price)
                 if (
                     has_partner_pricing
@@ -110,6 +111,9 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                     and float(ch_map.custom_price) > 0
                 )
                 else float(product.base_price or 0)
+            )
+            item_price = compute_channel_sale_price(
+                erp_price, getattr(product, "conversion_rate", 1.0)
             )
             if item_price <= 0:
                 continue

@@ -5,6 +5,7 @@ Real-Time Outbound Propagation from Poppies ERP Channel Governance to External P
 
 import inspect
 import logging
+import math
 from typing import Any, Dict, List, Optional, Set, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,39 @@ from app.services.poppies_channels import (
 )
 
 logger = logging.getLogger("naman_portal.poppies_channel_push")
+
+
+def normalize_conversion_rate(val: Any) -> float:
+    """
+    Normalize a SKU conversion rate to a positive finite float (4 decimal places).
+    Falls back safely to 1.0 for None, bool, non-numeric, NaN/Inf, or <= 0 values.
+    """
+    if val is None or isinstance(val, bool):
+        return 1.0
+    try:
+        num = float(val)
+    except (TypeError, ValueError):
+        return 1.0
+    if not math.isfinite(num) or num <= 0.0:
+        return 1.0
+    rounded = round(num, 4)
+    return rounded if rounded > 0.0 else 1.0
+
+
+def compute_channel_sale_price(erp_price: Any, conversion_rate: Any) -> float:
+    """
+    Compute channel sale price by multiplying original ERP price by conversion_rate.
+    Returns 0.0 if erp_price is missing, non-numeric, non-finite, or <= 0.
+    """
+    if erp_price is None or isinstance(erp_price, bool):
+        return 0.0
+    try:
+        base = float(erp_price or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(base) or base <= 0.0:
+        return 0.0
+    return round(base * normalize_conversion_rate(conversion_rate), 2)
 
 
 async def _safe_execute(db: Any, stmt: Any) -> Any:
@@ -184,15 +218,19 @@ async def apply_channel_governance_to_stock_items(
         has_custom_override = bool(
             has_partner_pricing and mapping and mapping.custom_price is not None and float(mapping.custom_price) > 0
         )
-        eff_price = (
+        raw_erp_price = (
             float(mapping.custom_price)
             if has_custom_override
             else float(prod.base_price or 0.0)
         )
-        if has_custom_override:
+        conv_rate = normalize_conversion_rate(getattr(prod, "conversion_rate", 1.0))
+        eff_price = compute_channel_sale_price(raw_erp_price, conv_rate)
+        if has_custom_override and eff_price > 0:
             item["price"] = eff_price
         elif item.get("price") is None and eff_price > 0:
             item["price"] = eff_price
+        elif item.get("price") is not None and conv_rate != 1.0:
+            item["price"] = compute_channel_sale_price(item["price"], conv_rate)
 
         adjusted.append(item)
 
@@ -261,6 +299,7 @@ async def propagate_skus_to_external_channel(
             "sku": str(p.sku),
             "is_active": bool(p.is_active),
             "base_price": float(p.base_price or 0.0),
+            "conversion_rate": normalize_conversion_rate(getattr(p, "conversion_rate", 1.0)),
         }
         for p in prods
     ]
@@ -312,11 +351,12 @@ async def propagate_skus_to_external_channel(
             )
             eff_avail = phys_avail if is_allowed else 0.0
             eff_oos = (not is_allowed) or (eff_avail <= 0.0)
-            eff_price = (
+            raw_erp_price = (
                 float(mapping["custom_price"])
                 if (has_partner_pricing and mapping and mapping["custom_price"] is not None)
                 else ps["base_price"]
             )
+            eff_price = compute_channel_sale_price(raw_erp_price, ps["conversion_rate"])
 
             stock_items.append(
                 {

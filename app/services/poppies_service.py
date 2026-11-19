@@ -24,6 +24,11 @@ from app.services.poppies_channels import (
     normalize_channel_code,
     slugify_category_code,
 )
+from app.services.poppies_channel_push import (
+    normalize_conversion_rate,
+    propagate_channel_menu_to_external_channel,
+    propagate_skus_to_external_channel,
+)
 from app.services.poppies_client import PoppiesClient, PoppiesUpstreamError
 from app.services.poppies_matching import PoppiesMatchingMixin
 from app.services.poppies_pricing_sync import PoppiesPricingGovernanceMixin
@@ -46,6 +51,93 @@ __all__ = [
 ]
 
 
+def _extract_snapshot_conversion_rates(
+    snap: Dict[str, Any]
+) -> Dict[str, Tuple[float, str]]:
+    """
+    Extract `{sku: (normalized_conversion_rate, conversion_rate_source)}` from a
+    Poppies pricing snapshot (`conversion_rates` / `conversionRates` map, `prices`, or `items`).
+    """
+    conv_map: Dict[str, Tuple[float, str]] = {}
+
+    for map_key in ("conversion_rates", "conversionRates"):
+        raw_map = snap.get(map_key)
+        if isinstance(raw_map, dict):
+            for sku_k, val in raw_map.items():
+                sku_str = str(sku_k or "").strip()
+                if not sku_str:
+                    continue
+                if isinstance(val, dict):
+                    raw_r = val.get("conversion_rate", val.get("conversionRate"))
+                    raw_src = val.get("conversion_rate_source", val.get("conversionRateSource"))
+                else:
+                    raw_r = val
+                    raw_src = None
+                if raw_r is not None:
+                    src = str(raw_src or "DEFAULT").strip().upper()[:32] or "DEFAULT"
+                    conv_map[sku_str] = (normalize_conversion_rate(raw_r), src)
+
+    for prices_key in ("prices", "price_map"):
+        raw_prices = snap.get(prices_key)
+        if isinstance(raw_prices, dict):
+            for sku_k, val in raw_prices.items():
+                sku_str = str(sku_k or "").strip()
+                if not sku_str or not isinstance(val, dict):
+                    continue
+                raw_r = val.get("conversion_rate")
+                if raw_r is None:
+                    raw_r = val.get("conversionRate")
+                if raw_r is not None:
+                    raw_src = val.get("conversion_rate_source") or val.get("conversionRateSource")
+                    src = str(raw_src or "DEFAULT").strip().upper()[:32] or "DEFAULT"
+                    conv_map[sku_str] = (normalize_conversion_rate(raw_r), src)
+
+    raw_items = snap.get("items")
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            sku_str = str(item.get("sku") or item.get("skuCode") or "").strip()
+            if not sku_str:
+                continue
+            raw_r = item.get("conversion_rate")
+            if raw_r is None:
+                raw_r = item.get("conversionRate")
+            if raw_r is not None:
+                raw_src = item.get("conversion_rate_source") or item.get("conversionRateSource")
+                src = str(raw_src or "DEFAULT").strip().upper()[:32] or "DEFAULT"
+                conv_map[sku_str] = (normalize_conversion_rate(raw_r), src)
+
+    return conv_map
+
+
+class _SnapshotCapturingClient:
+    """Async-safe proxy around PoppiesClient that captures the raw snapshot dict."""
+
+    def __init__(self, inner: PoppiesClient):
+        self._inner = inner
+        self.last_snap: Optional[Dict[str, Any]] = None
+
+    async def get_pricing_snapshot(self, **kwargs: Any) -> Dict[str, Any]:
+        snap = await self._inner.get_pricing_snapshot(**kwargs)
+        self.last_snap = snap
+        return snap
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+class _ServiceClientProxy:
+    """Delegate attribute access to PoppiesMasterDataSyncService while swapping `client`."""
+
+    def __init__(self, service: "PoppiesMasterDataSyncService", client: _SnapshotCapturingClient):
+        self._service = service
+        self.client = client
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._service, name)
+
+
 class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanceMixin):
     """
     Service responsible for pulling Poppies ERP Master Data (Products, Prices, Categories),
@@ -58,6 +150,96 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
     async def check_health(self) -> Dict[str, Any]:
         """Get live health status of Poppies Master Data Gateway."""
         return await self.client.get_health()
+
+    async def sync_channel_pricing_snapshot(
+        self,
+        db: AsyncSession,
+        branch_code: str = "10001",
+        channel_code: str = "STORE",
+        since_version: Optional[str] = None,
+        fmt: str = "map",
+        auto_propagate: bool = True,
+        prefer_price_book: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Extend `PoppiesPricingGovernanceMixin.sync_channel_pricing_snapshot` to persist
+        `Product.conversion_rate` and `Product.conversion_rate_source` from UMP snapshots
+        without altering `Product.base_price` or `ChannelProductMapping.custom_price`.
+        """
+        capturing_client = _SnapshotCapturingClient(self.client)
+        proxy_self = _ServiceClientProxy(self, capturing_client)
+        result = await PoppiesPricingGovernanceMixin.sync_channel_pricing_snapshot(
+            proxy_self,  # type: ignore[arg-type]
+            db=db,
+            branch_code=branch_code,
+            channel_code=channel_code,
+            since_version=since_version,
+            fmt=fmt,
+            auto_propagate=auto_propagate,
+            prefer_price_book=prefer_price_book,
+        )
+
+        snap = capturing_client.last_snap
+        if not isinstance(snap, dict):
+            return result
+
+        conv_map = _extract_snapshot_conversion_rates(snap)
+        if not conv_map:
+            return result
+
+        target_skus = list(conv_map.keys())
+        conv_changed_skus: List[str] = []
+        for idx in range(0, len(target_skus), 2000):
+            chunk = target_skus[idx : idx + 2000]
+            prod_res = await db.execute(
+                select(Product)
+                .where(Product.sku.in_(chunk))
+                .options(
+                    defer(Product.metadata_json),
+                    defer(Product.description),
+                    defer(Product.image_url),
+                )
+            )
+            for prod in prod_res.scalars().all():
+                new_rate, new_src = conv_map[prod.sku]
+                cur_rate = normalize_conversion_rate(getattr(prod, "conversion_rate", 1.0))
+                cur_src = getattr(prod, "conversion_rate_source", "DEFAULT") or "DEFAULT"
+                if abs(cur_rate - new_rate) >= 0.0001 or cur_src != new_src:
+                    prod.conversion_rate = new_rate
+                    prod.conversion_rate_source = new_src
+                    conv_changed_skus.append(str(prod.sku))
+
+        if conv_changed_skus:
+            await db.commit()
+            if auto_propagate:
+                canon_code = normalize_channel_code(channel_code)
+                if canon_code == "STORE":
+                    for ext_ch in ("GRAB", "SHOPEEFOOD", "SHOPEEMART"):
+                        if len(conv_changed_skus) > 200:
+                            await propagate_channel_menu_to_external_channel(
+                                db=db, raw_channel_code=ext_ch, branch_code=branch_code
+                            )
+                        else:
+                            await propagate_skus_to_external_channel(
+                                db=db,
+                                raw_channel_code=ext_ch,
+                                skus=conv_changed_skus,
+                                branch_code=branch_code,
+                            )
+                elif len(conv_changed_skus) > 200:
+                    await propagate_channel_menu_to_external_channel(
+                        db=db, raw_channel_code=canon_code, branch_code=branch_code
+                    )
+                else:
+                    await propagate_skus_to_external_channel(
+                        db=db,
+                        raw_channel_code=canon_code,
+                        skus=conv_changed_skus,
+                        branch_code=branch_code,
+                    )
+
+        result["conversion_rates_updated"] = len(conv_changed_skus)
+        return result
 
     async def sync_master_data_from_poppies(
         self,
@@ -168,6 +350,21 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                 ecommerce = item.get("ecommerce") or {}
                 image_url = ecommerce.get("imageUrl")
 
+                raw_conv_rate = item.get("conversionRate")
+                if raw_conv_rate is None:
+                    raw_conv_rate = item.get("conversion_rate")
+                if raw_conv_rate is None and isinstance(ecommerce, dict):
+                    raw_conv_rate = ecommerce.get("conversionRate")
+                    if raw_conv_rate is None:
+                        raw_conv_rate = ecommerce.get("conversion_rate")
+
+                raw_conv_source = item.get("conversionRateSource") or item.get("conversion_rate_source")
+                if raw_conv_source is None and isinstance(ecommerce, dict):
+                    raw_conv_source = ecommerce.get("conversionRateSource") or ecommerce.get(
+                        "conversion_rate_source"
+                    )
+                conv_source = str(raw_conv_source or "DEFAULT").strip().upper()[:32] or "DEFAULT"
+
                 is_active = str(item.get("status") or "01").strip() == "01"
                 is_fresh = bool(item.get("isFresh", False))
 
@@ -212,6 +409,8 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                         description=item.get("shortName") or product_name,
                         unit=unit_name,
                         base_price=base_price,
+                        conversion_rate=normalize_conversion_rate(raw_conv_rate),
+                        conversion_rate_source=conv_source,
                         image_url=image_url,
                         category_id=category.id,
                         is_active=is_active,
@@ -226,6 +425,9 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                     product.name = product_name
                     product.unit = unit_name
                     product.base_price = base_price
+                    if raw_conv_rate is not None:
+                        product.conversion_rate = normalize_conversion_rate(raw_conv_rate)
+                        product.conversion_rate_source = conv_source
                     if image_url:
                         product.image_url = image_url
                     product.category_id = category.id

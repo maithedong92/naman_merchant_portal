@@ -34,6 +34,8 @@ class Product(Base, TimestampMixin):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     unit: Mapped[str] = mapped_column(String(50), default="Cái", nullable=False)
     base_price: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    conversion_rate: Mapped[float] = mapped_column(Numeric(10, 4), default=1.0, nullable=False)
+    conversion_rate_source: Mapped[str] = mapped_column(String(32), default="DEFAULT", nullable=False)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     category_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("categories.id"), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

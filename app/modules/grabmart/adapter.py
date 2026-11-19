@@ -24,6 +24,7 @@ from app.services.error_service import error_service
 from app.services.order_service import OrderService
 from app.services.poppies_channel_push import (
     apply_channel_governance_to_stock_items,
+    compute_channel_sale_price,
     load_channel_governance_for_products,
 )
 from app.services.poppies_channels import (
@@ -221,7 +222,7 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             )
             for product, inv in sorted_rows:
                 ch_map = map_by_pid.get(str(product.id))
-                eff_price = (
+                erp_price = (
                     float(ch_map.custom_price)
                     if (
                         has_partner_pricing
@@ -230,6 +231,9 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                         and float(ch_map.custom_price) > 0
                     )
                     else float(product.base_price or 0)
+                )
+                eff_price = compute_channel_sale_price(
+                    erp_price, getattr(product, "conversion_rate", 1.0)
                 )
                 price_int = int(round(eff_price))
                 if price_int <= 0:
