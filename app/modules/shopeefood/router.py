@@ -43,6 +43,10 @@ def _reject_read_only(current_user: User) -> None:
 
 @router.post("/shopeefood/webhooks/order")
 @router.post("/shopeefood/webhooks/update_order")
+@router.post("/shopeefoodapi/order/")
+@router.post("/shopeefoodapi/order")
+@router.post("/shopeefoodapi/update_order/")
+@router.post("/shopeefoodapi/update_order")
 async def receive_shopeefood_order_webhook(
     request: Request,
     authorization: Optional[str] = Header(None, alias="Authorization"),
