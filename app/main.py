@@ -17,6 +17,7 @@ from app.modules.grabmart import GrabMartChannelAdapter, grabmart_webhook_router
 from app.modules.shopeefood import ShopeeFoodChannelAdapter, shopeefood_webhook_router
 from app.modules.shopeemart import ShopeeMartChannelAdapter, shopeemart_webhook_router
 from app.services.channel_registry import channel_registry
+from app.services.channel_service import channel_service
 from app.services.auth_service import auth_service
 from app.services.error_service import error_service
 
@@ -64,7 +65,6 @@ async def lifespan(app: FastAPI):
             # Seed default SuperAdmin and Default Channels
             async with AsyncSessionLocal() as session:
                 await auth_service.seed_initial_superadmin(session)
-                from app.services.channel_service import channel_service
                 await channel_service.ensure_default_channels(session)
         else:
             async with engine.connect() as conn:

@@ -589,3 +589,46 @@ def test_templates_contain_cs_store_10008_and_hr_cron_ui():
     assert 'value="10008"' in reports_html
     assert "Tên đăng nhập (Username)" in login_html
     assert "hoặc email" not in login_html
+
+
+@pytest.mark.asyncio
+async def test_lifespan_non_debug_seeds_default_stores(db_session: AsyncSession):
+    """Verify DEBUG=False startup path does not hit UnboundLocalError and ensures stores exist."""
+    from app.main import lifespan
+
+    class _SessionCM:
+        async def __aenter__(self):
+            return db_session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class _ConnCM:
+        async def __aenter__(self):
+            m = MagicMock()
+            m.execute = AsyncMock(return_value=MagicMock())
+            return m
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    fake_engine = MagicMock()
+    fake_engine.connect.return_value = _ConnCM()
+    fake_engine.dispose = AsyncMock()
+
+    with (
+        patch("app.main.settings.DEBUG", False),
+        patch("app.main.settings.ENVIRONMENT", "production"),
+        patch("app.main.engine", fake_engine),
+        patch("app.main.AsyncSessionLocal", return_value=_SessionCM()),
+        patch("app.modules.shopeemart.service.shopeemart_client.hydrate_from_db", new_callable=AsyncMock),
+        patch("app.modules.haravan.sync_worker.haravan_sync_worker.start_background_worker"),
+        patch("app.services.poppies_sync_worker.poppies_sync_worker.start_background_worker"),
+        patch("app.services.hr_sync_worker.hr_sync_worker.start_background_worker"),
+        patch("app.main._stop_worker", new_callable=AsyncMock),
+    ):
+        async with lifespan(app):
+            pass
+
+    stores = (await db_session.execute(select(Store).order_by(Store.code))).scalars().all()
+    assert "10008" in [s.code for s in stores]
