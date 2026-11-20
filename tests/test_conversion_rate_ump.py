@@ -9,14 +9,16 @@ import pytest
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
 from app.models.product import Category, ChannelProductMapping, Product
-from app.models.store import Store
+from app.models.store import Store, StoreChannelMapping
 from app.models.sync_log import WebhookAuditLog
 from app.modules.grabmart.adapter import GrabMartChannelAdapter
 from app.modules.shopeefood.adapter import ShopeeFoodChannelAdapter
+from app.services.channel_registry import channel_registry
 from app.services.poppies_channel_push import (
     apply_channel_governance_to_stock_items,
     compute_channel_sale_price,
     normalize_conversion_rate,
+    propagate_skus_to_external_channel,
 )
 from app.services.poppies_client import PoppiesClient
 from app.services.poppies_service import PoppiesMasterDataSyncService
@@ -620,3 +622,247 @@ async def test_apply_channel_governance_to_stock_items_applies_conversion_rate()
     assert len(adjusted) == 1
     assert adjusted[0]["price"] == 50000.0
     assert float(prod.base_price) == 100000.0
+
+
+@pytest.mark.asyncio
+async def test_propagate_skus_grab_does_not_double_apply_conversion_rate():
+    db = _make_mock_db()
+    if channel_registry.get("GRAB") is None:
+        channel_registry.register(GrabMartChannelAdapter())
+
+    ch_grab = Channel(
+        id="ch-grab",
+        code="GRAB",
+        name="GrabMart",
+        is_active=True,
+        config={"has_partner_pricing": True},
+    )
+    scm = StoreChannelMapping(
+        id="scm-1",
+        store_id="st-10001",
+        channel_id="ch-grab",
+        partner_store_id="5-C4AWPFN3T4AUSA",
+        is_active=True,
+    )
+    prod = Product(
+        id="p-1",
+        sku="290011724000",
+        name="Thịt đầu thăn bò úc Homestead 2.5kg - 3kg",
+        base_price=999900.0,
+        conversion_rate=0.3,
+        is_active=True,
+    )
+    mapping = ChannelProductMapping(
+        id="m-1",
+        product_id="p-1",
+        channel_id="ch-grab",
+        custom_price=None,
+        is_enabled=True,
+    )
+    inv = StoreInventory(
+        id="inv-1",
+        store_id="st-10001",
+        product_id="p-1",
+        sku="290011724000",
+        available_stock=5.0,
+        is_out_of_stock=False,
+    )
+
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars_result([scm]),
+            _scalars_result([prod]),
+            _scalars_result([ch_grab]),
+            _scalars_result([mapping]),
+            _scalars_result([inv]),
+            _scalars_result([prod]),
+            _scalars_result([ch_grab]),
+            _scalars_result([mapping]),
+        ]
+    )
+
+    with (
+        patch("app.modules.grabmart.adapter.channel_service.is_feature_enabled", new=AsyncMock(return_value=True)),
+        patch("app.modules.grabmart.adapter.grabmart_client.batch_update_items", new=AsyncMock(return_value={"ok": True})) as mock_batch,
+    ):
+        summaries = await propagate_skus_to_external_channel(
+            db=db,
+            raw_channel_code="GRAB",
+            skus=["290011724000"],
+        )
+
+    assert len(summaries) == 1
+    assert summaries[0]["success"] is True
+    mock_batch.assert_awaited_once()
+    sent_items = mock_batch.call_args.kwargs["items"]
+    assert len(sent_items) == 1
+    assert sent_items[0]["id"] == "290011724000"
+    assert sent_items[0]["price"] == 299970
+    assert "_price_conversion_applied" not in sent_items[0]
+
+
+@pytest.mark.asyncio
+async def test_propagate_skus_shopeefood_applies_custom_price_and_conversion_rate_once():
+    db = _make_mock_db()
+    if channel_registry.get("SHOPEEFOOD") is None:
+        channel_registry.register(ShopeeFoodChannelAdapter())
+
+    ch_sf = Channel(
+        id="ch-sf",
+        code="SHOPEEFOOD",
+        name="ShopeeFood",
+        is_active=True,
+        config={"has_partner_pricing": True},
+    )
+    scm = StoreChannelMapping(
+        id="scm-sf",
+        store_id="st-10001",
+        channel_id="ch-sf",
+        partner_store_id="10001",
+        is_active=True,
+    )
+    prod = Product(
+        id="p-1",
+        sku="290011724000",
+        name="Thịt đầu thăn bò úc Homestead 2.5kg - 3kg",
+        base_price=999900.0,
+        conversion_rate=0.3,
+        is_active=True,
+    )
+    mapping = ChannelProductMapping(
+        id="m-sf",
+        product_id="p-1",
+        channel_id="ch-sf",
+        custom_price=929907.0,
+        is_enabled=True,
+    )
+    inv = StoreInventory(
+        id="inv-1",
+        store_id="st-10001",
+        product_id="p-1",
+        sku="290011724000",
+        available_stock=5.0,
+        is_out_of_stock=False,
+    )
+
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalars_result([scm]),
+            _scalars_result([prod]),
+            _scalars_result([ch_sf]),
+            _scalars_result([mapping]),
+            _scalars_result([inv]),
+            _scalars_result([prod]),
+            _scalars_result([ch_sf]),
+            _scalars_result([mapping]),
+        ]
+    )
+
+    with (
+        patch("app.modules.shopeefood.adapter.channel_service.is_feature_enabled", new=AsyncMock(return_value=True)),
+        patch("app.modules.shopeefood.adapter.shopeefood_client.update_dish_status", new=AsyncMock(return_value={"result": "success"})),
+        patch("app.modules.shopeefood.adapter.shopeefood_client.bulk_update_dishes", new=AsyncMock(return_value={"result": "success"})) as mock_bulk,
+    ):
+        summaries = await propagate_skus_to_external_channel(
+            db=db,
+            raw_channel_code="SHOPEEFOOD",
+            skus=["290011724000"],
+        )
+
+    assert len(summaries) == 1
+    assert summaries[0]["success"] is True
+    mock_bulk.assert_awaited_once()
+    sent_dishes = mock_bulk.call_args.kwargs["dishes"]
+    assert len(sent_dishes) == 1
+    assert sent_dishes[0]["partner_dish_id"] == "290011724000"
+    assert sent_dishes[0]["price"] == 278972
+    assert "_price_conversion_applied" not in sent_dishes[0]
+
+
+@pytest.mark.asyncio
+async def test_sync_channel_pricing_snapshot_repairs_tcvn3_name_preserves_valid_names():
+    db = _make_mock_db()
+    channel = Channel(
+        id="ch-store",
+        code="STORE",
+        name="Store",
+        is_active=True,
+        config={"has_partner_pricing": False},
+    )
+    prod_bad = Product(
+        id="p1",
+        sku="290011724000",
+        name="ThÞt ®Çu th¨n bß óc Homestead 2.5kg - 3kg",
+        base_price=999900.0,
+        is_active=True,
+    )
+    prod_french = Product(
+        id="p2",
+        sku="SKU-FR",
+        name="Château Côtes du Rhône Crème",
+        base_price=500000.0,
+        is_active=True,
+    )
+    prod_ug = Product(
+        id="p3",
+        sku="SKU-UG",
+        name="Vitamin B12 50µg",
+        base_price=200000.0,
+        is_active=True,
+    )
+    prod_reg = Product(
+        id="p4",
+        sku="SKU-REG",
+        name="Coca-Cola® Zero",
+        base_price=15000.0,
+        is_active=True,
+    )
+
+    db.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(channel),
+            _scalars_result([prod_bad, prod_french, prod_ug, prod_reg]),
+            _scalars_result([]),
+        ]
+    )
+
+    service = PoppiesMasterDataSyncService()
+    service.client = MagicMock()
+    service.client.get_pricing_snapshot = AsyncMock(
+        return_value={
+            "version": "v-tcvn3",
+            "is_active": True,
+            "has_partner_pricing": False,
+            "prices": {
+                "290011724000": {
+                    "effective_price": 999900.0,
+                    "productName": "Thịt đầu thăn bò úc Homestead 2.5kg - 3kg",
+                },
+                "SKU-FR": {
+                    "effective_price": 500000.0,
+                    "productName": "Chateau Renamed Should Not Trigger",
+                },
+                "SKU-UG": {
+                    "effective_price": 200000.0,
+                    "productName": "Vitamin Renamed Should Not Trigger",
+                },
+                "SKU-REG": {
+                    "effective_price": 15000.0,
+                    "productName": "Coca-Cola Renamed Should Not Trigger",
+                },
+            },
+        }
+    )
+
+    res = await service.sync_channel_pricing_snapshot(
+        db=db,
+        branch_code="10001",
+        channel_code="STORE",
+        auto_propagate=False,
+    )
+
+    assert res["tcvn3_names_fixed"] == 1
+    assert prod_bad.name == "Thịt đầu thăn bò úc Homestead 2.5kg - 3kg"
+    assert prod_french.name == "Château Côtes du Rhône Crème"
+    assert prod_ug.name == "Vitamin B12 50µg"
+    assert prod_reg.name == "Coca-Cola® Zero"

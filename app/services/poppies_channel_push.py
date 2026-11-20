@@ -201,6 +201,7 @@ async def apply_channel_governance_to_stock_items(
         sku_str = str(item.get("sku") or "").strip()
         prod = prod_by_sku.get(sku_str)
         if not prod:
+            item.pop("_price_conversion_applied", None)
             adjusted.append(item)
             continue
 
@@ -223,13 +224,14 @@ async def apply_channel_governance_to_stock_items(
             if has_custom_override
             else float(prod.base_price or 0.0)
         )
+        already_converted = bool(item.pop("_price_conversion_applied", False))
         conv_rate = normalize_conversion_rate(getattr(prod, "conversion_rate", 1.0))
         eff_price = compute_channel_sale_price(raw_erp_price, conv_rate)
         if has_custom_override and eff_price > 0:
             item["price"] = eff_price
         elif item.get("price") is None and eff_price > 0:
             item["price"] = eff_price
-        elif item.get("price") is not None and conv_rate != 1.0:
+        elif item.get("price") is not None and conv_rate != 1.0 and not already_converted:
             item["price"] = compute_channel_sale_price(item["price"], conv_rate)
 
         adjusted.append(item)
@@ -364,6 +366,7 @@ async def propagate_skus_to_external_channel(
                     "available_stock": eff_avail,
                     "is_out_of_stock": eff_oos,
                     "price": eff_price if eff_price > 0 else None,
+                    "_price_conversion_applied": True,
                 }
             )
 

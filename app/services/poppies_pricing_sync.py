@@ -5,6 +5,7 @@ Conforms strictly to Sections 2, 3, and 4 of INTEGRATION_REPORT_FOR_AI_POS_AND_U
 
 from datetime import datetime, timezone
 import logging
+import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,46 @@ from app.services.poppies_webhook_handler import (
 )
 
 logger = logging.getLogger("naman_portal.poppies_pricing")
+
+_TCVN3_RE = re.compile(
+    r"[¨ª¬\u00ad¯¶¸Þ]|"
+    r"[§©®][A-Za-zÀ-ÿ]|"
+    r"[A-Za-zÀ-ÿ][«µ·¹»¼½¾Øß÷ø]|"
+    r"[«»¼½¾][A-Za-zÀ-ÿ]"
+)
+
+
+def _looks_like_tcvn3(text: Optional[str]) -> bool:
+    """Return True only when text contains distinctive TCVN3 mojibake sequences."""
+    if not text:
+        return False
+    return bool(_TCVN3_RE.search(text))
+
+
+def _extract_snapshot_clean_names(snap: Dict[str, Any]) -> Dict[str, str]:
+    """Extract clean `{sku: product_name}` pairs from snapshot `prices`/`items`."""
+    clean_names: Dict[str, str] = {}
+    raw_prices = snap.get("prices")
+    if not isinstance(raw_prices, dict):
+        raw_prices = snap.get("price_map")
+    if isinstance(raw_prices, dict):
+        for sku_key, val in raw_prices.items():
+            if not isinstance(val, dict):
+                continue
+            sku_str = str(sku_key or "").strip()
+            raw_name = str(val.get("productName") or val.get("name") or "").strip()
+            if sku_str and raw_name and raw_name != sku_str and not _looks_like_tcvn3(raw_name):
+                clean_names[sku_str] = raw_name
+    raw_items = snap.get("items")
+    if isinstance(raw_items, list):
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+            sku_str = str(item.get("sku") or item.get("skuCode") or "").strip()
+            raw_name = str(item.get("productName") or item.get("name") or "").strip()
+            if sku_str and raw_name and raw_name != sku_str and not _looks_like_tcvn3(raw_name):
+                clean_names[sku_str] = raw_name
+    return clean_names
 
 
 def _extract_snapshot_prices_and_blocks(
@@ -682,6 +723,17 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
                     unblocked_count += 1
                     changed_skus.add(sku_k)
 
+        tcvn3_names_fixed = 0
+        clean_names = _extract_snapshot_clean_names(snap)
+        if clean_names:
+            for sku_code, clean_name in clean_names.items():
+                prod = products_by_sku.get(sku_code)
+                if prod and _looks_like_tcvn3(prod.name):
+                    target_name = clean_name[:255]
+                    if prod.name != target_name:
+                        prod.name = target_name
+                        tcvn3_names_fixed += 1
+
         await db.commit()
 
         # Propagate changes immediately to external platform adapter (GRAB / SHOPEEFOOD / SHOPEEMART)
@@ -735,6 +787,7 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
             "blocked_skus_count": len(blocked_set),
             "blocked_mappings_applied": blocked_applied,
             "unblocked_skus_count": unblocked_count,
+            "tcvn3_names_fixed": tcvn3_names_fixed,
             "elapsed_seconds": elapsed,
             "external_channel_sync": ext_sync,
         }
