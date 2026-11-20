@@ -70,6 +70,8 @@ async def lifespan(app: FastAPI):
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             logger.info("✅ Kết nối cơ sở dữ liệu PostgreSQL sẵn sàng.")
+            async with AsyncSessionLocal() as db:
+                await channel_service.ensure_default_stores(db)
     except Exception as ex:
         if settings.ENVIRONMENT != "test":
             logger.error(f"Không thể kết nối tới PostgreSQL trong startup: {str(ex)}")
@@ -101,12 +103,15 @@ async def lifespan(app: FastAPI):
     from app.services.haravan_order_service import haravan_order_service
     from app.services.poppies_service import poppies_service
     from app.services.poppies_sync_worker import poppies_sync_worker
+    from app.services.hr_sync_worker import hr_sync_worker
     haravan_sync_worker.start_background_worker()
     poppies_sync_worker.start_background_worker()
+    hr_sync_worker.start_background_worker()
 
     yield
     
     logger.info("=== Đang tắt hệ thống Nam An Merchant Portal ===")
+    await _stop_worker(hr_sync_worker)
     await _stop_worker(poppies_sync_worker)
     await _stop_worker(haravan_sync_worker)
     auth_service.close()

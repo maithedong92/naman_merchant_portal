@@ -1478,7 +1478,7 @@
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
         const readOnlyUser = isReadOnly();
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
-        const canDispatch = !readOnlyUser && (isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
+        const canDispatch = !readOnlyUser && (isSuperAdmin || currentUser.role === 'CS' || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
 
         let rowsHtml = '';
         orders.forEach(o => {
@@ -1854,7 +1854,7 @@
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
         const readOnlyUser = isReadOnly();
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
-        const canDispatch = !readOnlyUser && (isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
+        const canDispatch = !readOnlyUser && (isSuperAdmin || currentUser.role === 'CS' || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
 
         let html = '';
         orders.forEach(o => {
@@ -2669,7 +2669,7 @@
         const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : null) || {};
         const readOnlyUser = isReadOnly();
         const isSuperAdmin = currentUser.role === 'SUPER_ADMIN' || currentUser.is_superuser;
-        const canDispatch = !readOnlyUser && (isSuperAdmin || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
+        const canDispatch = !readOnlyUser && (isSuperAdmin || currentUser.role === 'CS' || (!currentUser.store_code && currentUser.role === 'STORE_MANAGER'));
 
         // 1. Header Badges
         document.getElementById('detail-modal-channel-badge').innerHTML = `<span>🌐</span><span>HARAVAN (${escapeHtml((order.source || 'Web').toUpperCase())})</span>`;
@@ -3132,6 +3132,7 @@
         renderHistoryTabPane(order);
 
         // 7. FOOTER ACTION BUTTONS
+        const canFulfillOrder = !readOnlyUser && currentUser.role !== 'CS';
         let footerHtml = `
             <div class="flex items-center space-x-2">
                 </div>
@@ -3156,21 +3157,21 @@
                     </button>
                 ` : ''}
 
-                ${!readOnlyUser && procStatus === 'Đã phân tuyến' ? `
+                ${canFulfillOrder && procStatus === 'Đã phân tuyến' ? `
                     <button data-id="${escapeHtml(order.id)}" onclick="executeHaravanPack(this.dataset.id)" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>📦</span>
                         <span>Đã Đóng Gói Xong</span>
                     </button>
                 ` : ''}
 
-                ${!readOnlyUser && procStatus === 'Đã đóng gói' ? `
+                ${canFulfillOrder && procStatus === 'Đã đóng gói' ? `
                     <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" onclick="openHaravanShipModal(this.dataset.id, this.dataset.code)" class="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>🚚</span>
                         <span>Gửi Vận Đơn</span>
                     </button>
                 ` : ''}
 
-                ${!readOnlyUser && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
+                ${canFulfillOrder && (procStatus === 'Đã gửi vận đơn' || procStatus === 'Đã đóng gói') ? `
                     <button data-id="${escapeHtml(order.id)}" data-code="${escapeHtml(order.order_number || order.id)}" data-total="${Number(totalAmount || 0)}" onclick="openHaravanCompleteModal(this.dataset.id, this.dataset.code, Number(this.dataset.total))" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold transition-colors flex items-center space-x-1.5 shadow-sm">
                         <span>✅</span>
                         <span>Hoàn Tất Đơn</span>
@@ -3194,6 +3195,8 @@
     // Render Platform Order Detail Dialog (GrabMart, ShopeeFood, ShopeeMart)
     function renderPlatformDetailModal(order) {
         const readOnlyUser = isReadOnly();
+        const currentUser = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {}) || {};
+        const canMutatePlatform = !readOnlyUser && (Boolean(currentUser.is_superuser) || ['SUPER_ADMIN', 'STORE_MANAGER', 'STAFF'].includes(currentUser.role));
         document.getElementById('detail-modal-channel-badge').innerHTML = getChannelBadge(order.channel_code);
         document.getElementById('detail-modal-channel-badge').className = "inline-flex items-center";
         document.getElementById('detail-modal-title').textContent = `Đơn hàng ${order.order_code}`;
@@ -3325,7 +3328,7 @@
                         <span>📄</span>
                         <span>Vận Đơn AWB</span></button>
                     <button data-sn="${safeSn}" onclick="downloadShopeeAwbPdf(this.dataset.sn)" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-300 text-[12px] font-semibold text-slate-700 transition-colors flex items-center space-x-1" title="Tải file vận đơn AWB từ Shopee"><span>🏷️</span><span>Tải AWB</span></button>
-                    ${!readOnlyUser ? `
+                    ${canMutatePlatform ? `
                     <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'ACCEPT')" class="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-[11px] font-semibold text-emerald-800 transition-colors" title="Chấp nhận yêu cầu hủy đơn từ người mua Shopee">✓ Duyệt Hủy Khách</button>
                     <button data-sn="${safeSn}" onclick="handleShopeeBuyerCancellation(this.dataset.sn, 'REJECT')" class="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-200 text-[11px] font-semibold text-rose-700 transition-colors" title="Từ chối yêu cầu hủy đơn từ người mua Shopee"><span>✕ Từ Chối Hủy</span>
                     </button>
@@ -3334,7 +3337,7 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
-                ${(!readOnlyUser && order.status === 'PENDING') ? `
+                ${(canMutatePlatform && order.status === 'PENDING') ? `
                     <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         Hủy Đơn
                     </button>
@@ -3344,7 +3347,7 @@
                     </button>
                 ` : ''}
 
-                ${(!readOnlyUser && (order.status === 'ACCEPTED' || order.status === 'PREPARING')) ? `
+                ${(canMutatePlatform && (order.status === 'ACCEPTED' || order.status === 'PREPARING')) ? `
                     <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         Hủy Đơn
                     </button>
@@ -4101,6 +4104,7 @@
 
         const prevStore = currentFilter.store_code;
         const isSuperAdmin = (user.role === 'SUPER_ADMIN' || user.is_superuser);
+        const hasGlobalOrderView = (isSuperAdmin || user.role === 'CS');
         const bannerEl = document.getElementById('branch-isolation-banner');
         const branchLabelEl = document.getElementById('current-branch-label');
         const storeSelectEl = document.getElementById('filter-store-code');
@@ -4108,16 +4112,13 @@
         const btnSyncHaravan = document.getElementById('btn-sync-haravan');
         const btnPollShopee = document.getElementById('btn-poll-shopeemart');
 
-        if (isReadOnly()) {
-            if (btnSyncHaravan) btnSyncHaravan.classList.add('hidden');
-            if (btnPollShopee) btnPollShopee.classList.add('hidden');
-        } else {
-            if (btnSyncHaravan) btnSyncHaravan.classList.remove('hidden');
-            if (btnPollShopee) btnPollShopee.classList.remove('hidden');
-        }
+        const canSyncHaravanBtn = (isSuperAdmin || user.role === 'STORE_MANAGER' || user.role === 'CS');
+        const canPollShopeeBtn = (isSuperAdmin || user.role === 'STORE_MANAGER');
+        if (btnSyncHaravan) btnSyncHaravan.classList.toggle('hidden', !canSyncHaravanBtn);
+        if (btnPollShopee) btnPollShopee.classList.toggle('hidden', !canPollShopeeBtn);
 
-        if (!isSuperAdmin && user.store_code) {
-            // Branch staff/manager (CH10001..CH10006): strictly lock to assigned branch
+        if (!hasGlobalOrderView && user.store_code) {
+            // Branch staff/manager (CH10001..CH10006, 10008): strictly lock to assigned branch
             currentFilter.store_code = user.store_code;
             if (storeSelectEl) {
                 storeSelectEl.value = user.store_code;

@@ -24,7 +24,7 @@
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex flex-wrap items-center gap-2.5 text-xs">
+        <div id="inventory-sync-actions" class="flex flex-wrap items-center gap-2.5 text-xs">
             <button id="btn-sync-poppies" onclick="triggerPoppiesMasterSync()" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-bold flex items-center space-x-2 transition-all shadow-sm" title="Đồng bộ toàn diện & Matching chính xác Kênh bán, Master SKU, Giá đa kênh & Tồn kho từ Poppies ERP">
                 <svg id="sync-poppies-spinner" class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 <span>Đồng Bộ & Matching Poppies</span>
@@ -76,6 +76,9 @@
         </button>
         <button type="button" onclick="switchStoreBranch('10006')" class="store-tab-pill px-3.5 py-1.5 rounded-xl font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-white/60" data-store="10006">
             303 Nguyễn Văn Trỗi (10006)
+        </button>
+        <button type="button" onclick="switchStoreBranch('10008')" class="store-tab-pill px-3.5 py-1.5 rounded-xl font-semibold transition-all text-slate-600 hover:text-slate-900 hover:bg-white/60" data-store="10008">
+            Kho Online Ecom (10008)
         </button>
     </div>
 
@@ -316,15 +319,46 @@
         return Number.isInteger(num) ? String(num) : String(parseFloat(num.toFixed(2)));
     }
 
+    function canMutateInventory() {
+        const user = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        if (!user || !user.role) return false;
+        return Boolean(user.is_superuser) || ['SUPER_ADMIN', 'STORE_MANAGER', 'STAFF'].includes(user.role);
+    }
+
+    function canRunInventorySync() {
+        const user = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
+        if (!user || !user.role) return false;
+        return Boolean(user.is_superuser) || ['SUPER_ADMIN', 'STORE_MANAGER'].includes(user.role);
+    }
+
+    function hasGlobalInventoryAccess(user) {
+        if (!user || !user.role) return false;
+        return (
+            user.role === 'SUPER_ADMIN'
+            || Boolean(user.is_superuser)
+            || user.role === 'CS'
+            || (!user.store_code && user.role !== 'STAFF')
+        );
+    }
+
     // Store Scoping for non-SUPER_ADMIN branch users
     function setupInventoryStoreScoping(userArg) {
         const user = userArg || (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
         if (!user || !user.role) return false;
-        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+        const hasGlobal = hasGlobalInventoryAccess(user);
         const prevStore = currentStoreCode;
 
+        const syncActionsEl = document.getElementById('inventory-sync-actions');
+        if (syncActionsEl) {
+            if (canRunInventorySync()) {
+                syncActionsEl.classList.remove('hidden');
+            } else {
+                syncActionsEl.classList.add('hidden');
+            }
+        }
+
         const pills = document.querySelectorAll('.store-tab-pill');
-        if (!isSuperAdmin && user.store_code) {
+        if (!hasGlobal && user.store_code) {
             currentStoreCode = user.store_code;
             pills.forEach(btn => {
                 const storeVal = btn.getAttribute('data-store');
@@ -349,8 +383,8 @@
     // Switch Branch Tab
     function switchStoreBranch(storeCode) {
         const user = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
-        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
-        if (user && user.role && !isSuperAdmin && user.store_code && storeCode !== user.store_code) {
+        const hasGlobal = hasGlobalInventoryAccess(user);
+        if (user && user.role && !hasGlobal && user.store_code && storeCode !== user.store_code) {
             storeCode = user.store_code;
         }
         currentStoreCode = storeCode;
@@ -490,13 +524,21 @@
                 ? `<img src="${escapeHtml(rawImage)}" alt="${safeName}" class="w-9 h-9 rounded-xl object-cover border border-slate-200 shrink-0">`
                 : `<div class="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-slate-400" aria-label="${safeName}"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>`;
 
-            const toggleBtn = isOutOfStock
-                ? `<button data-sku="${safeSku}" data-out="false" onclick="toggleItemStock(this.dataset.sku, this.dataset.out === 'true')" class="px-3 py-1 rounded-xl text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-100 transition-all shadow-2xs">
-                     <span>Bật bán lại</span>
+            const canEditStock = canMutateInventory();
+            const toggleBtn = !canEditStock
+                ? `<span class="text-[11px] font-medium text-slate-400">Chỉ xem</span>`
+                : (isOutOfStock
+                    ? `<button data-sku="${safeSku}" data-out="false" onclick="toggleItemStock(this.dataset.sku, this.dataset.out === 'true')" class="px-3 py-1 rounded-xl text-xs font-bold text-slate-800 bg-white border border-slate-200 hover:bg-slate-100 transition-all shadow-2xs">
+                         <span>Bật bán lại</span>
+                       </button>`
+                    : `<button data-sku="${safeSku}" data-out="true" onclick="toggleItemStock(this.dataset.sku, this.dataset.out === 'true')" class="px-3 py-1 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all">
+                         <span>Tắt món</span>
+                       </button>`);
+            const quickEditBtn = canEditStock
+                ? `<button data-sku="${safeSku}" data-name="${safeName}" data-stock="${Number(item.available_stock) || 0}" onclick="openQuickStockModal(this.dataset.sku, this.dataset.name, Number(this.dataset.stock))" class="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Chỉnh sửa tồn kho">
+                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                    </button>`
-                : `<button data-sku="${safeSku}" data-out="true" onclick="toggleItemStock(this.dataset.sku, this.dataset.out === 'true')" class="px-3 py-1 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all">
-                     <span>Tắt món</span>
-                   </button>`;
+                : '';
 
             const syncTime = item.last_synced_at ? new Date(item.last_synced_at).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'}) : 'Chưa sync';
 
@@ -524,9 +566,7 @@
                     <div class="inline-flex flex-col items-center">
                         <div class="inline-flex items-center justify-center space-x-1.5">
                             <span class="font-mono font-bold ${isOutOfStock ? 'text-rose-600' : 'text-slate-900'} text-xs" title="Thực tế: ${formatStockQty(item.total_stock ?? item.available_stock ?? 0)} | Giữ chỗ: ${formatStockQty(item.reserved_stock ?? 0)} | An toàn: ${formatStockQty(item.safety_stock ?? 0)} | Khả dụng: ${formatStockQty(item.available_stock ?? 0)}">${formatStockQty(item.total_stock ?? item.available_stock ?? 0)}-${formatStockQty(item.reserved_stock ?? 0)}</span>
-                            <button data-sku="${safeSku}" data-name="${safeName}" data-stock="${Number(item.available_stock) || 0}" onclick="openQuickStockModal(this.dataset.sku, this.dataset.name, Number(this.dataset.stock))" class="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-700 transition-colors" title="Chỉnh sửa tồn kho">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                            </button>
+                            ${quickEditBtn}
                         </div>
                         <div class="text-[10px] font-mono text-slate-400">Khả dụng: ${formatStockQty(item.available_stock ?? 0)}${Number(item.safety_stock || 0) > 0 ? ' • AT: ' + formatStockQty(item.safety_stock) : ''}</div>
                     </div>

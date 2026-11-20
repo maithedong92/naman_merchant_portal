@@ -21,9 +21,12 @@
 
         <!-- Action Buttons -->
         <div class="flex flex-wrap items-center gap-2 text-[12px]">
-            <button id="btn-seed-staff" onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] disabled:opacity-50 transition-colors flex items-center space-x-1 font-medium" title="Đồng bộ danh sách tài khoản nhân sự từ MongoDB naman_internal_app.user">
+            <span id="hr-sync-cron-badge" class="px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[11px] font-medium text-[#787774]" title="Cronjob đồng bộ tài khoản HR từ MongoDB (UTC+7); phân quyền do IT quản lý thủ công">
+                ⏰ Tự động HR: 07:00 &amp; 14:00 (2 lần/ngày)
+            </span>
+            <button id="btn-seed-staff" onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] disabled:opacity-50 transition-colors flex items-center space-x-1 font-medium" title="Chạy đồng bộ nhân sự HR ngay từ MongoDB naman_internal_app.user (không ghi đè phân quyền IT đã gán)">
                 <span>🔄</span>
-                <span>Đồng Bộ Nhân Sự Nội Bộ</span>
+                <span>Đồng Bộ HR Ngay</span>
             </button>
             <button onclick="openSecurityLogsModal()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] transition-colors flex items-center space-x-1 font-medium">
                 <svg class="w-3.5 h-3.5 text-[#787774]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,6 +86,7 @@
                     <option value="">Tất cả vai trò</option>
                     <option value="SUPER_ADMIN">Super Admin (Toàn quyền)</option>
                     <option value="STORE_MANAGER">Cửa hàng trưởng (STORE_MANAGER)</option>
+                    <option value="CS">CS Điều phối đơn (CS)</option>
                     <option value="STAFF">Nhân viên chi nhánh (STAFF)</option>
                     <option value="READ_ONLY">Chỉ xem (READ_ONLY)</option>
                 </select>
@@ -198,6 +202,7 @@
                     <select id="create-role" onchange="onCreateRoleChange()" required class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] focus:bg-white focus:border-[#2383E2] text-[12px] font-medium text-[#37352F]">
                         <option value="STAFF">STAFF (Nhân viên cửa hàng)</option>
                         <option value="STORE_MANAGER">STORE_MANAGER (Cửa hàng trưởng)</option>
+                        <option value="CS">CS (Điều phối phân đơn toàn chuỗi)</option>
                         <option value="READ_ONLY">READ_ONLY (Chỉ xem báo cáo)</option>
                         <option value="SUPER_ADMIN">SUPER_ADMIN (Toàn quyền hệ thống)</option>
                     </select>
@@ -268,6 +273,7 @@
                     <select id="edit-role" required onchange="onEditRoleChange(this.value)" class="w-full px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] focus:bg-white focus:border-[#2383E2] text-[12px] font-medium text-[#37352F]">
                         <option value="STAFF">STAFF (Nhân viên cửa hàng)</option>
                         <option value="STORE_MANAGER">STORE_MANAGER (Cửa hàng trưởng)</option>
+                        <option value="CS">CS (Điều phối phân đơn toàn chuỗi)</option>
                         <option value="READ_ONLY">READ_ONLY (Chỉ xem báo cáo)</option>
                         <option value="SUPER_ADMIN">SUPER_ADMIN (Toàn quyền hệ thống)</option>
                     </select>
@@ -397,6 +403,7 @@
         const map = {
             'SUPER_ADMIN': { label: 'SUPER ADMIN', class: 'bg-[#FDEBEC] text-[#D44C47]' },
             'STORE_MANAGER': { label: 'CỬA HÀNG TRƯỞNG', class: 'bg-[#F4EFF7] text-[#9065B0]' },
+            'CS': { label: 'CS ĐIỀU PHỐI ĐƠN', class: 'bg-[#E7F3F8] text-[#2F6F9F]' },
             'STAFF': { label: 'NHÂN VIÊN', class: 'bg-[#EDF3EC] text-[#448361]' },
             'READ_ONLY': { label: 'CHỈ XEM', class: 'bg-[#F1F1EF] text-[#787774]' },
         };
@@ -660,7 +667,11 @@
         if (role === 'SUPER_ADMIN') {
             storeSelect.value = '';
             storeSelect.disabled = true;
-            hint.innerHTML = '🛡️ Tài khoản <strong>SUPER_ADMIN</strong> có quyền truy cập toàn bộ 4 chi nhánh siêu thị và quản trị cài đặt nền tảng.';
+            hint.innerHTML = '🛡️ Tài khoản <strong>SUPER_ADMIN</strong> có quyền truy cập toàn bộ 5 chi nhánh siêu thị và quản trị cài đặt nền tảng.';
+        } else if (role === 'CS') {
+            storeSelect.value = '';
+            storeSelect.disabled = true;
+            hint.innerHTML = '🚚 Tài khoản <strong>CS</strong> có quyền xem đơn hàng, tồn kho tham chiếu &amp; báo cáo toàn chuỗi để phân đơn xuống từng chi nhánh (bao gồm 10008), không chỉnh sửa giá/tồn kho.';
         } else {
             storeSelect.disabled = false;
             hint.innerHTML = '💡 <strong>Phân quyền cách ly dữ liệu:</strong> Nhân viên với vai trò <strong>STAFF</strong> hoặc <strong>STORE_MANAGER</strong> cần được gán chi nhánh để hệ thống tự động khóa đơn hàng và thực đơn theo đúng siêu thị làm việc.';
@@ -739,7 +750,7 @@
     function onEditRoleChange(role) {
         const storeSelect = document.getElementById('edit-store-id');
         if (!storeSelect) return;
-        if (role === 'SUPER_ADMIN') {
+        if (role === 'SUPER_ADMIN' || role === 'CS') {
             storeSelect.value = '';
             storeSelect.disabled = true;
             storeSelect.classList.add('opacity-50', 'cursor-not-allowed');
@@ -948,13 +959,32 @@
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
             }
+            loadHrSyncStatus();
         }
+    }
+
+    async function loadHrSyncStatus() {
+        const badge = document.getElementById('hr-sync-cron-badge');
+        if (!badge) return;
+        try {
+            const res = await authFetch('/api/v1/users/hr-sync/status');
+            if (!res.ok) return;
+            const json = await res.json();
+            if (json.success && json.data) {
+                const st = json.data;
+                const scheduleText = st.schedule_vn || '07:00, 14:00';
+                const lastRun = st.last_run_at ? formatDateTime(st.last_run_at) : 'Chưa chạy kỳ nào';
+                badge.textContent = `⏰ Cron HR: ${scheduleText} (${st.runs_per_day || 2} lần/ngày)`;
+                badge.title = `Trạng thái: ${st.is_running ? 'Đang bật' : 'Tạm tắt'} | Kế tiếp: ${st.next_run_vn || '--'} | Gần nhất: ${lastRun} | Phân quyền do IT quản lý thủ công`;
+            }
+        } catch (e) {}
     }
 
     // Initialize Page
     document.addEventListener('DOMContentLoaded', async () => {
         await loadStores();
         await loadUsers();
+        loadHrSyncStatus();
     });
 </script>
 {% endblock %}

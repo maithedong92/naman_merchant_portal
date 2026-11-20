@@ -124,10 +124,13 @@ class HaravanOrderService:
         """
         Kiểm tra quyền truy cập toàn chuỗi (Cross-Store):
         - SUPER_ADMIN / is_superuser luôn có quyền toàn chuỗi.
+        - CS luôn có quyền xem và phân tuyến đơn hàng toàn chuỗi.
         - Khi user_store là None: chỉ STORE_MANAGER khối văn phòng (hoặc READ_ONLY khi chỉ đọc) mới có quyền toàn chuỗi.
         - Tài khoản STAFF chưa gán cửa hàng (store_code=None) TUYỆT ĐỐI không có quyền toàn chuỗi.
         """
         if current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value:
+            return True
+        if current_user.role == UserRole.CS.value:
             return True
         user_store = self._get_user_store(current_user)
         if user_store is None:

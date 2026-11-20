@@ -57,7 +57,7 @@ class AuthService:
 
     def _find_mongo_user_sync(self, identifier: str) -> Optional[Dict[str, Any]]:
         """
-        Look up user in MongoDB naman_internal_app.user by username, user_id, email, or ECI.Email.
+        Look up user in MongoDB naman_internal_app.user strictly by username or user_id (never email).
         Prefers active documents if multiple records match.
         """
         ident = identifier.strip()
@@ -72,8 +72,6 @@ class AuthService:
                     "$or": [
                         {"username": ci_exact},
                         {"user_id": ident},
-                        {"email": ci_exact},
-                        {"ECI.Email": ci_exact},
                     ]
                 }
             ).limit(10)
@@ -130,37 +128,11 @@ class AuthService:
         is_active = (status_str == "active") and not bool(doc.get("MarkForDelete"))
 
         dept_str = str(doc.get("dept") or doc.get("DeptName") or "").strip()
-        branch_match = re.search(r"(1000\d)", dept_str)
-        branch_code = branch_match.group(1) if branch_match else None
-        store_id = store_code_to_id.get(branch_code) if branch_code else None
-
-        raw_role = str(doc.get("user_role") or "").strip().lower()
-        try:
-            lvl = int(float(doc.get("user_lvl") or 0))
-        except (ValueError, TypeError):
-            lvl = 0
-
-        dept_upper = dept_str.upper()
-        if (
-            raw_role == "admin"
-            or lvl >= 35
-            or dept_upper == "BGD"
-            or "QUẢN TRỊ HỆ THỐNG" in dept_upper
-        ):
-            role = UserRole.SUPER_ADMIN.value
-            is_superuser = True
-            store_id = None
-        elif dept_upper == "MKT" or "TIẾP THỊ" in dept_upper:
-            # Phòng MKT / E-Commerce / Tổng đài điều phối đơn Online (toàn chuỗi + phân tuyến)
-            role = UserRole.STORE_MANAGER.value
-            is_superuser = False
-            store_id = None
-        elif raw_role in ("leader", "manager") or lvl >= 20:
-            role = UserRole.STORE_MANAGER.value
-            is_superuser = False
-        else:
-            role = UserRole.STAFF.value
-            is_superuser = False
+        # Phần phân quyền & chi nhánh trên NAM-UMP do IT cấu hình thủ công;
+        # không tự mapping quyền/chi nhánh từ HR MongoDB để tránh cấp quá quyền.
+        store_id = None
+        role = UserRole.READ_ONLY.value
+        is_superuser = False
 
         stored_pw = str(doc.get("password") or "").strip()
         if not stored_pw:
@@ -209,15 +181,13 @@ class AuthService:
             candidate_email = f"{mapped['safe_slug']}.{mapped['user_id_code']}@namanmarket.com.vn"[:100]
 
         if user:
+            # IT assigns RBAC role / branch manually in NAM-UMP; HR sync only refreshes profile & status.
             user.username = mapped["username"]
             user.email = candidate_email
             user.hashed_password = mapped["hashed_password"]
             user.full_name = mapped["full_name"]
             user.phone_number = mapped["phone_number"]
-            user.role = mapped["role"]
-            user.store_id = mapped["store_id"]
             user.is_active = mapped["is_active"]
-            user.is_superuser = mapped["is_superuser"]
         else:
             user = User(
                 username=mapped["username"],
@@ -305,12 +275,12 @@ class AuthService:
 
             user = await self._upsert_pg_shadow_user(db, mongo_doc)
         else:
-            stmt = select(User).where(
-                or_(
-                    User.username == ident,
-                    User.email == ident.lower(),
-                )
-            ).options(selectinload(User.store)).with_for_update()
+            stmt = (
+                select(User)
+                .where(func.lower(User.username) == ident.lower())
+                .options(selectinload(User.store))
+                .with_for_update()
+            )
             result = await db.execute(stmt)
             user = result.scalar_one_or_none()
 
@@ -864,11 +834,14 @@ class AuthService:
         if user_in.phone_number is not None:
             user.phone_number = user_in.phone_number.strip() if user_in.phone_number else None
 
+        fields_set = getattr(user_in, "model_fields_set", set())
         if user_in.role is not None:
             user.role = user_in.role.value
             user.is_superuser = (user_in.role == UserRole.SUPER_ADMIN)
+            if user_in.role in (UserRole.SUPER_ADMIN, UserRole.CS) and "store_id" not in fields_set:
+                user.store_id = None
 
-        if user_in.store_id is not None:
+        if "store_id" in fields_set or user_in.store_id is not None:
             if user_in.store_id:
                 store_res = await db.execute(select(Store).where(Store.id == user_in.store_id))
                 if not store_res.scalar_one_or_none():
@@ -962,7 +935,7 @@ class AuthService:
 
         purged_count = 0
         deactivated_count = 0
-        if purge_demo_accounts:
+        if purge_demo_accounts and synced_usernames_lower:
             demo_prefixes = ("manager_1000", "staff_1000")
             demo_exact = {"admin", "shopee_tester"}
             pg_users = (await db.execute(select(User))).scalars().all()

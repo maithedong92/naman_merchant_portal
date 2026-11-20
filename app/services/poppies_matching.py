@@ -22,7 +22,11 @@ from app.models.order import UnifiedOrder
 from app.models.product import Category, ChannelProductMapping, Product
 from app.models.store import Store, StoreChannelMapping
 from app.services.channel_registry import channel_registry
-from app.services.channel_service import DEFAULT_FEATURES, DEFAULT_STORES
+from app.services.channel_service import (
+    DEFAULT_FEATURES,
+    DEFAULT_STORES,
+    is_delivery_app_store,
+)
 from app.services.poppies_channel_push import propagate_channel_menu_to_external_channel
 from app.services.poppies_channels import (
     get_channel_family_codes,
@@ -333,7 +337,7 @@ class PoppiesMatchingMixin:
                 if not adapter:
                     continue
                 for st_code, st_obj in stores_by_code.items():
-                    if not st_obj.is_active:
+                    if not st_obj.is_active or not is_delivery_app_store(st_code):
                         continue
                     pair = (str(st_obj.id), str(ch_obj.id))
                     target_partner_id = (

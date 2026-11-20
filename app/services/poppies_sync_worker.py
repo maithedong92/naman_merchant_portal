@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.models.channel import Channel
 from app.models.store import Store
+from app.services.channel_service import is_delivery_app_store
 from app.services.poppies_channel_push import (
     propagate_channel_menu_to_external_channel,
     propagate_skus_to_external_channel,
@@ -108,13 +109,14 @@ class PoppiesSyncWorker:
                 }
                 channel_by_code: Dict[str, Channel] = {c.code: c for c in ch_rows}
 
-                branch_codes = list(
+                raw_branch_codes = list(
                     (
                         await db.execute(
                             select(Store.code).where(Store.is_active == True).order_by(Store.code)
                         )
                     ).scalars().all()
                 )
+                branch_codes = [c for c in raw_branch_codes if is_delivery_app_store(c)]
                 if not branch_codes:
                     logger.warning("Poppies sync skipped: no active branches found.")
                     return {"success": True, "skipped": True, "reason": "no_active_branches"}

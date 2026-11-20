@@ -91,8 +91,22 @@ DEFAULT_STORES = [
         "name": "Nam An Market - 303 Nguyễn Văn Trỗi",
         "address": "303 Nguyễn Văn Trỗi, P. 1, Q. Tân Bình, TP.HCM",
         "phone": "028 3997 7889"
+    },
+    {
+        "code": "10008",
+        "name": "Nam An Market - Kho Online Ecom",
+        "address": "Kho Online Ecom, TP.HCM",
+        "phone": "028 3519 2200"
     }
 ]
+
+# Cửa hàng chỉ nhận đơn nội bộ / online (không bán trên GrabMart, ShopeeFood, ShopeeMart)
+NON_DELIVERY_APP_STORE_CODES = frozenset({"10008"})
+
+
+def is_delivery_app_store(store_code: Optional[str]) -> bool:
+    """Return True if store operates on delivery apps (GrabMart / ShopeeFood / ShopeeMart)."""
+    return bool(store_code) and store_code not in NON_DELIVERY_APP_STORE_CODES
 
 
 class ChannelService:
@@ -111,8 +125,38 @@ class ChannelService:
         }
 
     @classmethod
+    async def ensure_default_stores(cls, db: AsyncSession, commit: bool = True) -> List[Any]:
+        """Seed default Nam An Market stores into PostgreSQL if not already present."""
+        from app.models.store import Store
+
+        seeded: List[Any] = []
+        for st_def in DEFAULT_STORES:
+            st_stmt = select(Store).where(Store.code == st_def["code"])
+            st_res = await db.execute(st_stmt)
+            if inspect.isawaitable(st_res):
+                st_res = await st_res
+            st_scalar = getattr(st_res, "scalar_one_or_none", None)
+            st = st_scalar() if callable(st_scalar) else None
+            if inspect.isawaitable(st):
+                st = await st
+            if not st:
+                new_store = Store(
+                    code=st_def["code"],
+                    name=st_def["name"],
+                    address=st_def["address"],
+                    phone=st_def["phone"],
+                    is_active=True
+                )
+                db.add(new_store)
+                seeded.append(new_store)
+                logger.info(f"Đã khởi tạo chi nhánh Nam An: {st_def['name']}")
+        if commit and seeded:
+            await db.commit()
+        return seeded
+
+    @classmethod
     async def ensure_default_channels(cls, db: AsyncSession) -> List[Channel]:
-        """Seed initial channels into PostgreSQL if not already present."""
+        """Seed initial channels and default stores into PostgreSQL if not already present."""
         channels: List[Channel] = []
         for ch_def in INITIAL_CHANNELS:
             family_codes = get_channel_family_codes(ch_def["code"])
@@ -133,27 +177,7 @@ class ChannelService:
                 logger.info(f"Đã khởi tạo kênh bán hàng mặc định: {ch_def['code']}")
             channels.append(ch)
 
-        # Also seed default 4 Nam An stores
-        from app.models.store import Store
-        for st_def in DEFAULT_STORES:
-            st_stmt = select(Store).where(Store.code == st_def["code"])
-            st_res = await db.execute(st_stmt)
-            if inspect.isawaitable(st_res):
-                st_res = await st_res
-            st_scalar = getattr(st_res, "scalar_one_or_none", None)
-            st = st_scalar() if callable(st_scalar) else None
-            if inspect.isawaitable(st):
-                st = await st
-            if not st:
-                new_store = Store(
-                    code=st_def["code"],
-                    name=st_def["name"],
-                    address=st_def["address"],
-                    phone=st_def["phone"],
-                    is_active=True
-                )
-                db.add(new_store)
-                logger.info(f"Đã khởi tạo chi nhánh Nam An: {st_def['name']}")
+        await cls.ensure_default_stores(db, commit=False)
 
         await db.commit()
         for ch in channels:

@@ -6,7 +6,7 @@ from app.schemas.user import UserResponse, validate_password_policy
 
 class LoginRequest(BaseModel):
     """Schema for username/password authentication request."""
-    username: str = Field(..., description="Tên đăng nhập hoặc địa chỉ email")
+    username: str = Field(..., description="Tên đăng nhập (username) hoặc mã nhân viên")
     password: str = Field(..., description="Mật khẩu tài khoản")
 
 

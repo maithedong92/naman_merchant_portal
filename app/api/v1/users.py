@@ -88,6 +88,8 @@ async def sync_mongo_users(
     db: AsyncSession = Depends(get_db),
 ):
     summary = await auth_service.sync_users_from_mongodb(db=db, purge_demo_accounts=True)
+    from app.services.hr_sync_worker import hr_sync_worker
+    hr_sync_worker.record_manual_run(summary)
     return APIResponse.ok(
         data=summary,
         message=f"Đã đồng bộ {summary['mongo_active_users']} tài khoản nhân sự hoạt động từ naman_internal_app.user."
@@ -108,6 +110,23 @@ async def seed_sample_staff(
     return APIResponse.ok(
         data={"created_accounts": created, "count": len(created)},
         message=f"Đã khởi tạo {len(created)} tài khoản nhân sự chi nhánh (Mật khẩu: 'NamAn@2026')."
+    )
+
+
+@router.get(
+    "/hr-sync/status",
+    response_model=APIResponse[dict],
+    summary="Trạng thái cronjob đồng bộ nhân sự HR",
+    description="Xem lịch chạy cronjob đồng bộ nhân sự HR (2 lần/ngày UTC+7), lần chạy gần nhất và lần chạy tiếp theo (Chỉ SuperAdmin).",
+)
+async def get_hr_sync_status(
+    current_admin: User = Depends(require_super_admin),
+):
+    from app.services.hr_sync_worker import hr_sync_worker
+
+    return APIResponse.ok(
+        data=hr_sync_worker.get_status(),
+        message="Lấy trạng thái cronjob đồng bộ HR thành công.",
     )
 
 

@@ -3,7 +3,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import check_store_access, get_current_user, require_staff, require_store_manager, require_super_admin
+from app.api.deps import (
+    check_store_access,
+    get_current_user,
+    has_cross_store_read_access,
+    require_staff,
+    require_store_manager,
+    require_super_admin,
+)
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.responses import APIResponse
@@ -41,11 +48,7 @@ async def get_inventory_overview(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = (
-        current_user.is_superuser
-        or current_user.role == UserRole.SUPER_ADMIN.value
-        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
-    )
+    has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
         if not current_user.store_code:
             return APIResponse.ok(
@@ -202,7 +205,8 @@ async def get_store_inventory(
     if not store:
         raise NotFoundError("Store", store_id)
 
-    check_store_access(current_user, store.id)
+    if not has_cross_store_read_access(current_user):
+        check_store_access(current_user, store.id)
 
     stmt = (
         select(StoreInventory)

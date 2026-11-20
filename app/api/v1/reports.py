@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, has_cross_store_read_access
 from app.core.database import get_db
 from app.core.responses import APIResponse
 from app.models.user import User, UserRole
@@ -29,11 +29,7 @@ async def get_analytics_report(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = (
-        current_user.is_superuser
-        or current_user.role == UserRole.SUPER_ADMIN.value
-        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
-    )
+    has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
         if not current_user.store_code:
             return APIResponse.ok(
@@ -80,11 +76,7 @@ async def get_reconciliation_orders(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = (
-        current_user.is_superuser
-        or current_user.role == UserRole.SUPER_ADMIN.value
-        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
-    )
+    has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
         if not current_user.store_code:
             return APIResponse.ok(
@@ -127,11 +119,7 @@ async def export_reconciliation_csv(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = (
-        current_user.is_superuser
-        or current_user.role == UserRole.SUPER_ADMIN.value
-        or (current_user.store_code is None and current_user.role != UserRole.STAFF.value)
-    )
+    has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
         if not current_user.store_code:
             return Response(content="\ufeffMã Đơn,Thời Gian,Kênh Bán,Chi Nhánh,Doanh Thu\n", media_type="text/csv")

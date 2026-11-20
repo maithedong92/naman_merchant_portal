@@ -147,7 +147,7 @@ def _enforce_rate_limit(req: Request, bucket: str, max_requests: int = 10, windo
     "/login",
     response_model=APIResponse[TokenResponse],
     summary="Đăng nhập tài khoản quản trị (JSON)",
-    description="Xác thực qua username/email và mật khẩu. Trả về Access Token và Refresh Token.",
+    description="Xác thực qua tên đăng nhập (username) và mật khẩu. Trả về Access Token và Refresh Token.",
 )
 async def login(
     req: Request,

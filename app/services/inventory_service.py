@@ -19,6 +19,7 @@ from app.schemas.inventory import (
 )
 from app.schemas.sync import SyncResult
 from app.services.channel_registry import channel_registry
+from app.services.channel_service import is_delivery_app_store
 
 logger = logging.getLogger("naman_portal.inventory_service")
 
@@ -261,6 +262,8 @@ class InventoryService:
         channels = channels_res.scalars().all()
 
         for store in stores:
+            if not is_delivery_app_store(store.code):
+                continue
             for ch in channels:
                 map_stmt = select(StoreChannelMapping).where(
                     StoreChannelMapping.store_id == store.id,

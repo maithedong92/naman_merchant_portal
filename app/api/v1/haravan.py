@@ -9,7 +9,14 @@ from fastapi import APIRouter, Depends, Query, Body, UploadFile, File, Form, Res
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.api.deps import get_current_user, require_super_admin, require_store_manager, require_staff
+from app.api.deps import (
+    get_current_user,
+    require_order_dispatcher,
+    require_order_operator,
+    require_super_admin,
+    require_store_manager,
+    require_staff,
+)
 from app.core.responses import APIResponse
 from app.models.user import User
 from app.modules.haravan.sync_worker import haravan_sync_worker
@@ -34,7 +41,7 @@ class RecommendStoreRequest(BaseModel):
     description="Xem tình trạng kết nối tới Haravan Omnichannel API và trạng thái background sync worker.",
 )
 async def get_haravan_status(
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_order_dispatcher),
 ):
     conn_info = await haravan_sync_worker.client.check_connection()
     worker_info = haravan_sync_worker.get_status()
@@ -56,7 +63,7 @@ async def get_haravan_status(
 )
 async def trigger_haravan_sync(
     limit: Optional[int] = Query(50, ge=1, le=200, description="Số lượng đơn hàng cần đồng bộ"),
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_order_dispatcher),
 ):
     result = await haravan_sync_worker.sync_once(limit=limit)
     if not result.get("success"):
@@ -96,7 +103,7 @@ async def check_arito_inventory(
 )
 async def recommend_store_for_order(
     payload: RecommendStoreRequest,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_order_dispatcher),
 ):
     recommendation = await arito_service.recommend_best_store_for_order(payload.items)
     return APIResponse.ok(
@@ -244,7 +251,7 @@ async def get_haravan_order_detail(
 async def assign_haravan_order(
     order_id: str,
     payload: AssignOrderRequest,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_order_dispatcher),
 ):
     updated = await haravan_order_service.assign_order(
         order_id_or_sn=order_id,
@@ -268,7 +275,7 @@ async def assign_haravan_order(
 async def reassign_haravan_order(
     order_id: str,
     payload: ReassignOrderRequest,
-    current_user: User = Depends(require_staff),
+    current_user: User = Depends(require_order_operator),
 ):
     updated = await haravan_order_service.request_reassignment(
         order_id_or_sn=order_id,
@@ -361,7 +368,7 @@ async def complete_haravan_order(
 async def cancel_haravan_order(
     order_id: str,
     payload: CancelOrderRequest,
-    current_user: User = Depends(require_staff),
+    current_user: User = Depends(require_order_operator),
 ):
     updated = await haravan_order_service.cancel_order(
         order_id_or_sn=order_id,
@@ -388,7 +395,7 @@ class AdminNoteRequest(BaseModel):
 async def update_haravan_admin_note(
     order_id: str,
     payload: AdminNoteRequest,
-    current_user: User = Depends(require_staff),
+    current_user: User = Depends(require_order_operator),
 ):
     updated = await haravan_order_service.update_admin_note(
         order_id_or_sn=order_id,
@@ -415,7 +422,7 @@ async def upload_order_file(
     order_id: str,
     file: UploadFile = File(..., description="Tệp tin cần tải lên (PDF, PNG, JPG, WEBP)"),
     file_type: str = Form("order", description="Loại tệp: 'order' (Hóa đơn/Đơn gốc) hoặc 'tracking' (Vận đơn/Phiếu gửi)"),
-    current_user: User = Depends(require_staff),
+    current_user: User = Depends(require_order_operator),
 ):
     if file_type not in ("order", "tracking"):
         return APIResponse.fail(
@@ -481,7 +488,7 @@ async def upload_order_file(
 async def delete_order_file(
     order_id: str,
     file_type: str,
-    current_user: User = Depends(require_staff),
+    current_user: User = Depends(require_order_operator),
 ):
     if file_type not in ("order", "tracking"):
         return APIResponse.fail(

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import check_store_access, get_current_active_user
+from app.api.deps import check_store_access, get_current_active_user, reject_non_channel_mutator
 from app.core.config import get_settings
 from app.core.database import get_db, get_optional_db
 from app.core.exceptions import AppException, ForbiddenError
@@ -45,9 +45,7 @@ settings = get_settings()
 
 
 def _reject_read_only(current_user: User) -> None:
-    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    if role_val == UserRole.READ_ONLY.value and not getattr(current_user, "is_superuser", False):
-        raise ForbiddenError("Tài khoản chỉ xem không có quyền thực hiện thao tác này.")
+    reject_non_channel_mutator(current_user)
 
 
 async def verify_grabmart_webhook_bearer(request: Request) -> None:

@@ -170,7 +170,24 @@ def require_roles(*roles: UserRole) -> RoleChecker:
 # Pre-defined convenience guards
 require_super_admin = require_roles(UserRole.SUPER_ADMIN)
 require_store_manager = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER)
+require_order_dispatcher = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.CS)
+require_order_operator = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.CS, UserRole.STAFF)
 require_staff = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.STAFF)
+
+
+def has_cross_store_read_access(current_user: User) -> bool:
+    """
+    True for SUPER_ADMIN, CS dispatchers, or head-office STORE_MANAGER/READ_ONLY
+    without a single-branch assignment.
+    """
+    if current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value:
+        return True
+    if current_user.role == UserRole.CS.value:
+        return True
+    return (
+        current_user.store_id is None
+        and current_user.role in (UserRole.STORE_MANAGER.value, UserRole.READ_ONLY.value)
+    )
 
 
 def check_store_access(current_user: User, store_id: str) -> None:
@@ -191,3 +208,17 @@ def check_store_access(current_user: User, store_id: str) -> None:
     raise ForbiddenError(
         f"Bạn không có quyền quản trị hoặc thao tác trên chi nhánh '{store_id}'."
     )
+
+
+def reject_non_channel_mutator(current_user: User) -> None:
+    """Block READ_ONLY and CS (order-dispatcher-only) roles from channel partner mutations."""
+    role_val = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    if (
+        role_val in (UserRole.READ_ONLY.value, UserRole.CS.value)
+        and not getattr(current_user, "is_superuser", False)
+    ):
+        raise ForbiddenError("Vai trò hiện tại không có quyền thực hiện thao tác thay đổi trên kênh bán.")

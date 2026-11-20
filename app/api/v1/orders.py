@@ -3,7 +3,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import check_store_access, get_current_user, require_staff
+from app.api.deps import (
+    check_store_access,
+    get_current_user,
+    has_cross_store_read_access,
+    require_staff,
+)
 from app.core.database import get_db
 from app.core.responses import APIResponse
 from app.models.order import UnifiedOrderStatus
@@ -32,11 +37,7 @@ async def get_order_summary(
     Pending, Preparing, Ready, Delivering, Delivered Today, Cancelled Today, Revenue.
     """
     effective_store_id = store_id
-    has_global_access = (
-        current_user.is_superuser
-        or current_user.role == UserRole.SUPER_ADMIN.value
-        or (current_user.store_id is None and current_user.role != UserRole.STAFF.value)
-    )
+    has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
         if not current_user.store_id and current_user.role == UserRole.STAFF.value:
             return APIResponse.ok(
@@ -84,11 +85,7 @@ async def list_orders(
     # Enforce strict store scoping if user belongs to a specific branch (CH10001..CH10006)
     effective_store_id = store_id
     effective_store_code = store_code
-    has_global_access = (
-        current_user.is_superuser
-        or current_user.role == UserRole.SUPER_ADMIN.value
-        or (current_user.store_id is None and current_user.role != UserRole.STAFF.value)
-    )
+    has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
         if not current_user.store_id and current_user.role == UserRole.STAFF.value:
             return APIResponse.ok(
@@ -142,7 +139,7 @@ async def get_order_detail(
 ):
     """Get complete order details including items and state transition history."""
     order = await OrderService.get_order_by_id(order_id, db)
-    if not (current_user.store_id is None and current_user.role == UserRole.READ_ONLY.value):
+    if not has_cross_store_read_access(current_user):
         check_store_access(current_user, order.store_id)
     return APIResponse.ok(data=order)
 

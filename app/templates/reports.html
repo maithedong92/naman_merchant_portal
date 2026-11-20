@@ -84,11 +84,12 @@
                 <div class="flex items-center space-x-1.5">
                     <span class="text-xs text-[#787774]">Chi nhánh:</span>
                     <select id="filter-store-code" onchange="onFilterChange()" class="px-2 py-1 rounded border border-[#E9E9E7] text-xs text-[#37352F] bg-white focus:outline-none focus:border-[#2F3437] cursor-pointer">
-                        <option value="">Tất cả 4 chi nhánh Nam An</option>
+                        <option value="">Tất cả 5 chi nhánh Nam An</option>
                         <option value="10001">21 Thảo Điền, TP. Thủ Đức (10001)</option>
                         <option value="10004">46 Hưng Phúc, Q.7 (10004)</option>
                         <option value="10005">17 Mai Chí Thọ, TP. Thủ Đức (10005)</option>
                         <option value="10006">303 Nguyễn Văn Trỗi, Tân Bình (10006)</option>
+                        <option value="10008">Kho Online Ecom (10008)</option>
                     </select>
                 </div>
             </div>
@@ -338,14 +339,24 @@
         loadAllReportData();
     }
 
+    function hasReportsGlobalAccess(user) {
+        if (!user || !user.role) return false;
+        return (
+            user.role === 'SUPER_ADMIN'
+            || Boolean(user.is_superuser)
+            || user.role === 'CS'
+            || (!user.store_code && user.role !== 'STAFF')
+        );
+    }
+
     function setupReportsStoreScoping(userArg) {
         const user = userArg || (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
         if (!user || !user.role) return false;
-        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
+        const hasGlobal = hasReportsGlobalAccess(user);
         const prevStore = reportFilters.store_code;
         const storeSelectEl = document.getElementById('filter-store-code');
 
-        if (!isSuperAdmin && user.store_code) {
+        if (!hasGlobal && user.store_code) {
             reportFilters.store_code = user.store_code;
             if (storeSelectEl) {
                 storeSelectEl.value = user.store_code;
@@ -362,8 +373,8 @@
     function onFilterChange() {
         reportFilters.channel_code = document.getElementById('filter-channel-code').value;
         const user = (typeof TokenManager !== 'undefined' ? TokenManager.getUser() : {});
-        const isSuperAdmin = user.role === 'SUPER_ADMIN' || Boolean(user.is_superuser);
-        if (user && user.role && !isSuperAdmin && user.store_code) {
+        const hasGlobal = hasReportsGlobalAccess(user);
+        if (user && user.role && !hasGlobal && user.store_code) {
             reportFilters.store_code = user.store_code;
             const storeSelectEl = document.getElementById('filter-store-code');
             if (storeSelectEl) storeSelectEl.value = user.store_code;

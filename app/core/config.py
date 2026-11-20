@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     AUTH_MONGO_DB: str = "naman_internal_app"
     AUTH_MONGO_COLLECTION: str = "user"
 
+    # Scheduled Internal HR Sync Cronjob (UTC+7 Vietnam Time)
+    HR_SYNC_ENABLED: bool = True
+    HR_SYNC_SCHEDULE_HOURS_VN: str = "07:00,14:00"
+    HR_SYNC_CHECK_INTERVAL_SECONDS: int = 30
+    HR_SYNC_PURGE_DEMO_ACCOUNTS: bool = False
+
     HARAVAN_ENABLED: bool = True
     HARAVAN_TOKEN: str = ""
     HARAVAN_BASE_URL: str = "https://apis.haravan.com/com"
