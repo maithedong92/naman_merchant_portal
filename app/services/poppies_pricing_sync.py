@@ -439,7 +439,8 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
             else (snap.get("inherited_from") or snap.get("inheritedFrom") or "STORE")
         )
         is_delta = bool(snap.get("is_delta", snap.get("isDelta", False)))
-        if snap.get("source") == "price_book_fallback" and "restrict_to_priced_items" not in snap:
+        is_price_book_fallback = snap.get("source") == "price_book_fallback"
+        if is_price_book_fallback and "restrict_to_priced_items" not in snap:
             restrict_to_priced = bool(cfg.get("restrict_to_priced_items", restrict_to_priced))
 
         price_map, blocked_set = _extract_snapshot_prices_and_blocks(snap)
@@ -616,6 +617,10 @@ class PoppiesPricingGovernanceMixin(PoppiesOutboxWebhookMixin):
                 else:
                     target_custom = p_val if has_custom_diff else None
                     cur_custom = float(m.custom_price) if m.custom_price is not None else None
+                    # `/price-book` fallback returns flat base prices without partner overrides;
+                    # never let it wipe existing valid partner custom_price entries to None.
+                    if is_price_book_fallback and target_custom is None and cur_custom is not None and cur_custom > 0:
+                        continue
                     if cur_custom != target_custom:
                         m.custom_price = target_custom
                         changed_skus.add(sku_code)

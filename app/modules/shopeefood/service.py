@@ -154,15 +154,40 @@ class ShopeeFoodClient:
             }
         )
 
-    async def get_order_details(self, order_code: str) -> Dict[str, Any]:
+    async def bulk_update_dishes(
+        self,
+        partner_restaurant_id: str,
+        dishes: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Batch update dish prices/metadata on ShopeeFood.
+        Endpoint: POST /s2s/dish/bulk_update
+        """
+        return await self.call_api(
+            method="POST",
+            endpoint="/s2s/dish/bulk_update",
+            body={
+                "partner_restaurant_id": str(partner_restaurant_id),
+                "dishes": dishes,
+            },
+        )
+
+    async def get_order_details(
+        self,
+        order_code: str,
+        mark_as_received: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Retrieve full order details from Foody.
         Endpoint: POST /s2s/order/get_details
         """
+        body: Dict[str, Any] = {"order_code": str(order_code)}
+        if mark_as_received is not None:
+            body["mark_as_received"] = int(mark_as_received)
         return await self.call_api(
             method="POST",
             endpoint="/s2s/order/get_details",
-            body={"order_code": str(order_code)}
+            body=body,
         )
 
     async def update_order_status(

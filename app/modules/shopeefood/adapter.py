@@ -31,6 +31,43 @@ logger = logging.getLogger("naman_portal.modules.shopeefood.adapter")
 _shopeefood_menu_cache: Dict[str, Dict[str, Any]] = {}
 
 
+def _extract_money_val(val: Any) -> float:
+    """Extract float amount from either a scalar or Foody `{\"value\": ...}` money object."""
+    if isinstance(val, dict):
+        val = val.get("value")
+    if val is None or isinstance(val, bool):
+        return 0.0
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _extract_s2s_items(dish_groups: Any) -> List[Dict[str, Any]]:
+    """Flatten Foody `/s2s/order/get_details` nested `dish_groups[].dishes[]` into internal item dicts."""
+    items: List[Dict[str, Any]] = []
+    if not isinstance(dish_groups, list):
+        return items
+    for grp in dish_groups:
+        if not isinstance(grp, dict):
+            continue
+        for dish in grp.get("dishes") or []:
+            if not isinstance(dish, dict):
+                continue
+            qty = max(1, int(dish.get("quantity") or 1))
+            unit_price = _extract_money_val(dish.get("price"))
+            total_price = _extract_money_val(dish.get("total"))
+            items.append({
+                "sku": str(dish.get("partner_dish_id") or dish.get("dish_id") or "UNKNOWN"),
+                "item_name": dish.get("dish_name") or dish.get("name") or "Món ShopeeFood",
+                "quantity": qty,
+                "unit_price": unit_price,
+                "total_price": total_price if total_price > 0 else unit_price * qty,
+                "notes": dish.get("note") or dish.get("notes"),
+            })
+    return items
+
+
 class ShopeeFoodChannelAdapter(BaseChannelAdapter):
     """
     Channel Adapter for ShopeeFood / Foody External S2S API v7.0.2.
@@ -266,6 +303,12 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
         """Retrieve pre-built menu from cache for ShopeeFood GET /shopeefoodapi/{code}.json."""
         return _shopeefood_menu_cache.get(store_code)
 
+    def invalidate_cached_menu(self, *store_codes: str) -> None:
+        """Evict cached store menus when SKU prices or availability change."""
+        for code in store_codes:
+            if code:
+                _shopeefood_menu_cache.pop(code, None)
+
     # ==========================================================================
     # 2. Inventory / Stock Synchronization
     # ==========================================================================
@@ -277,7 +320,7 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
         stock_items: List[Dict[str, Any]],
         db: AsyncSession
     ) -> SyncResult:
-        """Push dish status (AVAILABLE / OUT_OF_STOCK) to ShopeeFood if feature is enabled."""
+        """Push dish status (AVAILABLE / OUT_OF_STOCK) and optional price updates to ShopeeFood."""
         enabled = await channel_service.is_feature_enabled(self.channel_code, "stock_sync_enabled", db)
         if not enabled:
             logger.info(f"Đồng bộ tồn kho {self.channel_code} bị bỏ qua do tính năng đang TẮT.")
@@ -290,27 +333,75 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             )
 
         try:
+            has_price_updates = any(it.get("price") is not None for it in stock_items)
             governed_items = await apply_channel_governance_to_stock_items(
                 db=db, raw_channel_code="SHOPEEFOOD", stock_items=stock_items
             )
             dishes = []
+            price_dishes = []
             for item in governed_items:
+                partner_dish_id = str(item.get("sku") or item.get("product_id"))
                 is_out = item.get("is_out_of_stock", False)
                 dishes.append({
-                    "partner_dish_id": str(item.get("sku") or item.get("product_id")),
+                    "partner_dish_id": partner_dish_id,
                     "status": 2 if is_out else 1,  # 1: AVAILABLE, 2: OUT_OF_STOCK
                 })
+                if has_price_updates and item.get("price") is not None and float(item["price"]) > 0:
+                    price_dishes.append({
+                        "partner_dish_id": partner_dish_id,
+                        "price": int(round(float(item["price"]))),
+                    })
 
             response = await shopeefood_client.update_dish_status(
                 partner_restaurant_id=partner_store_id,
                 dishes=dishes,
             )
-            if not isinstance(response, dict) or response.get("result") != "success":
+            status_ok = isinstance(response, dict) and response.get("result") == "success"
+
+            price_resp: Optional[Dict[str, Any]] = None
+            menu_notify_resp: Optional[Dict[str, Any]] = None
+            price_ok = False
+            menu_ok = False
+            if has_price_updates:
+                self.invalidate_cached_menu(partner_store_id)
+                if price_dishes:
+                    price_resp = await shopeefood_client.bulk_update_dishes(
+                        partner_restaurant_id=partner_store_id,
+                        dishes=price_dishes,
+                    )
+                    price_ok = isinstance(price_resp, dict) and price_resp.get("result") == "success"
+                    if not price_ok:
+                        menu_enabled = await channel_service.is_feature_enabled(
+                            self.channel_code, "menu_sync_enabled", db
+                        )
+                        if menu_enabled:
+                            logger.warning(
+                                f"ShopeeFood bulk_update_dishes trả về {price_resp}; "
+                                f"kích hoạt notify_menu_sync dự phòng cho cửa hàng {partner_store_id}."
+                            )
+                            menu_notify_resp = await shopeefood_client.notify_menu_sync(
+                                partner_restaurant_id=partner_store_id
+                            )
+                            menu_ok = (
+                                isinstance(menu_notify_resp, dict)
+                                and menu_notify_resp.get("result") == "success"
+                            )
+
+            details: Dict[str, Any] = {"api_response": response}
+            if price_resp is not None:
+                details["price_update_response"] = price_resp
+            if menu_notify_resp is not None:
+                details["menu_sync_fallback_response"] = menu_notify_resp
+
+            price_step_ok = (not has_price_updates) or (not price_dishes) or price_ok or menu_ok
+            overall_ok = (status_ok and price_step_ok) or (has_price_updates and (price_ok or menu_ok))
+            if not overall_ok:
                 err_msg = (
-                    response.get("error")
-                    if isinstance(response, dict)
-                    else str(response)
-                ) or "ShopeeFood S2S API did not return success"
+                    (price_resp.get("error") if isinstance(price_resp, dict) else None)
+                    or (response.get("error") if isinstance(response, dict) else None)
+                    or (response.get("result") if isinstance(response, dict) else str(response))
+                    or "ShopeeFood S2S API did not return success"
+                )
                 return SyncResult(
                     channel_code=self.channel_code,
                     store_id=store_id,
@@ -318,7 +409,7 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                     success=False,
                     total_synced=0,
                     message=f"Cập nhật tồn kho ShopeeFood thất bại ({partner_store_id}): {err_msg}",
-                    details={"api_response": response},
+                    details=details,
                 )
 
             return SyncResult(
@@ -326,9 +417,9 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 store_id=store_id,
                 sync_type="STOCK",
                 success=True,
-                total_synced=len(dishes),
+                total_synced=len(price_dishes) if has_price_updates and not status_ok else len(dishes),
                 message=f"Đã cập nhật trạng thái tồn {len(dishes)} món trên ShopeeFood ({partner_store_id})",
-                details={"api_response": response},
+                details=details,
             )
         except Exception as ex:
             logger.error(f"Lỗi khi cập nhật tồn kho ShopeeFood: {str(ex)}")
@@ -369,16 +460,17 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             return None
         if isinstance(raw_status, int) or (isinstance(raw_status, str) and raw_status.strip().isdigit()):
             code = int(str(raw_status).strip())
+            # Foody External API v7.0.2 OrderMerchantStatus & OrderUpdateStatus codes
             numeric_map = {
-                0: UnifiedOrderStatus.ACCEPTED,
-                1: UnifiedOrderStatus.PENDING,
-                2: UnifiedOrderStatus.CANCELLED,
-                4: UnifiedOrderStatus.ACCEPTED,
-                5: UnifiedOrderStatus.READY,
-                6: UnifiedOrderStatus.PICKED_UP,
-                7: UnifiedOrderStatus.DELIVERED,
-                8: UnifiedOrderStatus.CANCELLED,
-                9: UnifiedOrderStatus.CANCELLED,
+                0: UnifiedOrderStatus.ACCEPTED,   # OrderUpdateStatus.CONFIRM
+                1: UnifiedOrderStatus.PICKED_UP,  # OrderMerchantStatus.PICKED
+                2: UnifiedOrderStatus.DELIVERED,  # OrderMerchantStatus.DELIVERED
+                3: UnifiedOrderStatus.ACCEPTED,   # OrderMerchantStatus.CONFIRMED
+                5: UnifiedOrderStatus.PENDING,    # OrderMerchantStatus.M_ASSIGNED
+                6: UnifiedOrderStatus.PENDING,    # OrderMerchantStatus.M_RECEIVED
+                7: UnifiedOrderStatus.CANCELLED,  # OrderMerchantStatus.M_OUT_OF_SERVICE
+                8: UnifiedOrderStatus.CANCELLED,  # OrderMerchantStatus.CANCELLED
+                9: UnifiedOrderStatus.CANCELLED,  # OrderMerchantStatus.M_TIMEOUT
             }
             return numeric_map.get(code)
 
@@ -414,13 +506,15 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
         self,
         headers: Dict[str, str],
         raw_body: bytes,
-        db: AsyncSession
+        db: AsyncSession,
+        verified_order_details: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Process incoming ShopeeFood order or update_order webhook.
         Checks if 'order_webhook_enabled' is active.
         If 'auto_confirm_enabled' is active, auto-transitions new order to ACCEPTED and notifies Foody.
         When existing order is updated (created is False), updates driver info and transitions status.
+        When `verified_order_details` is supplied (S2S Proof-of-Order), hydrates full order items & totals.
         """
         enabled = await channel_service.is_feature_enabled(self.channel_code, "order_webhook_enabled", db)
         if not enabled:
@@ -431,14 +525,27 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             }
 
         payload = json.loads(raw_body.decode("utf-8"))
+        details = verified_order_details if isinstance(verified_order_details, dict) else {}
+        details_rest = details.get("restaurant") if isinstance(details.get("restaurant"), dict) else {}
+
         partner_restaurant_id = str(
-            payload.get("partner_restaurant_id") or payload.get("restaurant_id") or "10001"
+            payload.get("partner_restaurant_id")
+            or details_rest.get("partner_restaurant_id")
+            or payload.get("restaurant_id")
+            or details_rest.get("id")
+            or "10001"
         )
-        channel_order_id = str(payload.get("order_id") or payload.get("order_code") or "")
+        channel_order_id = str(
+            payload.get("order_id") or payload.get("order_code") or details.get("code") or ""
+        )
 
         # Check auto-confirm toggle
         auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
-        raw_status = payload.get("order_status") if payload.get("order_status") is not None else payload.get("status")
+        raw_status = (
+            payload.get("order_status")
+            if payload.get("order_status") is not None
+            else (payload.get("status") if payload.get("status") is not None else details.get("status"))
+        )
         mapped_status = self._map_webhook_status(raw_status)
 
         if mapped_status in (
@@ -452,8 +559,9 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
         else:
             initial_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else (mapped_status or UnifiedOrderStatus.PENDING)
 
-        customer_info = payload.get("customer") or {}
-        driver_info = payload.get("driver") or payload.get("shipper") or {}
+        deliver_addr = details.get("deliver_address") if isinstance(details.get("deliver_address"), dict) else {}
+        customer_info = payload.get("customer") or details.get("customer") or deliver_addr or {}
+        driver_info = payload.get("driver") or payload.get("shipper") or details.get("assignee") or {}
 
         driver_name = (
             (driver_info.get("name") if isinstance(driver_info, dict) else None)
@@ -477,34 +585,63 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             or payload.get("license_plate")
         )
 
+        customer_bill = details.get("customer_bill") if isinstance(details.get("customer_bill"), dict) else {}
+        subtotal_amount = (
+            float(payload["subtotal"])
+            if payload.get("subtotal") is not None
+            else _extract_money_val(details.get("order_value"))
+        )
+        discount_amount = (
+            float(payload["discount"])
+            if payload.get("discount") is not None
+            else _extract_money_val(details.get("total_merchant_discount"))
+        )
+        delivery_fee = (
+            float(payload["shipping_fee"])
+            if payload.get("shipping_fee") is not None
+            else _extract_money_val(customer_bill.get("shipping_fee"))
+        )
+        total_amount = (
+            float(payload["total_amount"])
+            if payload.get("total_amount") is not None
+            else _extract_money_val(details.get("total_value"))
+        )
+
         order_data = {
             "display_order_id": payload.get("display_order_id") or (channel_order_id[-6:] if channel_order_id else None),
             "initial_status": initial_status,
-            "subtotal_amount": float(payload.get("subtotal", 0.0)),
-            "discount_amount": float(payload.get("discount", 0.0)),
-            "delivery_fee": float(payload.get("shipping_fee", 0.0)),
-            "total_amount": float(payload.get("total_amount", 0.0)),
+            "subtotal_amount": subtotal_amount,
+            "discount_amount": discount_amount,
+            "delivery_fee": delivery_fee,
+            "total_amount": total_amount,
             "customer_name": customer_info.get("name") if isinstance(customer_info, dict) else None,
             "customer_phone": customer_info.get("phone") if isinstance(customer_info, dict) else None,
-            "delivery_address": customer_info.get("address") if isinstance(customer_info, dict) else None,
+            "delivery_address": (
+                (customer_info.get("address") if isinstance(customer_info, dict) else None)
+                or deliver_addr.get("address")
+            ),
             "driver_name": driver_name,
             "driver_phone": driver_phone,
             "driver_license_plate": driver_plate,
-            "raw_payload": payload,
+            "raw_payload": {"webhook": payload, "s2s_order_details": details} if details else payload,
         }
 
         items_data = []
-        for itm in payload.get("items", []):
-            qty = int(itm.get("quantity", 1))
-            unit_price = float(itm.get("price", 0.0))
-            items_data.append({
-                "sku": str(itm.get("partner_dish_id") or itm.get("sku") or itm.get("dish_id") or "UNKNOWN"),
-                "item_name": itm.get("name") or itm.get("dish_name") or "Món ShopeeFood",
-                "quantity": qty,
-                "unit_price": unit_price,
-                "total_price": unit_price * qty,
-                "notes": itm.get("notes") or itm.get("note"),
-            })
+        raw_items = payload.get("items") or []
+        if raw_items:
+            for itm in raw_items:
+                qty = int(itm.get("quantity", 1))
+                unit_price = float(itm.get("price", 0.0))
+                items_data.append({
+                    "sku": str(itm.get("partner_dish_id") or itm.get("sku") or itm.get("dish_id") or "UNKNOWN"),
+                    "item_name": itm.get("name") or itm.get("dish_name") or "Món ShopeeFood",
+                    "quantity": qty,
+                    "unit_price": unit_price,
+                    "total_price": unit_price * qty,
+                    "notes": itm.get("notes") or itm.get("note"),
+                })
+        elif details.get("dish_groups"):
+            items_data = _extract_s2s_items(details.get("dish_groups"))
 
         order, created = await OrderService.create_or_get_inbound_order(
             channel_code=self.channel_code,

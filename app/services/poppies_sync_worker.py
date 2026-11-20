@@ -19,6 +19,7 @@ from app.services.poppies_channel_push import (
     propagate_channel_menu_to_external_channel,
     propagate_skus_to_external_channel,
 )
+from app.services.poppies_channels import get_canonical_channel_meta
 from app.services.poppies_service import poppies_service
 
 logger = logging.getLogger("naman_portal.poppies.worker")
@@ -105,6 +106,7 @@ class PoppiesSyncWorker:
                     c.code: (c.config or {}).get("last_snapshot_version")
                     for c in ch_rows
                 }
+                channel_by_code: Dict[str, Channel] = {c.code: c for c in ch_rows}
 
                 branch_codes = list(
                     (
@@ -125,6 +127,19 @@ class PoppiesSyncWorker:
                             if is_full_cycle
                             else last_ver_by_code.get(ch_code)
                         )
+                        ch_meta = get_canonical_channel_meta(ch_code) or {}
+                        ch_obj = channel_by_code.get(ch_code)
+                        ch_has_partner_pricing = bool(
+                            (ch_obj.config or {}).get(
+                                "has_partner_pricing",
+                                ch_meta.get("has_partner_pricing", False),
+                            )
+                            if ch_obj is not None
+                            else ch_meta.get("has_partner_pricing", False)
+                        )
+                        # Only prefer lightweight `/price-book` for STORE-inherited channels;
+                        # partner-priced channels must pull full `/snapshots` to preserve channel overrides.
+                        use_price_book = (since_ver is None) and (not ch_has_partner_pricing)
                         total_prices_updated = 0
                         total_blocked_skus = 0
                         for b_code in branch_codes:
@@ -135,12 +150,16 @@ class PoppiesSyncWorker:
                                 since_version=since_ver,
                                 fmt="map",
                                 auto_propagate=True,
-                                prefer_price_book=(since_ver is None),
+                                prefer_price_book=use_price_book,
                             )
                             total_prices_updated += res.get("prices_updated", 0)
                             total_blocked_skus += res.get("blocked_skus_count", 0)
                         synced_channels[ch_code] = {
-                            "mode": "delta" if since_ver else "full_price_book",
+                            "mode": (
+                                "delta"
+                                if since_ver
+                                else ("full_price_book" if use_price_book else "full_snapshot")
+                            ),
                             "branches_synced": len(branch_codes),
                             "prices_updated": total_prices_updated,
                             "blocked_skus_count": total_blocked_skus,

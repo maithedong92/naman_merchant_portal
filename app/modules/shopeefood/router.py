@@ -41,6 +41,118 @@ def _reject_read_only(current_user: User) -> None:
 # 1. Inbound Order & Status Webhooks
 # ==============================================================================
 
+async def _verify_shopeefood_order_via_s2s(
+    raw_body: bytes,
+    request: Request,
+    db: AsyncSession,
+) -> Dict[str, Any]:
+    """
+    Fail-closed Proof-of-Order verification via Foody S2S `get_order_details` when an
+    inbound Foody webhook omits the Authorization signature header.
+    """
+    current_settings = get_settings()
+    s2s_fallback_enabled = bool(
+        getattr(current_settings, "SHOPEEFOOD_WEBHOOK_S2S_VERIFY_FALLBACK", True)
+    )
+    app_key = getattr(shopeefood_client, "app_key", "") or getattr(
+        current_settings, "SHOPEEFOOD_APP_KEY", ""
+    )
+    if not s2s_fallback_enabled or not app_key or "your_" in str(app_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing ShopeeFood Authorization signature header",
+        )
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    order_code = str(payload.get("order_code") or payload.get("order_id") or "").strip()
+    if not order_code:
+        logger.warning(
+            f"ShopeeFood webhook rejected: missing Authorization and missing order_code (keys={sorted(payload.keys())})."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing ShopeeFood Authorization signature header",
+        )
+
+    verify_resp = await shopeefood_client.get_order_details(order_code, mark_as_received=0)
+    reply = verify_resp.get("reply") if isinstance(verify_resp, dict) else None
+    if (
+        not isinstance(verify_resp, dict)
+        or verify_resp.get("result") != "success"
+        or not isinstance(reply, dict)
+        or str(reply.get("code") or "").strip() != order_code
+    ):
+        logger.warning(
+            f"ShopeeFood webhook S2S verification failed for order_code={order_code}: "
+            f"result={verify_resp.get('result') if isinstance(verify_resp, dict) else type(verify_resp).__name__}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ShopeeFood S2S order verification failed",
+        )
+
+    reply_rest = reply.get("restaurant") if isinstance(reply.get("restaurant"), dict) else {}
+    reply_partner_id = str(reply_rest.get("partner_restaurant_id") or "").strip()
+    reply_rest_id = str(reply_rest.get("id") or "").strip()
+    payload_partner_id = str(payload.get("partner_restaurant_id") or "").strip()
+    if payload_partner_id and reply_partner_id and payload_partner_id != reply_partner_id:
+        logger.warning(
+            f"ShopeeFood webhook rejected: partner_restaurant_id mismatch "
+            f"(payload={payload_partner_id}, s2s={reply_partner_id}) for order_code={order_code}."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ShopeeFood store mismatch on S2S verification",
+        )
+
+    candidate_ids = [cid for cid in (reply_partner_id, reply_rest_id) if cid]
+    store_verified = False
+    if candidate_ids:
+        scm_stmt = (
+            select(StoreChannelMapping)
+            .join(Channel, Channel.id == StoreChannelMapping.channel_id)
+            .join(Store, Store.id == StoreChannelMapping.store_id)
+            .where(
+                Channel.code.in_(["SHOPEEFOOD", "SHOPEE_FOOD", "FOODY"]),
+                StoreChannelMapping.partner_store_id.in_(candidate_ids),
+                StoreChannelMapping.is_active == True,
+                Store.is_active == True,
+            )
+        )
+        scm_res = await db.execute(scm_stmt)
+        if scm_res.scalars().first() is not None:
+            store_verified = True
+        elif reply_partner_id:
+            store_stmt = select(Store).where(
+                Store.code == reply_partner_id,
+                Store.is_active == True,
+            )
+            store_res = await db.execute(store_stmt)
+            store_verified = store_res.scalars().first() is not None
+
+    if not store_verified:
+        logger.warning(
+            f"ShopeeFood webhook rejected: verified order_code={order_code} does not map to any active store "
+            f"(candidates={candidate_ids})."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ShopeeFood store mapping verification failed",
+        )
+
+    logger.info(
+        f"ShopeeFood webhook verified via live S2S get_order_details for "
+        f"order_code={order_code} store={reply_partner_id or reply_rest_id}"
+    )
+    return reply
+
+
 @router.post("/shopeefood/webhooks/order")
 @router.post("/shopeefood/webhooks/update_order")
 @router.post("/shopeefoodapi/order/")
@@ -55,7 +167,8 @@ async def receive_shopeefood_order_webhook(
 ):
     """
     Inbound Webhook endpoint receiving real-time orders from ShopeeFood / Foody.
-    Supports signature validation and feature flag check ('order_webhook_enabled').
+    Verifies HMAC-SHA256 signature when supplied, or performs fail-closed S2S
+    `get_order_details` proof-of-order verification when signature header is omitted.
     """
     raw_body = await request.body()
     headers = dict(request.headers)
@@ -70,45 +183,81 @@ async def receive_shopeefood_order_webhook(
     if request.url.query:
         public_url = f"{public_url}?{request.url.query}"
 
-    # Fail-closed: always require valid Authorization signature
-    if not authorization:
-        logger.warning("ShopeeFood webhook rejected: missing Authorization signature header.")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing ShopeeFood Authorization signature header",
-        )
-
-    sig = (
-        authorization.replace("Signature ", "").strip()
-        if authorization.startswith("Signature ")
-        else authorization.strip()
+    sig_header = (
+        authorization
+        or request.headers.get("x-foody-signature")
+        or request.headers.get("x-signature")
     )
-    full_url = str(request.url)
-    try:
-        valid = shopeefood_client.verify_hmac_sha256(
-            raw_body,
-            sig,
-            method=request.method,
-            full_url=full_url,
-            public_url=public_url,
+    verified_order_details: Optional[Dict[str, Any]] = None
+
+    if sig_header:
+        sig = (
+            sig_header.replace("Signature ", "").strip()
+            if sig_header.startswith("Signature ")
+            else sig_header.strip()
         )
-    except TypeError:
-        valid = shopeefood_client.verify_hmac_sha256(raw_body, sig)
+        full_url = str(request.url)
+        alt_public_url = public_url.rstrip("/") if not request.url.query and public_url.endswith("/") else public_url
+        try:
+            valid = shopeefood_client.verify_hmac_sha256(
+                raw_body,
+                sig,
+                method=request.method,
+                full_url=full_url,
+                public_url=public_url,
+            )
+            if not valid and alt_public_url != public_url:
+                valid = shopeefood_client.verify_hmac_sha256(
+                    raw_body,
+                    sig,
+                    method=request.method,
+                    full_url=full_url.rstrip("/"),
+                    public_url=alt_public_url,
+                )
+        except TypeError:
+            valid = shopeefood_client.verify_hmac_sha256(raw_body, sig)
 
-    if not valid and settings.SHOPEEFOOD_APP_KEY:
-        body_str = raw_body.decode("utf-8", errors="ignore") if raw_body else ""
-        base_string = f"{request.method.upper()}|{full_url}|{body_str}"
-        valid = verify_hmac_sha256(settings.SHOPEEFOOD_APP_KEY, base_string, sig, is_hex_key=True)
+        current_app_key = getattr(shopeefood_client, "app_key", "") or getattr(
+            get_settings(), "SHOPEEFOOD_APP_KEY", ""
+        )
+        if not valid and current_app_key:
+            body_str = raw_body.decode("utf-8", errors="ignore") if raw_body else ""
+            base_string = f"{request.method.upper()}|{full_url}|{body_str}"
+            valid = verify_hmac_sha256(current_app_key, base_string, sig, is_hex_key=True)
 
-    if not valid:
-        logger.warning("ShopeeFood webhook signature verification failed.")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="ShopeeFood webhook signature verification failed",
+        if not valid:
+            logger.warning("ShopeeFood webhook signature verification failed.")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="ShopeeFood webhook signature verification failed",
+            )
+    else:
+        client_ip = request.headers.get("x-real-ip") or (
+            request.client.host if request.client else "unknown"
+        )
+        logger.warning(
+            f"ShopeeFood webhook missing Authorization header: path={request.url.path} "
+            f"client_ip={client_ip} header_keys={sorted(request.headers.keys())}"
+        )
+        verified_order_details = await _verify_shopeefood_order_via_s2s(
+            raw_body=raw_body,
+            request=request,
+            db=db,
         )
 
     try:
-        response = await adapter.handle_order_webhook(headers, raw_body, db)
+        if verified_order_details is not None:
+            try:
+                response = await adapter.handle_order_webhook(
+                    headers,
+                    raw_body,
+                    db,
+                    verified_order_details=verified_order_details,
+                )
+            except TypeError:
+                response = await adapter.handle_order_webhook(headers, raw_body, db)
+        else:
+            response = await adapter.handle_order_webhook(headers, raw_body, db)
         return response
     except Exception as ex:
         logger.error(f"Lỗi khi xử lý webhook đơn hàng ShopeeFood: {str(ex)}")

@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     SHOPEEFOOD_LANGUAGE: str = "vi"
     SHOPEEFOOD_MENU_USERNAME: str = ""
     SHOPEEFOOD_MENU_PASSWORD: str = ""
+    SHOPEEFOOD_WEBHOOK_S2S_VERIFY_FALLBACK: bool = True
 
     # GrabMart Module Settings
     GRABMART_ENABLED: bool = True

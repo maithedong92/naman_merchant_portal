@@ -38,6 +38,7 @@ def mock_store_manager():
 def _make_mock_db():
     db = AsyncMock()
     db.add = MagicMock()
+    db.expunge_all = MagicMock()
     return db
 
 
@@ -1177,5 +1178,143 @@ async def test_resource_optimizations_empty_delta_noop_and_unchanged_cttk_skip()
         res_cttk = await poppies_service.sync_stock_cttk_realtime(db=mock_cttk_db, batch_size=10000)
         assert res_cttk["inventories_updated"] == 0
         assert mock_cttk_db.commit.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_price_book_fallback_preserves_existing_partner_custom_price():
+    """
+    When `/price-book` fallback returns flat base_price on a partner-priced channel (e.g. SHOPEEFOOD),
+    existing valid custom_price overrides must NOT be wiped to None; <= 0 cleanup and exclusions still apply.
+    """
+    sf_ch = Channel(
+        id="ch-sf",
+        code="SHOPEEFOOD",
+        name="ShopeeFood",
+        is_active=True,
+        config={"has_partner_pricing": True},
+    )
+    p_ribeye = Product(
+        id="p-rib",
+        sku="290011724000",
+        name="Thịt đầu thăn bò úc",
+        base_price=999900.0,
+        is_active=True,
+    )
+    p_blocked = Product(
+        id="p-blk",
+        sku="290010819000",
+        name="Bông cải xanh úc",
+        base_price=599900.0,
+        is_active=True,
+    )
+    p_zero = Product(
+        id="p-zero",
+        sku="290002026000",
+        name="Trái bí rợ",
+        base_price=69900.0,
+        is_active=True,
+    )
+    map_ribeye = ChannelProductMapping(
+        product_id="p-rib",
+        channel_id="ch-sf",
+        custom_price=929907.0,
+        is_enabled=True,
+        channel_sync_payload={},
+    )
+    map_zero = ChannelProductMapping(
+        product_id="p-zero",
+        channel_id="ch-sf",
+        custom_price=0.0,
+        is_enabled=True,
+        channel_sync_payload={},
+    )
+
+    mock_db = _make_mock_db()
+    mock_db.execute.side_effect = [
+        _scalar_result(sf_ch),
+        _scalars_result([p_ribeye, p_blocked, p_zero]),
+        _scalars_result([map_ribeye, map_zero]),
+    ]
+
+    pb_snap = {
+        "success": True,
+        "source": "price_book_fallback",
+        "version": "v-pb-1",
+        "channel_code": "SHOPEEFOOD",
+        "has_partner_pricing": True,
+        "is_active": True,
+        "is_delta": False,
+        "prices": {
+            "290011724000": {"effective_price": 999900.0, "base_price": 999900.0, "allowed_in_context": True},
+            "290010819000": {"effective_price": 599900.0, "base_price": 599900.0, "allowed_in_context": False},
+            "290002026000": {"effective_price": 69900.0, "base_price": 69900.0, "allowed_in_context": True},
+        },
+        "exclusions": ["290010819000"],
+    }
+
+    with patch.object(poppies_service.client, "get_pricing_snapshot", new_callable=AsyncMock, return_value=pb_snap), \
+         patch("app.services.poppies_pricing_sync.propagate_skus_to_external_channel", new_callable=AsyncMock, return_value=[]):
+        res = await poppies_service.sync_channel_pricing_snapshot(
+            db=mock_db,
+            branch_code="10001",
+            channel_code="SHOPEEFOOD",
+            auto_propagate=False,
+        )
+
+    assert res["success"] is True
+    assert float(map_ribeye.custom_price) == 929907.0
+    assert map_zero.custom_price is None
+    assert res["blocked_mappings_applied"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_worker_only_prefers_price_book_for_non_partner_channels():
+    """
+    PoppiesSyncWorker.sync_once(force_full=True) passes prefer_price_book=True for STORE
+    (has_partner_pricing=False) and prefer_price_book=False for SHOPEEFOOD/GRAB/TIKTOK
+    (has_partner_pricing=True).
+    """
+    from app.services.poppies_sync_worker import PoppiesSyncWorker
+
+    worker = PoppiesSyncWorker()
+    worker._channels_reconciled = True
+
+    mock_db = _make_mock_db()
+    lock_res = MagicMock()
+    lock_res.scalar.return_value = True
+    ch_rows = [
+        Channel(id="ch-1", code="STORE", name="POS", is_active=True, config={"has_partner_pricing": False}),
+        Channel(id="ch-2", code="GRAB", name="GrabMart", is_active=True, config={"has_partner_pricing": True}),
+        Channel(id="ch-3", code="SHOPEEFOOD", name="ShopeeFood", is_active=True, config={"has_partner_pricing": True}),
+        Channel(id="ch-4", code="TIKTOK", name="TikTok", is_active=True, config={"has_partner_pricing": True}),
+    ]
+    mock_db.execute.side_effect = [
+        lock_res,
+        _scalars_result(ch_rows),
+        _scalars_result(["10001"]),
+        MagicMock(),
+    ]
+
+    class _SessionCtx:
+        async def __aenter__(self):
+            return mock_db
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    with patch("app.services.poppies_sync_worker.AsyncSessionLocal", return_value=_SessionCtx()), \
+         patch("app.services.poppies_sync_worker.poppies_service.sync_channel_pricing_snapshot", new_callable=AsyncMock, return_value={"prices_updated": 0, "blocked_skus_count": 0}) as mock_sync, \
+         patch("app.services.poppies_sync_worker.poppies_service.sync_stock_cttk_realtime", new_callable=AsyncMock, return_value={"inventories_updated": 0, "availability_changed_skus": []}):
+        summary = await worker.sync_once(force_full=True)
+
+    assert summary["success"] is True
+    calls_by_channel = {
+        call.kwargs["channel_code"]: call.kwargs
+        for call in mock_sync.await_args_list
+    }
+    assert calls_by_channel["STORE"]["prefer_price_book"] is True
+    assert calls_by_channel["SHOPEEFOOD"]["prefer_price_book"] is False
+    assert calls_by_channel["GRAB"]["prefer_price_book"] is False
+    assert calls_by_channel["TIKTOK"]["prefer_price_book"] is False
 
 
