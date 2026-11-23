@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, List, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.order import UnifiedOrderStatus
 
@@ -12,7 +12,7 @@ class OrderItemBase(BaseModel):
     unit_price: float = Field(..., ge=0)
     total_price: float = Field(..., ge=0)
     notes: Optional[str] = None
-    modifiers: Optional[dict] = None
+    modifiers: Optional[Any] = None
 
 
 class OrderItemResponse(OrderItemBase):
@@ -72,6 +72,27 @@ class UnifiedOrderResponse(UnifiedOrderBase):
     updated_at: Optional[datetime] = None
     items: List[OrderItemResponse] = []
     status_history: List[OrderStatusHistoryResponse] = []
+    virtual_contact: Optional[dict] = None
+    is_edited: bool = False
+    grab_edit_context: Optional[dict] = None
+
+
+class OrderEditItemInput(BaseModel):
+    sku: str = Field(..., min_length=1, max_length=100, description="Nam An SKU or item code")
+    grab_item_id: Optional[str] = Field(None, description="GrabMart grabItemID / item.id for original items")
+    status: Literal["UNCHANGED", "UPDATED", "DELETED", "ADDED"]
+    quantity: int = Field(1, ge=0, description="Target quantity (0 allowed when status=DELETED)")
+    adjusted_price_in_min: Optional[int] = Field(None, ge=0, description="Weighted item adjusted price in minor unit")
+    adjusted_weight: Optional[float] = Field(None, gt=0, description="Weighted item adjusted weight (soldByWeight only)")
+    item_name: Optional[str] = Field(None, max_length=255)
+    unit_price: Optional[float] = Field(None, ge=0)
+
+
+class OrderEditRequest(BaseModel):
+    items: List[OrderEditItemInput] = Field(..., min_length=1)
+    customer_confirmed: bool = Field(..., description="Operator confirms customer agreed to changes")
+    edit_reason: str = Field(..., min_length=2, max_length=300, description="Reason for editing the order")
+    only_recalculate: bool = Field(default=False, description="GrabMart test simulation flag")
 
 
 class OrderStatusUpdateSchema(BaseModel):

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
+from app.core.exceptions import ValidationError
 from app.interfaces.channel_adapter import BaseChannelAdapter
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
@@ -66,6 +67,8 @@ def _extract_s2s_items(dish_groups: Any) -> List[Dict[str, Any]]:
                 continue
             qty = max(1, int(dish.get("quantity") or 1))
             unit_price = _extract_money_val(dish.get("price"))
+            if unit_price <= 0:
+                unit_price = _extract_money_val(dish.get("original_price"))
             total_price = _extract_money_val(dish.get("total"))
             items.append({
                 "sku": str(dish.get("partner_dish_id") or dish.get("dish_id") or "UNKNOWN"),
@@ -734,8 +737,36 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             db=db,
         )
 
-        # If order already existed (e.g. /webhooks/update_order), update driver details and transition status
+        # If order already existed (e.g. /webhooks/update_order), reconcile item edits (update_type=1), driver info, and status
         if not created:
+            is_order_item_update = str(payload.get("update_type") or "").strip() == "1"
+            if is_order_item_update and order.status != UnifiedOrderStatus.CANCELLED:
+                reconciled_snapshot = None
+                if verified_order_details is not None and items_data:
+                    reconciled_snapshot = (order_data, items_data)
+                else:
+                    try:
+                        details_resp = await shopeefood_client.get_order_details(
+                            order_code=channel_order_id,
+                            partner_restaurant_id=partner_restaurant_id,
+                            mark_as_received=0,
+                        )
+                        reply_dict = details_resp.get("reply") if isinstance(details_resp, dict) else None
+                        if isinstance(reply_dict, dict) and reply_dict:
+                            reconciled_snapshot = self._extract_s2s_order_snapshot(reply_dict, payload)
+                    except Exception as det_ex:
+                        logger.warning(f"Could not pull ShopeeFood get_order_details on update_type=1 for {channel_order_id}: {det_ex}")
+
+                if reconciled_snapshot and reconciled_snapshot[1]:
+                    order = await OrderService.reconcile_edited_inbound_order(
+                        order_id=order.id,
+                        order_data=reconciled_snapshot[0],
+                        items_data=reconciled_snapshot[1],
+                        db=db,
+                        changed_by="SHOPEEFOOD_WEBHOOK",
+                        note="Đồng bộ chỉnh sửa món/tổng tiền từ ShopeeFood (update_type=1)",
+                    )
+
             driver_updated = False
             if driver_name and getattr(order, "driver_name", None) != driver_name:
                 order.driver_name = driver_name
@@ -787,6 +818,111 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 "created": created,
             }
         }
+
+    @staticmethod
+    def _extract_s2s_order_snapshot(
+        details: Dict[str, Any],
+        webhook_payload: Optional[Dict[str, Any]] = None,
+    ) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
+        """Extract canonical items and monetary totals from Foody `/s2s/order/get_details` `reply` dict."""
+        customer_bill = details.get("customer_bill") if isinstance(details.get("customer_bill"), dict) else {}
+        s2s_order_data: Dict[str, Any] = {
+            "subtotal_amount": _extract_money_val(details.get("order_value")),
+            "discount_amount": _extract_money_val(details.get("total_merchant_discount")),
+            "delivery_fee": _extract_money_val(customer_bill.get("shipping_fee")),
+            "total_amount": _extract_money_val(details.get("total_value")),
+            "raw_payload": (
+                {"webhook": webhook_payload, "s2s_order_details": details}
+                if webhook_payload is not None
+                else {"s2s_order_details": details}
+            ),
+        }
+        s2s_items_data = _extract_s2s_items(details.get("dish_groups"))
+        return s2s_order_data, s2s_items_data
+
+    async def refresh_order_from_channel(
+        self,
+        order: UnifiedOrder,
+        db: AsyncSession,
+    ) -> UnifiedOrder:
+        """
+        Pull authoritative order details via ShopeeFood S2S `/s2s/order/get_details`
+        and reconcile line items, totals, driver info, and virtual stock delta.
+        """
+        partner_store_id = ""
+        if order.channel_id and order.store_id:
+            mapping = (
+                await db.execute(
+                    select(StoreChannelMapping).where(
+                        StoreChannelMapping.channel_id == order.channel_id,
+                        StoreChannelMapping.store_id == order.store_id,
+                    )
+                )
+            ).scalars().first()
+            if mapping and mapping.partner_store_id:
+                partner_store_id = str(mapping.partner_store_id)
+        if not partner_store_id and isinstance(order.raw_payload, dict):
+            rest = order.raw_payload.get("s2s_order_details", {}).get("restaurant", {})
+            partner_store_id = str(rest.get("partner_restaurant_id") or rest.get("id") or "")
+
+        details_resp = await shopeefood_client.get_order_details(
+            order_code=order.channel_order_id,
+            partner_restaurant_id=partner_store_id or None,
+            mark_as_received=0,
+        )
+        reply = details_resp.get("reply") if isinstance(details_resp, dict) else None
+        if not isinstance(reply, dict) or not reply:
+            raise ValidationError(
+                f"Không lấy được chi tiết mới từ ShopeeFood S2S cho đơn {order.channel_order_id}."
+            )
+
+        prev_webhook = (
+            order.raw_payload.get("webhook")
+            if isinstance(order.raw_payload, dict) and isinstance(order.raw_payload.get("webhook"), dict)
+            else None
+        )
+        s2s_order_data, s2s_items_data = self._extract_s2s_order_snapshot(reply, prev_webhook)
+
+        driver_info = reply.get("assignee") if isinstance(reply.get("assignee"), dict) else {}
+        if driver_info:
+            if driver_info.get("name"):
+                order.driver_name = driver_info.get("name")
+            if driver_info.get("phone"):
+                order.driver_phone = driver_info.get("phone")
+            plate = driver_info.get("license_plate") or driver_info.get("plate") or driver_info.get("vehicle_number")
+            if plate:
+                order.driver_license_plate = plate
+
+        updated = await OrderService.reconcile_edited_inbound_order(
+            order_id=order.id,
+            order_data=s2s_order_data,
+            items_data=s2s_items_data,
+            db=db,
+            changed_by="SHOPEEFOOD_SYNC",
+            note="Đồng bộ lại danh sách món và tổng tiền từ ShopeeFood S2S",
+        )
+
+        raw_status = reply.get("status") if reply.get("status") is not None else reply.get("order_status")
+        mapped_status = self._map_webhook_status(raw_status)
+        if mapped_status is not None and mapped_status != updated.status and updated.status not in (
+            UnifiedOrderStatus.DELIVERED,
+            UnifiedOrderStatus.CANCELLED,
+        ):
+            try:
+                updated = await OrderService.update_order_status(
+                    order_id=updated.id,
+                    payload=OrderStatusUpdateSchema(
+                        new_status=mapped_status,
+                        note="Đồng bộ trạng thái từ ShopeeFood S2S",
+                        changed_by="SHOPEEFOOD_SYNC",
+                    ),
+                    db=db,
+                    sync_to_channel=False,
+                )
+            except Exception as st_ex:
+                logger.warning(f"Bỏ qua đồng bộ trạng thái chéo ShopeeFood cho {updated.order_code}: {st_ex}")
+
+        return updated
 
     # ==========================================================================
     # 4. Outbound Order Lifecycle Operations

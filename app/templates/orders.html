@@ -323,6 +323,114 @@
 </div>
 
 <!-- ======================================================================= -->
+<!-- Modal 2B: GrabMart 2-Way Order Edit Modal                               -->
+<!-- ======================================================================= -->
+<div id="edit-order-modal" class="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-50 hidden items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+        <!-- Header -->
+        <div class="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+            <div>
+                <h3 class="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                    <span>✏️</span>
+                    <span>Sửa Món Đơn Hàng GrabMart</span>
+                </h3>
+                <p id="edit-order-subtitle" class="text-[11px] text-slate-600 mt-0.5 font-mono">--</p>
+            </div>
+            <button type="button" onclick="closeEditOrderModal()" class="w-8 h-8 rounded-lg hover:bg-slate-200/80 text-slate-600 flex items-center justify-center font-bold text-lg transition-colors">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div class="overflow-y-auto p-5 space-y-4 flex-1">
+            <!-- Customer Call / Virtual Contact Banner -->
+            <div id="edit-order-contact-banner" class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12px] text-amber-900">
+                Đang tải thông tin liên hệ khách hàng...
+            </div>
+
+            <!-- Mandatory Customer Confirmation & Reason -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                <label class="flex items-start space-x-2.5 cursor-pointer select-none">
+                    <input type="checkbox" id="edit-order-confirmed" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                    <span class="text-[12px] font-semibold text-slate-900 leading-snug">
+                        Tôi xác nhận đã liên hệ và được khách hàng đồng ý thay đổi danh sách món / số lượng này.
+                    </span>
+                </label>
+
+                <div>
+                    <label for="edit-order-reason" class="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                        Lý Do Chỉnh Sửa (Bắt buộc)
+                    </label>
+                    <input type="text" id="edit-order-reason" maxlength="300" placeholder="VD: Hết SKU cũ, khách đồng ý đổi sang sản phẩm thay thế hoặc giảm số lượng..."
+                        class="w-full px-3 py-2 text-[12px] rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <div class="flex flex-wrap gap-1.5 mt-2">
+                        <button type="button" data-reason="Hết món gốc, khách đồng ý đổi món thay thế" onclick="setEditReasonQuick(this)" class="px-2 py-0.5 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-[11px] text-slate-700 transition-colors">Hết món, khách đồng ý đổi</button>
+                        <button type="button" data-reason="Tồn kho không đủ, khách đồng ý giảm số lượng" onclick="setEditReasonQuick(this)" class="px-2 py-0.5 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-[11px] text-slate-700 transition-colors">Giảm số lượng theo thỏa thuận</button>
+                        <button type="button" data-reason="Cân lại trọng lượng thực tế sản phẩm bán theo ký" onclick="setEditReasonQuick(this)" class="px-2 py-0.5 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-[11px] text-slate-700 transition-colors">Điều chỉnh trọng lượng thực tế</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Items Table -->
+            <div>
+                <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Danh Sách Món Hiện Tại &amp; Điều Chỉnh</span>
+                    <span class="text-[11px] text-slate-500">Lưu ý: Không thể xóa toàn bộ món; món có modifier chỉ xóa được toàn bộ món.</span>
+                </div>
+                <div class="overflow-x-auto rounded-xl border border-slate-200">
+                    <table class="w-full text-left text-[12px] border-collapse">
+                        <thead class="bg-slate-50 text-[11px] text-slate-700 border-b border-slate-200 font-semibold uppercase tracking-wider">
+                            <tr>
+                                <th class="py-2 px-3">Món / SKU</th>
+                                <th class="py-2 px-2 text-center w-36">Số Lượng Mới</th>
+                                <th class="py-2 px-2 text-center w-28">Trạng Thái</th>
+                                <th class="py-2 px-3 text-right w-28">Đơn Giá</th>
+                                <th class="py-2 px-2 text-center w-20">Thao Tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="edit-order-items-tbody" class="divide-y divide-slate-200 bg-white text-slate-900">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Add Replacement Item Search -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Thêm Món Thay Thế Từ Tồn Kho Chi Nhánh</div>
+                <div id="edit-order-quick-replacements" class="hidden flex flex-wrap gap-1.5"></div>
+                <div class="flex items-center space-x-2">
+                    <input type="text" id="edit-order-search-input" placeholder="Nhập tên sản phẩm hoặc mã SKU chi nhánh để tìm..."
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();searchReplacementSku();}"
+                        class="flex-1 px-3 py-1.5 text-[12px] rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <button type="button" onclick="searchReplacementSku()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[12px] font-semibold transition-colors whitespace-nowrap">
+                        🔍 Tìm SKU
+                    </button>
+                </div>
+                <div id="edit-order-search-results" class="hidden max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100 text-[12px]">
+                </div>
+            </div>
+
+            <!-- Recalculation / Feedback Result Box -->
+            <div id="edit-order-result-box" class="hidden p-3 rounded-xl text-[12px]"></div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-5 py-3 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+            <div id="edit-order-footer-summary" class="text-[12px] text-slate-700 font-medium">--</div>
+            <div class="flex items-center space-x-2">
+                <button type="button" onclick="closeEditOrderModal()" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-[12px] font-semibold transition-colors">
+                    Hủy
+                </button>
+                <button type="button" id="btn-recalc-edit-order" onclick="submitEditOrder(true)" class="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[12px] font-semibold transition-colors">
+                    ✅ Kiểm Tra Hợp Lệ
+                </button>
+                <button type="button" id="btn-submit-edit-order" onclick="submitEditOrder(false)" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-semibold shadow-sm transition-colors">
+                    💾 Gửi Thay Đổi Lên GrabMart
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================================= -->
 <!-- Modal 3: Comprehensive Order Details Dialog (Option 3 Apple Retail - Follow 100% PMDONHANG) -->
 <!-- ======================================================================= -->
 <div id="order-details-modal" onclick="handleDetailsBackdropClick(event)" class="hidden fixed inset-0 z-[9999] overflow-y-auto bg-slate-950/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5" style="display: none;">
@@ -3261,9 +3369,38 @@
         document.getElementById('detail-tab-products-badge').textContent = (order.items || []).length;
 
         // TAB 1: Basic Info
+        const chCode = String(order.channel_code || '').toUpperCase();
+        const isGrab = (chCode === 'GRABMART' || chCode === 'GRAB' || chCode === 'GRAB_MART');
+        const isFoody = (chCode === 'SHOPEEFOOD');
+        const isEditableStatus = (order.status === 'PENDING' || order.status === 'ACCEPTED' || order.status === 'PREPARING');
+        const vc = order.virtual_contact || null;
+        const editedBadgeHtml = order.is_edited
+            ? `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-bold">Đã chỉnh sửa món</span>`
+            : '';
+
+        const virtualContactHtml = (vc && vc.phoneNumber)
+            ? `<div class="md:col-span-2 lg:col-span-3 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-[12px]">
+                   <div class="flex flex-wrap items-center gap-2 text-emerald-900">
+                       <span class="font-bold">🔒 Số ảo GrabMart:</span>
+                       <a href="tel:${escapeHtml(vc.phoneNumber)}" class="font-mono font-bold text-emerald-800 hover:underline">📞 ${escapeHtml(vc.phoneNumber)}</a>
+                       ${vc.PIN ? `<span>· Mã PIN: <strong class="font-mono bg-white px-1.5 py-0.5 rounded border border-emerald-300 text-emerald-900">${escapeHtml(vc.PIN)}</strong></span>` : ''}
+                   </div>
+                   ${vc.expiredAt ? `<span class="text-[11px] text-emerald-700 font-mono">Hết hạn: ${formatDateTime(vc.expiredAt)}</span>` : ''}
+               </div>`
+            : '';
+
+        const foodyNoteHtml = isFoody
+            ? `<div class="p-2.5 rounded-lg bg-orange-50 border border-orange-200 text-[11.5px] text-orange-900">
+                   💡 <strong>ShopeeFood:</strong> Đối tác Foody S2S chỉ hỗ trợ chỉnh sửa món trực tiếp trên <em>ShopeeFood Merchant App</em>. Nếu bạn vừa sửa món trên App và cổng chưa kịp cập nhật webhook, bấm <strong>"🔄 Đồng Bộ Món ShopeeFood"</strong> bên dưới.
+               </div>`
+            : '';
+
         const basicHtml = `
             <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-                <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Thông Tin Đơn Sàn</div>
+                <div class="flex items-center justify-between gap-2">
+                    <div class="text-[11px] font-bold text-slate-700 uppercase tracking-wider">Thông Tin Đơn Sàn</div>
+                    ${editedBadgeHtml}
+                </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-[12px]">
                     <div><span class="text-slate-600">Mã đơn nội bộ:</span> <strong class="font-mono text-slate-900">${escapeHtml(order.order_code)}</strong></div>
                     <div><span class="text-slate-600">Mã sàn:</span> <strong class="font-mono text-slate-900">${escapeHtml(order.channel_order_id)}</strong></div>
@@ -3271,8 +3408,10 @@
                     <div><span class="text-slate-600">Khách hàng:</span> <strong class="text-slate-900">${escapeHtml(order.customer_name || 'Khách vãng lai')}</strong></div>
                     <div><span class="text-slate-600">SĐT khách:</span> ${order.customer_phone ? `<a href="tel:${escapeHtml(order.customer_phone)}" class="text-sky-700 font-semibold hover:underline">📞 ${escapeHtml(order.customer_phone)}</a>` : '<span class="text-slate-500">--</span>'}</div>
                     <div><span class="text-slate-600">Tài xế nhận:</span> ${order.driver_name ? `<strong class="text-slate-900">${escapeHtml(order.driver_name)}</strong> (${escapeHtml(order.driver_phone || '')})` : '<span class="text-slate-500 italic">Chưa có tài xế</span>'}</div>
+                    ${virtualContactHtml}
                     <div class="md:col-span-2 lg:col-span-3"><span class="text-slate-600">Địa chỉ giao hàng:</span> <span class="text-slate-900 font-medium">${escapeHtml(order.delivery_address || '--')}</span></div>
                 </div>
+                ${foodyNoteHtml}
                 <div class="pt-2.5 border-t border-slate-200 flex flex-wrap items-center justify-between text-[12px]">
                     <div class="text-slate-700 space-x-3">
                         <span>Tạm tính: <strong class="text-slate-900 font-mono">${formatVND(order.subtotal_amount)}</strong></span>
@@ -3289,18 +3428,42 @@
         document.getElementById('detail-tab-pane-basic').innerHTML = basicHtml;
 
         // TAB 2: Items list
+        const grabCtxItems = (order.grab_edit_context && Array.isArray(order.grab_edit_context.items)) ? order.grab_edit_context.items : [];
         let itemsRows = '';
         (order.items || []).forEach((it, idx) => {
             const price = Number(it.unit_price ?? it.price ?? 0);
             const qty = Number(it.quantity || 1);
             const total = price * qty;
+            const ctxItem = grabCtxItems.find(c => String(c.sku || '') === String(it.sku || '')) || grabCtxItems[idx] || null;
+            const oos = ctxItem && ctxItem.outOfStockInstruction ? ctxItem.outOfStockInstruction : null;
+            let oosBadgeHtml = '';
+            if (oos && typeof oos === 'object') {
+                const replList = Array.isArray(oos.replacementItems) ? oos.replacementItems : [];
+                const replSkus = [];
+                if (oos.replacementItemID) replSkus.push(String(oos.replacementItemID));
+                replList.forEach(r => { if (r && r.replacementItemID) replSkus.push(`${String(r.replacementItemID)} x${Number(r.quantity || 1)}`); });
+                const oosText = replSkus.length
+                    ? `Đổi sang SKU: ${replSkus.join(', ')}`
+                    : (oos.title || oos.instructionType || '');
+                if (oosText) {
+                    oosBadgeHtml = `<div class="text-[10.5px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 mt-1 inline-block">🔁 Khi hết hàng: ${escapeHtml(oosText)}</div>`;
+                }
+            }
+            const weightBadgeHtml = (ctxItem && ctxItem.soldByWeight)
+                ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-sky-800 text-[10px] font-semibold">Bán theo ký${ctxItem.weight ? ` (${Number(ctxItem.weight)})` : ''}</span>`
+                : '';
+
             itemsRows += `
                 <tr class="hover:bg-slate-50/80 transition-colors">
-                    <td class="py-2.5 px-2 text-center text-[11px] text-slate-600 font-mono">${idx + 1}</td>
+                    <td class="py-2.5 px-2 text-center text-[11px] text-slate-600 font-mono">${Number(idx) + 1}</td>
                     <td class="py-2.5 px-3 font-medium text-slate-900">
-                        <div>${escapeHtml(it.item_name || it.name || it.title || 'Sản phẩm')}</div>
+                        <div class="flex flex-wrap items-center gap-1">
+                            <span>${escapeHtml(it.item_name || it.name || it.title || 'Sản phẩm')}</span>
+                            ${weightBadgeHtml}
+                        </div>
                         ${it.sku ? `<div class="text-[10.5px] font-mono text-slate-600 mt-0.5">SKU: ${escapeHtml(it.sku)}</div>` : ''}
                         ${it.modifiers && it.modifiers.length ? `<div class="text-[11px] text-slate-600 mt-0.5">${it.modifiers.map(m => `+ ${escapeHtml(m.name)}`).join(', ')}</div>` : ''}
+                        ${oosBadgeHtml}
                     </td>
                     <td class="py-2.5 px-2 text-center font-bold font-mono text-slate-900">${qty}</td>
                     <td class="py-2.5 px-3 text-right font-mono text-slate-700">${formatVND(price)}</td>
@@ -3337,7 +3500,7 @@
 
         // FOOTER ACTIONS
         let footerHtml = `
-            <div class="flex items-center space-x-2">
+            <div class="flex flex-wrap items-center gap-2">
                 ${order.channel_code === 'SHOPEEMART' ? `
                     <button data-sn="${safeSn}" onclick="openShopeeAwbModal(this.dataset.sn)" class="px-3 py-1.5 rounded-lg bg-pink-50 hover:bg-pink-100 text-[12px] font-semibold text-pink-800 border border-pink-200 transition-colors flex items-center space-x-1">
                         <span>📄</span>
@@ -3349,9 +3512,22 @@
                     </button>
                     ` : ''}
                 ` : ''}
+                ${(canMutatePlatform && isFoody) ? `
+                    <button id="btn-sync-foody-detail" data-id="${safeId}" onclick="syncShopeeFoodOrderDetail(this.dataset.id)" class="px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-300 text-[12px] font-semibold transition-colors flex items-center space-x-1.5">
+                        <span>🔄</span>
+                        <span>Đồng Bộ Món ShopeeFood</span>
+                    </button>
+                ` : ''}
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
+                ${(canMutatePlatform && isGrab && isEditableStatus) ? `
+                    <button data-id="${safeId}" onclick="openEditOrderModal(this.dataset.id)" class="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 text-[12px] font-semibold transition-colors flex items-center space-x-1">
+                        <span>✏️</span>
+                        <span>Sửa Món (GrabMart)</span>
+                    </button>
+                ` : ''}
+
                 ${(canMutatePlatform && order.status === 'PENDING') ? `
                     <button data-id="${safeId}" data-code="${safeCode}" onclick="openCancelModal(this.dataset.id, this.dataset.code)" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[12px] font-semibold transition-colors">
                         Hủy Đơn
@@ -4070,6 +4246,620 @@
             showToast('Lỗi mạng khi xử lý yêu cầu hủy đơn', 'error');
         }
     
+    }
+
+    // =========================================================================
+    // GRABMART 2-WAY ORDER EDIT & SHOPEEFOOD DETAIL SYNC
+    // =========================================================================
+    let currentEditOrderState = null;
+
+    async function openEditOrderModal(orderId) {
+        if (!orderId) return;
+        const modal = document.getElementById('edit-order-modal');
+        const subtitle = document.getElementById('edit-order-subtitle');
+        const contactBanner = document.getElementById('edit-order-contact-banner');
+        const confirmedEl = document.getElementById('edit-order-confirmed');
+        const reasonEl = document.getElementById('edit-order-reason');
+        const resultBox = document.getElementById('edit-order-result-box');
+        const searchInput = document.getElementById('edit-order-search-input');
+        const searchResults = document.getElementById('edit-order-search-results');
+
+        if (subtitle) subtitle.textContent = `Đang tải ngữ cảnh đơn #${String(orderId)}...`;
+        if (contactBanner) contactBanner.textContent = 'Đang tải thông tin liên hệ khách hàng...';
+        if (confirmedEl) confirmedEl.checked = false;
+        if (reasonEl) reasonEl.value = '';
+        if (searchInput) searchInput.value = '';
+        if (searchResults) {
+            searchResults.innerHTML = '';
+            searchResults.classList.add('hidden');
+        }
+        if (resultBox) {
+            resultBox.innerHTML = '';
+            resultBox.classList.add('hidden');
+        }
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
+        let order = null;
+        try {
+            const res = await authFetch(`/api/v1/orders/${encodeURIComponent(orderId)}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json && json.success && json.data) {
+                    order = json.data;
+                }
+            }
+        } catch (e) {
+            console.warn('Không tải được chi tiết đơn mới nhất cho Edit modal, dùng cache:', e);
+        }
+
+        if (!order) {
+            if (currentDetailOrder && String(currentDetailOrder.id) === String(orderId)) {
+                order = currentDetailOrder;
+            } else {
+                order = currentOrdersCache.find(x => String(x.id) === String(orderId)) || null;
+            }
+        }
+
+        if (!order) {
+            showToast('Không tìm thấy thông tin đơn hàng để chỉnh sửa.', 'error');
+            closeEditOrderModal();
+            return;
+        }
+
+        const grabCtx = order.grab_edit_context || {};
+        const ctxItems = Array.isArray(grabCtx.items) ? grabCtx.items : [];
+        const rawExponent = Number(grabCtx.currencyExponent || 0);
+
+        const itemsState = (order.items || []).map((it, idx) => {
+            const skuStr = String(it.sku || '').trim();
+            const ctx = ctxItems.find(c => String(c.sku || '').trim() === skuStr) || ctxItems[idx] || {};
+            const qty = Number(it.quantity || 1);
+            return {
+                isOriginal: true,
+                sku: skuStr,
+                grab_item_id: ctx.grabItemID || null,
+                item_name: String(it.item_name || ctx.name || skuStr || 'Sản phẩm'),
+                unit_price: Number(it.unit_price || 0),
+                originalQty: qty,
+                quantity: qty,
+                status: 'UNCHANGED',
+                sold_by_weight: Boolean(ctx.soldByWeight),
+                originalWeight: ctx.weight != null ? Number(ctx.weight) : null,
+                adjusted_weight: null,
+                originalPriceInMin: ctx.priceInMin != null ? Number(ctx.priceInMin) : null,
+                adjusted_price_in_min: null,
+                has_modifiers: Boolean(ctx.hasModifiers || (Array.isArray(it.modifiers) && it.modifiers.length > 0)),
+                out_of_stock_instruction: ctx.outOfStockInstruction || null,
+            };
+        });
+
+        currentEditOrderState = {
+            orderId: String(order.id),
+            orderCode: String(order.order_code || order.id),
+            channelOrderId: String(order.channel_order_id || ''),
+            storeCode: String(order.store_code || ''),
+            currencyExponent: rawExponent,
+            originalSubtotal: Number(order.subtotal_amount || 0),
+            items: itemsState,
+        };
+
+        if (subtitle) {
+            subtitle.textContent = `${order.order_code || ''} · Mã Grab: ${order.channel_order_id || '--'} · CN ${order.store_code || '--'}`;
+        }
+
+        if (contactBanner) {
+            const vc = order.virtual_contact;
+            if (vc && vc.phoneNumber) {
+                contactBanner.className = 'p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[12px] text-emerald-950 space-y-1';
+                contactBanner.innerHTML = `
+                    <div class="font-bold flex flex-wrap items-center gap-2">
+                        <span>📞 Liên hệ khách qua Số ảo GrabMart:</span>
+                        <a href="tel:${escapeHtml(vc.phoneNumber)}" class="font-mono underline text-emerald-800">${escapeHtml(vc.phoneNumber)}</a>
+                        ${vc.PIN ? `<span>· PIN: <strong class="font-mono bg-white px-1.5 py-0.5 rounded border border-emerald-300">${escapeHtml(vc.PIN)}</strong></span>` : ''}
+                    </div>
+                    <div class="text-[11px] text-emerald-800">⚠️ Theo quy định GrabMart, vui lòng gọi xác nhận trước với khách hàng về món thay thế / thay đổi số lượng.</div>
+                `;
+            } else {
+                const phoneLink = order.customer_phone
+                    ? `<a href="tel:${escapeHtml(order.customer_phone)}" class="font-mono font-bold underline text-amber-900">📞 ${escapeHtml(order.customer_phone)}</a>`
+                    : `<span class="italic text-amber-800">Không có SĐT trực tiếp</span>`;
+                contactBanner.className = 'p-3 rounded-xl bg-amber-50 border border-amber-200 text-[12px] text-amber-950 space-y-1';
+                contactBanner.innerHTML = `
+                    <div class="font-semibold">Khách hàng: ${escapeHtml(order.customer_name || 'Khách GrabMart')} · ${phoneLink}</div>
+                    <div class="text-[11px] text-amber-800">⚠️ Vui lòng liên hệ xác nhận trước với khách hàng qua ứng dụng GrabMerchant hoặc điện thoại trước khi gửi chỉnh sửa.</div>
+                `;
+            }
+        }
+
+        // Quick replacement hints from customer outOfStockInstruction
+        const quickReplEl = document.getElementById('edit-order-quick-replacements');
+        if (quickReplEl) {
+            const suggestions = [];
+            itemsState.forEach(it => {
+                const oos = it.out_of_stock_instruction;
+                if (!oos || typeof oos !== 'object') return;
+                if (oos.replacementItemID) {
+                    suggestions.push(String(oos.replacementItemID));
+                }
+                if (Array.isArray(oos.replacementItems)) {
+                    oos.replacementItems.forEach(r => {
+                        if (r && r.replacementItemID) suggestions.push(String(r.replacementItemID));
+                    });
+                }
+            });
+            const uniqueSug = [...new Set(suggestions.filter(Boolean))];
+            if (uniqueSug.length > 0) {
+                quickReplEl.classList.remove('hidden');
+                quickReplEl.innerHTML = `<span class="text-[11px] text-amber-800 font-semibold self-center">Khách gợi ý đổi sang:</span>` +
+                    uniqueSug.map(sku => `<button type="button" data-sku="${escapeHtml(sku)}" onclick="quickLookupReplacementSku(this.dataset.sku)" class="px-2 py-0.5 rounded-md bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-mono text-[11px] font-semibold transition-colors">+ Tìm ${escapeHtml(sku)}</button>`).join('');
+            } else {
+                quickReplEl.classList.add('hidden');
+                quickReplEl.innerHTML = '';
+            }
+        }
+
+        renderEditOrderItems();
+    }
+
+    function closeEditOrderModal() {
+        const modal = document.getElementById('edit-order-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+        currentEditOrderState = null;
+    }
+
+    function setEditReasonQuick(btn) {
+        const reasonEl = document.getElementById('edit-order-reason');
+        if (reasonEl && btn && btn.dataset) {
+            reasonEl.value = btn.dataset.reason || '';
+            reasonEl.focus();
+        }
+    }
+
+    function _syncOriginalItemStatus(it) {
+        if (!it || !it.isOriginal) return;
+        if (it.status === 'DELETED') return;
+        const qtyChanged = Number(it.quantity) !== Number(it.originalQty);
+        const weightChanged = it.adjusted_weight !== null && Number(it.adjusted_weight) !== Number(it.originalWeight);
+        const priceChanged = it.adjusted_price_in_min !== null && Number(it.adjusted_price_in_min) !== Number(it.originalPriceInMin);
+        it.status = (qtyChanged || weightChanged || priceChanged) ? 'UPDATED' : 'UNCHANGED';
+    }
+
+    function renderEditOrderItems() {
+        if (!currentEditOrderState) return;
+        const tbody = document.getElementById('edit-order-items-tbody');
+        const summaryEl = document.getElementById('edit-order-footer-summary');
+        if (!tbody) return;
+
+        const statusBadgeMap = {
+            UNCHANGED: '<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-semibold">Giữ nguyên</span>',
+            UPDATED: '<span class="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200 text-[10px] font-bold">Đã sửa SL</span>',
+            DELETED: '<span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 text-[10px] font-bold">Xóa khỏi đơn</span>',
+            ADDED: '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold">Món mới (+)</span>',
+        };
+
+        let activeCount = 0;
+        let estSubtotal = 0;
+        const rowsHtml = currentEditOrderState.items.map((it, idx) => {
+            const nIdx = Number(idx);
+            const isDeleted = it.status === 'DELETED';
+            const qty = Number(it.quantity || 0);
+            const divisor = currentEditOrderState.currencyExponent > 0 ? Math.pow(10, currentEditOrderState.currencyExponent) : 1;
+            const effectiveUnitPrice = (it.adjusted_price_in_min !== null && it.adjusted_price_in_min !== undefined)
+                ? (Number(it.adjusted_price_in_min) / divisor)
+                : Number(it.unit_price || 0);
+
+            if (!isDeleted) {
+                activeCount += 1;
+                estSubtotal += effectiveUnitPrice * qty;
+            }
+
+            let oosHint = '';
+            if (it.out_of_stock_instruction && typeof it.out_of_stock_instruction === 'object') {
+                const oos = it.out_of_stock_instruction;
+                const msg = oos.title || oos.instructionType || '';
+                if (msg) {
+                    oosHint = `<div class="text-[10.5px] text-amber-800 mt-0.5">🔁 ${escapeHtml(msg)}</div>`;
+                }
+            }
+
+            const weightControls = it.sold_by_weight && !isDeleted
+                ? `<div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-slate-700">
+                       <label class="inline-flex items-center space-x-1">
+                           <span>Cân nặng:</span>
+                           <input type="number" step="0.01" min="0.01" value="${escapeHtml(it.adjusted_weight !== null ? it.adjusted_weight : (it.originalWeight ?? ''))}"
+                               data-idx="${nIdx}" onchange="updateEditItemWeight(this.dataset.idx, this.value)"
+                               class="w-16 px-1.5 py-0.5 rounded border border-slate-300 font-mono text-[11px] bg-white">
+                       </label>
+                       <label class="inline-flex items-center space-x-1">
+                           <span>Giá mới:</span>
+                           <input type="number" step="1" min="0" value="${escapeHtml(it.adjusted_price_in_min !== null ? it.adjusted_price_in_min : (it.originalPriceInMin ?? ''))}"
+                               data-idx="${nIdx}" onchange="updateEditItemPriceMin(this.dataset.idx, this.value)"
+                               class="w-20 px-1.5 py-0.5 rounded border border-slate-300 font-mono text-[11px] bg-white">
+                       </label>
+                   </div>`
+                : '';
+
+            const modNote = it.has_modifiers
+                ? `<div class="text-[10px] text-amber-700 mt-0.5">Món có tùy chọn kèm: chỉ hỗ trợ giữ nguyên hoặc xóa món.</div>`
+                : '';
+
+            const qtyDisabled = isDeleted || it.has_modifiers;
+            const qtyControls = isDeleted
+                ? `<span class="text-[11px] text-rose-700 font-mono line-through">${Number(it.originalQty)}</span>`
+                : `<div class="inline-flex items-center border border-slate-300 rounded-lg overflow-hidden bg-white">
+                       <button type="button" data-idx="${nIdx}" onclick="adjustEditItemQty(this.dataset.idx, -1)" ${qtyDisabled ? 'disabled' : ''} class="px-2 py-1 text-slate-700 hover:bg-slate-100 disabled:opacity-40 font-bold">-</button>
+                       <input type="number" min="1" value="${qty}" data-idx="${nIdx}" onchange="updateEditItemQtyDirect(this.dataset.idx, this.value)" ${qtyDisabled ? 'disabled' : ''} class="w-12 py-1 text-center font-mono font-bold text-slate-900 border-x border-slate-200 focus:outline-none">
+                       <button type="button" data-idx="${nIdx}" onclick="adjustEditItemQty(this.dataset.idx, 1)" ${qtyDisabled ? 'disabled' : ''} class="px-2 py-1 text-slate-700 hover:bg-slate-100 disabled:opacity-40 font-bold">+</button>
+                   </div>`;
+
+            const actionBtn = it.isOriginal
+                ? `<button type="button" data-idx="${nIdx}" onclick="toggleDeleteEditItem(this.dataset.idx)" class="px-2 py-1 rounded-md text-[11px] font-semibold border transition-colors ${isDeleted ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200' : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'}">${isDeleted ? 'Hoàn tác' : 'Xóa món'}</button>`
+                : `<button type="button" data-idx="${nIdx}" onclick="removeAddedEditItem(this.dataset.idx)" class="px-2 py-1 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors">Bỏ thêm</button>`;
+
+            return `
+                <tr class="${isDeleted ? 'bg-rose-50/40 opacity-75' : 'hover:bg-slate-50/70'}">
+                    <td class="py-2.5 px-3">
+                        <div class="font-semibold text-slate-900 ${isDeleted ? 'line-through text-rose-900' : ''}">${escapeHtml(it.item_name)}</div>
+                        <div class="text-[10.5px] font-mono text-slate-600 mt-0.5">SKU: ${escapeHtml(it.sku)}${it.isOriginal ? ` · Gốc: ${Number(it.originalQty)}` : ''}</div>
+                        ${oosHint}
+                        ${modNote}
+                        ${weightControls}
+                    </td>
+                    <td class="py-2.5 px-2 text-center">${qtyControls}</td>
+                    <td class="py-2.5 px-2 text-center">${statusBadgeMap[it.status] || escapeHtml(it.status)}</td>
+                    <td class="py-2.5 px-3 text-right font-mono text-slate-800">${formatVND(effectiveUnitPrice)}</td>
+                    <td class="py-2.5 px-2 text-center">${actionBtn}</td>
+                </tr>
+            `;
+        }).join('');
+
+        tbody.innerHTML = rowsHtml || '<tr><td colspan="5" class="p-4 text-center text-slate-500">Chưa có món nào trong đơn.</td></tr>';
+
+        if (summaryEl) {
+            const delta = estSubtotal - Number(currentEditOrderState.originalSubtotal || 0);
+            const deltaStr = delta === 0 ? 'Không đổi' : `${delta > 0 ? '+' : ''}${formatVND(delta)}`;
+            summaryEl.innerHTML = `Còn <strong>${activeCount}</strong> món · Tạm tính ước tính: <strong class="font-mono text-slate-900">${formatVND(estSubtotal)}</strong> <span class="text-slate-500">(${escapeHtml(deltaStr)})</span>`;
+        }
+    }
+
+    function adjustEditItemQty(idxStr, delta) {
+        if (!currentEditOrderState) return;
+        const idx = Number(idxStr);
+        const it = currentEditOrderState.items[idx];
+        if (!it || it.status === 'DELETED') return;
+        if (it.has_modifiers) {
+            showToast('GrabMart không hỗ trợ đổi số lượng món có modifier, chỉ có thể xóa món.', 'info');
+            return;
+        }
+        const nextQty = Math.max(1, Number(it.quantity || 1) + Number(delta || 0));
+        it.quantity = nextQty;
+        if (it.isOriginal) {
+            _syncOriginalItemStatus(it);
+        }
+        renderEditOrderItems();
+    }
+
+    function updateEditItemQtyDirect(idxStr, val) {
+        if (!currentEditOrderState) return;
+        const idx = Number(idxStr);
+        const it = currentEditOrderState.items[idx];
+        if (!it || it.status === 'DELETED' || it.has_modifiers) return;
+        const parsed = parseInt(val, 10);
+        it.quantity = (!isNaN(parsed) && parsed >= 1) ? parsed : 1;
+        if (it.isOriginal) {
+            _syncOriginalItemStatus(it);
+        }
+        renderEditOrderItems();
+    }
+
+    function updateEditItemWeight(idxStr, val) {
+        if (!currentEditOrderState) return;
+        const idx = Number(idxStr);
+        const it = currentEditOrderState.items[idx];
+        if (!it || !it.sold_by_weight) return;
+        const parsed = parseFloat(val);
+        it.adjusted_weight = (!isNaN(parsed) && parsed > 0) ? parsed : null;
+        _syncOriginalItemStatus(it);
+        renderEditOrderItems();
+    }
+
+    function updateEditItemPriceMin(idxStr, val) {
+        if (!currentEditOrderState) return;
+        const idx = Number(idxStr);
+        const it = currentEditOrderState.items[idx];
+        if (!it || !it.sold_by_weight) return;
+        const parsed = parseInt(val, 10);
+        it.adjusted_price_in_min = (!isNaN(parsed) && parsed >= 0) ? parsed : null;
+        _syncOriginalItemStatus(it);
+        renderEditOrderItems();
+    }
+
+    function toggleDeleteEditItem(idxStr) {
+        if (!currentEditOrderState) return;
+        const idx = Number(idxStr);
+        const it = currentEditOrderState.items[idx];
+        if (!it || !it.isOriginal) return;
+
+        if (it.status === 'DELETED') {
+            it.status = 'UNCHANGED';
+            it.quantity = Math.max(1, Number(it.originalQty || 1));
+            _syncOriginalItemStatus(it);
+        } else {
+            const activeRemaining = currentEditOrderState.items.filter((x, i) => i !== idx && x.status !== 'DELETED').length;
+            if (activeRemaining === 0) {
+                showToast('GrabMart không cho phép xóa toàn bộ món. Hãy giữ ít nhất 1 món hoặc thêm món thay thế.', 'error');
+                return;
+            }
+            it.status = 'DELETED';
+            it.quantity = 0;
+        }
+        renderEditOrderItems();
+    }
+
+    function removeAddedEditItem(idxStr) {
+        if (!currentEditOrderState) return;
+        const idx = Number(idxStr);
+        const it = currentEditOrderState.items[idx];
+        if (!it || it.isOriginal) return;
+        currentEditOrderState.items.splice(idx, 1);
+        renderEditOrderItems();
+    }
+
+    function quickLookupReplacementSku(sku) {
+        const searchInput = document.getElementById('edit-order-search-input');
+        if (searchInput) {
+            searchInput.value = sku || '';
+            searchReplacementSku();
+        }
+    }
+
+    async function searchReplacementSku() {
+        if (!currentEditOrderState) return;
+        const searchInput = document.getElementById('edit-order-search-input');
+        const resultsEl = document.getElementById('edit-order-search-results');
+        if (!searchInput || !resultsEl) return;
+
+        const q = searchInput.value.trim();
+        if (!q) {
+            showToast('Vui lòng nhập tên sản phẩm hoặc mã SKU để tìm.', 'info');
+            return;
+        }
+
+        resultsEl.classList.remove('hidden');
+        resultsEl.innerHTML = '<div class="p-3 text-center text-slate-500">Đang tìm trong tồn kho chi nhánh...</div>';
+
+        try {
+            const storeParam = encodeURIComponent(currentEditOrderState.storeCode || '');
+            const searchParam = encodeURIComponent(q);
+            const res = await authFetch(`/api/v1/inventory/overview?store_code=${storeParam}&search=${searchParam}&page=1&page_size=15`);
+            const json = await res.json();
+            const items = (json && json.data && json.data.paginated && Array.isArray(json.data.paginated.items))
+                ? json.data.paginated.items
+                : [];
+
+            if (!res.ok || !json.success || items.length === 0) {
+                resultsEl.innerHTML = '<div class="p-3 text-center text-slate-500">Không tìm thấy SKU phù hợp tại chi nhánh này.</div>';
+                return;
+            }
+
+            resultsEl.innerHTML = items.map(inv => {
+                const skuVal = String(inv.sku || '');
+                const nameVal = String(inv.name || skuVal);
+                const priceVal = Number(inv.base_price || 0);
+                const availVal = Number(inv.available_stock || 0);
+                return `
+                    <div class="p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50">
+                        <div>
+                            <div class="font-semibold text-slate-900">${escapeHtml(nameVal)}</div>
+                            <div class="text-[11px] font-mono text-slate-600">SKU: ${escapeHtml(skuVal)} · Giá: ${formatVND(priceVal)} · Tồn khả dụng: <strong>${availVal}</strong></div>
+                        </div>
+                        <button type="button" data-sku="${escapeHtml(skuVal)}" data-name="${escapeHtml(nameVal)}" data-price="${priceVal}"
+                            onclick="addReplacementItemFromBtn(this)"
+                            class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold whitespace-nowrap transition-colors">
+                            + Thêm
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            resultsEl.innerHTML = '<div class="p-3 text-center text-rose-600">Lỗi mạng khi tìm SKU tồn kho.</div>';
+        }
+    }
+
+    function addReplacementItemFromBtn(btn) {
+        if (!btn || !btn.dataset) return;
+        addReplacementItem(btn.dataset.sku || '', btn.dataset.name || '', Number(btn.dataset.price || 0));
+    }
+
+    function addReplacementItem(sku, name, unitPrice) {
+        if (!currentEditOrderState || !sku) return;
+        const cleanSku = String(sku).trim();
+        const existingIdx = currentEditOrderState.items.findIndex(x => String(x.sku).trim() === cleanSku);
+
+        if (existingIdx !== -1) {
+            const existing = currentEditOrderState.items[existingIdx];
+            if (existing.isOriginal) {
+                if (existing.status === 'DELETED') {
+                    existing.status = 'UPDATED';
+                    existing.quantity = 1;
+                    _syncOriginalItemStatus(existing);
+                } else if (!existing.has_modifiers) {
+                    existing.quantity = Number(existing.quantity || 0) + 1;
+                    _syncOriginalItemStatus(existing);
+                } else {
+                    showToast(`SKU ${cleanSku} có modifier nên không tăng số lượng tự động.`, 'info');
+                    return;
+                }
+            } else {
+                existing.quantity = Number(existing.quantity || 1) + 1;
+            }
+        } else {
+            currentEditOrderState.items.push({
+                isOriginal: false,
+                sku: cleanSku,
+                grab_item_id: null,
+                item_name: String(name || cleanSku),
+                unit_price: Number(unitPrice || 0),
+                originalQty: 0,
+                quantity: 1,
+                status: 'ADDED',
+                sold_by_weight: false,
+                originalWeight: null,
+                adjusted_weight: null,
+                originalPriceInMin: null,
+                adjusted_price_in_min: null,
+                has_modifiers: false,
+                out_of_stock_instruction: null,
+            });
+        }
+        renderEditOrderItems();
+        showToast(`Đã thêm ${cleanSku} vào danh sách chỉnh sửa.`, 'success');
+    }
+
+    async function submitEditOrder(onlyRecalculate = false) {
+        if (!currentEditOrderState) return;
+        const orderId = currentEditOrderState.orderId;
+        const confirmedEl = document.getElementById('edit-order-confirmed');
+        const reasonEl = document.getElementById('edit-order-reason');
+        const resultBox = document.getElementById('edit-order-result-box');
+        const submitBtn = document.getElementById('btn-submit-edit-order');
+        const recalcBtn = document.getElementById('btn-recalc-edit-order');
+
+        if (!confirmedEl || !confirmedEl.checked) {
+            showToast('Vui lòng xác nhận đã gọi điện và được khách hàng đồng ý thay đổi đơn.', 'error');
+            return;
+        }
+
+        const editReason = reasonEl ? reasonEl.value.trim() : '';
+        if (editReason.length < 2) {
+            showToast('Vui lòng nhập lý do chỉnh sửa đơn hàng (tối thiểu 2 ký tự).', 'error');
+            if (reasonEl) reasonEl.focus();
+            return;
+        }
+
+        const activeCount = currentEditOrderState.items.filter(x => x.status !== 'DELETED').length;
+        if (activeCount === 0) {
+            showToast('Đơn hàng phải còn ít nhất 1 món hoạt động.', 'error');
+            return;
+        }
+
+        const hasChanges = currentEditOrderState.items.some(x => x.status !== 'UNCHANGED');
+        if (!hasChanges) {
+            showToast('Bạn chưa thay đổi số lượng hoặc thêm/xóa món nào.', 'info');
+            return;
+        }
+
+        const payload = {
+            customer_confirmed: true,
+            edit_reason: editReason,
+            only_recalculate: Boolean(onlyRecalculate),
+            items: currentEditOrderState.items.map(it => {
+                const entry = {
+                    sku: it.sku,
+                    grab_item_id: it.grab_item_id,
+                    status: it.status,
+                    quantity: it.status === 'DELETED' ? 0 : Math.max(1, Number(it.quantity || 1)),
+                    item_name: it.item_name,
+                    unit_price: Number(it.unit_price || 0),
+                };
+                if (it.adjusted_weight !== null && it.adjusted_weight !== undefined) {
+                    entry.adjusted_weight = Number(it.adjusted_weight);
+                }
+                if (it.adjusted_price_in_min !== null && it.adjusted_price_in_min !== undefined) {
+                    entry.adjusted_price_in_min = Number(it.adjusted_price_in_min);
+                }
+                return entry;
+            }),
+        };
+
+        if (submitBtn) submitBtn.disabled = true;
+        if (recalcBtn) recalcBtn.disabled = true;
+        if (resultBox) {
+            resultBox.classList.add('hidden');
+            resultBox.innerHTML = '';
+        }
+
+        try {
+            const res = await authFetch(`/api/v1/orders/${encodeURIComponent(orderId)}/edit`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                const errMsg = json.message || json.detail || 'GrabMart từ chối chỉnh sửa đơn hàng.';
+                if (resultBox) {
+                    resultBox.className = 'p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-[12px] font-medium';
+                    resultBox.textContent = errMsg;
+                    resultBox.classList.remove('hidden');
+                }
+                showToast(errMsg, 'error');
+                return;
+            }
+
+            if (onlyRecalculate) {
+                if (resultBox) {
+                    resultBox.className = 'p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-[12px] font-medium';
+                    resultBox.textContent = json.message || 'Đơn hàng đủ điều kiện chỉnh sửa trên GrabMart.';
+                    resultBox.classList.remove('hidden');
+                }
+                showToast(json.message || 'Kiểm tra hợp lệ thành công.', 'success');
+            } else {
+                showToast(json.message || 'Đã gửi chỉnh sửa đơn lên GrabMart thành công!', 'success');
+                closeEditOrderModal();
+                if (json.data) {
+                    currentDetailOrder = json.data;
+                    const idx = currentOrdersCache.findIndex(x => String(x.id) === String(orderId));
+                    if (idx !== -1) currentOrdersCache[idx] = json.data;
+                    renderPlatformDetailModal(json.data);
+                }
+                loadOrdersFeed(false);
+            }
+        } catch (e) {
+            showToast('Lỗi mạng khi gửi yêu cầu sửa đơn.', 'error');
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+            if (recalcBtn) recalcBtn.disabled = false;
+        }
+    }
+
+    async function syncShopeeFoodOrderDetail(orderId) {
+        if (!orderId) return;
+        const btn = document.getElementById('btn-sync-foody-detail');
+        const originalHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span><span>Đang đồng bộ...</span>';
+        }
+        try {
+            const res = await authFetch(`/api/v1/orders/${encodeURIComponent(orderId)}/sync-detail`, {
+                method: 'POST',
+            });
+            const json = await res.json();
+            if (res.ok && json.success && json.data) {
+                showToast(json.message || 'Đã đồng bộ chi tiết món từ ShopeeFood!', 'success');
+                currentDetailOrder = json.data;
+                const idx = currentOrdersCache.findIndex(x => String(x.id) === String(orderId));
+                if (idx !== -1) currentOrdersCache[idx] = json.data;
+                renderPlatformDetailModal(json.data);
+                loadOrdersFeed(false);
+            } else {
+                showToast(json.message || json.detail || 'Không thể đồng bộ chi tiết từ ShopeeFood.', 'error');
+            }
+        } catch (e) {
+            showToast('Lỗi mạng khi đồng bộ đơn ShopeeFood.', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml || '<span>🔄</span><span>Đồng Bộ Món ShopeeFood</span>';
+            }
+        }
     }
 
     // Auto-refresh control

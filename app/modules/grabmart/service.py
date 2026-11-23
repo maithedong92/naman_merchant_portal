@@ -1,12 +1,32 @@
 import logging
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 import httpx
 
 from app.core.config import get_settings
+from app.core.exceptions import ExternalChannelError, ValidationError
 
 logger = logging.getLogger("naman_portal.modules.grabmart")
 settings = get_settings()
+
+GRABMART_EDIT_ERROR_MESSAGES: Dict[str, str] = {
+    "nothing changed": "Không có thay đổi nào so với đơn hàng hiện tại trên GrabMart.",
+    "can't remove all items": "Không thể xóa toàn bộ sản phẩm trong đơn GrabMart (phải còn ít nhất 1 món).",
+    "order detail abnormal": "Thông tin chi tiết đơn hàng trên GrabMart không hợp lệ hoặc bất thường.",
+    "not editable": "Đơn hàng GrabMart này hiện không ở trạng thái cho phép chỉnh sửa (hoặc đã vượt giới hạn số lần sửa / loại đơn không hỗ trợ).",
+    "recalculate failed": "GrabMart không thể tính lại giá đơn hàng sau khi chỉnh sửa.",
+    "submit edit failed": "GrabMart từ chối lưu chỉnh sửa đơn hàng, vui lòng kiểm tra lại giỏ hàng.",
+    "get merchant failed": "Không lấy được thông tin cửa hàng đối tác trên GrabMart.",
+    "exceed basket limit": "Giá trị đơn hàng sau chỉnh sửa vượt quá hạn mức giỏ hàng cho phép của GrabMart.",
+    "exceed price increase limit": "Giá trị đơn hàng tăng vượt quá ngưỡng cho phép của GrabMart.",
+    "negative weight": "Khối lượng điều chỉnh không được âm.",
+    "parameters must include all items": "Payload gửi GrabMart phải bao gồm đầy đủ tất cả sản phẩm gốc của đơn.",
+    "fraud check error": "Yêu cầu sửa đơn không vượt qua kiểm tra an toàn giao dịch của GrabMart.",
+    "externalitemid not supported for this status": "Trạng thái món này không hỗ trợ dùng mã SKU nội bộ (isExternalItemID).",
+    "externalitemid inactive or out of selling time": "Sản phẩm thay thế hiện đang tắt bán hoặc ngoài khung giờ bán trên GrabMart.",
+    "added item invalid": "Món thay thế thêm mới không hợp lệ trên thực đơn GrabMart (hoặc chứa modifier chưa được hỗ trợ).",
+}
 
 
 class GrabMartClient:
@@ -236,6 +256,52 @@ class GrabMartClient:
             "cancelCode": cancel_code,
         }
         return await self.call_api("PUT", endpoint, body=payload)
+
+    async def edit_order(
+        self,
+        order_id: str,
+        items: List[Dict[str, Any]],
+        only_recalculate: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Modify an active GrabMart order (update quantity/weight/price, delete items, or add replacement items).
+        Endpoint: PUT /partner/v1/orders/{orderID}
+        """
+        safe_order_id = quote(str(order_id).strip(), safe="-_")
+        endpoint = f"/partner/v1/orders/{safe_order_id}"
+        payload = {
+            "orderID": str(order_id),
+            "items": items,
+            "onlyRecalculate": bool(only_recalculate),
+        }
+        try:
+            return await self.call_api("PUT", endpoint, body=payload)
+        except httpx.HTTPStatusError as ex:
+            status_code = ex.response.status_code if ex.response is not None else 502
+            err_body: Dict[str, Any] = {}
+            try:
+                parsed = ex.response.json() if ex.response is not None else {}
+                if isinstance(parsed, dict):
+                    err_body = parsed
+            except Exception:
+                err_body = {}
+            raw_msg = str(err_body.get("message") or err_body.get("reason") or (ex.response.text if ex.response is not None else str(ex))).strip()
+            translated = GRABMART_EDIT_ERROR_MESSAGES.get(raw_msg.lower())
+            if 400 <= status_code < 500:
+                raise ValidationError(
+                    translated or f"GrabMart từ chối chỉnh sửa đơn ({status_code}): {raw_msg}",
+                    details={
+                        "channel": "GRABMART",
+                        "order_id": str(order_id),
+                        "grab_status": status_code,
+                        "grab_reason": err_body.get("reason"),
+                        "grab_message": raw_msg,
+                    },
+                )
+            raise ExternalChannelError(
+                channel="GRABMART",
+                message=f"Lỗi kết nối GrabMart khi chỉnh sửa đơn ({status_code}): {raw_msg}",
+            )
 
 
 grabmart_client = GrabMartClient()

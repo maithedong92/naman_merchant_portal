@@ -10,16 +10,19 @@ from app.api.deps import (
     require_staff,
 )
 from app.core.database import get_db
+from app.core.exceptions import ValidationError
 from app.core.responses import APIResponse
 from app.models.order import UnifiedOrderStatus
 from app.models.user import User, UserRole
 from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.order import (
+    OrderEditRequest,
     OrderFilterParams,
     OrderStatusUpdateSchema,
     OrderSummaryResponse,
     UnifiedOrderResponse,
 )
+from app.services.channel_registry import channel_registry
 from app.services.order_service import OrderService
 
 router = APIRouter(prefix="/orders", tags=["Unified Orders"])
@@ -166,4 +169,59 @@ async def update_order_status(
     return APIResponse.ok(
         data=updated_order,
         message=f"Đã cập nhật trạng thái đơn hàng sang: {payload.new_status.value}"
+    )
+
+
+@router.put("/{order_id}/edit", response_model=APIResponse[UnifiedOrderResponse])
+async def edit_order(
+    order_id: str,
+    payload: OrderEditRequest,
+    current_user: User = Depends(require_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Edit order items/quantities/replacements on supported channels (GrabMart PUT /partner/v1/orders/{orderID})
+    and atomically reconcile virtual stock reservations in NAM-UMP.
+    """
+    order = await OrderService.get_order_by_id(order_id, db)
+    check_store_access(current_user, order.store_id)
+
+    updated_order = await OrderService.edit_order(
+        order_id=order_id,
+        payload=payload,
+        changed_by=current_user.username,
+        db=db,
+    )
+    msg = (
+        f"Đã kiểm tra tính toán lại đơn {updated_order.order_code} trên GrabMart (only_recalculate=True)."
+        if payload.only_recalculate
+        else f"Đã chỉnh sửa đơn {updated_order.order_code} và đồng bộ tồn kho ảo."
+    )
+    return APIResponse.ok(data=updated_order, message=msg)
+
+
+@router.post("/{order_id}/sync-detail", response_model=APIResponse[UnifiedOrderResponse])
+async def sync_order_detail_from_channel(
+    order_id: str,
+    current_user: User = Depends(require_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Pull latest order details (items, totals, status) from external channel (e.g. ShopeeFood S2S)
+    when modifications were made on the Merchant App.
+    """
+    order = await OrderService.get_order_by_id(order_id, db)
+    check_store_access(current_user, order.store_id)
+
+    ch_code = order.channel.code if order.channel else ""
+    adapter = channel_registry.get(ch_code) if ch_code else None
+    if not adapter or not hasattr(adapter, "refresh_order_from_channel"):
+        raise ValidationError(
+            f"Kênh {ch_code or 'này'} hiện chưa hỗ trợ kéo lại chi tiết món từ S2S API."
+        )
+
+    updated_order = await adapter.refresh_order_from_channel(order=order, db=db)
+    return APIResponse.ok(
+        data=updated_order,
+        message=f"Đã đồng bộ lại danh sách món và tổng tiền cho đơn {updated_order.order_code}.",
     )

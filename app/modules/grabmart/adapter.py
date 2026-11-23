@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
+from app.core.exceptions import ValidationError
 from app.interfaces.channel_adapter import BaseChannelAdapter
 from app.models.channel import Channel
 from app.models.inventory import StoreInventory
@@ -697,6 +698,17 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
             db=db,
         )
 
+        is_mex_edit = bool(webhook.featureFlags and webhook.featureFlags.isMexEditOrder)
+        if not created and is_mex_edit:
+            order = await OrderService.reconcile_edited_inbound_order(
+                order_id=order.id,
+                order_data=order_data,
+                items_data=items_data,
+                db=db,
+                changed_by="GRABMART_WEBHOOK",
+                note="Đơn hàng đã được cập nhật lại từ GrabMart (isMexEditOrder=true)",
+            )
+
         if auto_confirm and initial_status == UnifiedOrderStatus.ACCEPTED and accepted_type == "MANUAL":
             try:
                 await grabmart_client.accept_or_reject_order(
@@ -891,4 +903,75 @@ class GrabMartChannelAdapter(BaseChannelAdapter):
                 except Exception as log_ex:
                     logger.error(f"Failed to record operational error: {log_ex}")
             return False
+
+    async def edit_order(
+        self,
+        channel_order_id: str,
+        partner_store_id: str,
+        items: List[Dict[str, Any]],
+        db: AsyncSession,
+        only_recalculate: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Translate internal OrderService item edit directives into GrabMart
+        `PUT /partner/v1/orders/{orderID}` payload and invoke GrabMartClient.
+        """
+        if not items:
+            raise ValidationError("Danh sách món gửi GrabMart không được để trống.")
+
+        existing_items: List[Dict[str, Any]] = []
+        added_items: List[Dict[str, Any]] = []
+        non_deleted_count = 0
+
+        for entry in items:
+            status_val = str(entry.get("status") or "UNCHANGED").strip().upper()
+            if status_val not in ("UNCHANGED", "UPDATED", "DELETED", "ADDED"):
+                raise ValidationError(f"Trạng thái chỉnh sửa món '{status_val}' không hợp lệ cho GrabMart.")
+
+            qty_val = 0 if status_val == "DELETED" else int(entry.get("quantity") or 1)
+            if status_val != "DELETED":
+                if qty_val < 1:
+                    raise ValidationError("Số lượng món không bị xóa phải >= 1.")
+                non_deleted_count += 1
+
+            is_ext = bool(entry.get("is_external_item_id")) or (status_val == "ADDED")
+            item_id = (
+                str(entry.get("sku") or "").strip()
+                if is_ext
+                else str(entry.get("grab_item_id") or entry.get("sku") or "").strip()
+            )
+            if not item_id:
+                raise ValidationError("Thiếu itemID/SKU để gửi yêu cầu chỉnh sửa lên GrabMart.")
+
+            grab_item: Dict[str, Any] = {
+                "itemID": item_id,
+                "status": "UPDATED" if status_val == "UNCHANGED" else status_val,
+                "quantity": qty_val,
+                "isExternalItemID": is_ext,
+            }
+            if status_val != "ADDED":
+                adj_price = entry.get("adjusted_price_in_min")
+                adj_weight = entry.get("adjusted_weight")
+                if adj_price is not None or adj_weight is not None:
+                    if not entry.get("sold_by_weight"):
+                        raise ValidationError(f"Chỉ món cân ký (soldByWeight=true) mới được sửa giá/khối lượng: {item_id}")
+                    if adj_price is not None:
+                        grab_item["adjustedPriceInMin"] = int(adj_price)
+                    if adj_weight is not None:
+                        grab_item["adjustedWeight"] = float(adj_weight)
+
+            if status_val == "ADDED":
+                added_items.append(grab_item)
+            else:
+                existing_items.append(grab_item)
+
+        if non_deleted_count == 0:
+            raise ValidationError("Không thể xóa toàn bộ sản phẩm trong đơn GrabMart (cần ít nhất 1 món).")
+
+        grab_payload_items = [*existing_items, *added_items]
+        return await grabmart_client.edit_order(
+            order_id=channel_order_id,
+            items=grab_payload_items,
+            only_recalculate=only_recalculate,
+        )
 

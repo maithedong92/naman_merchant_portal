@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
@@ -168,10 +168,32 @@ class GrabAddress(BaseModel):
     coordinates: Optional[GrabCoordinates] = None
 
 
+class GrabVirtualContact(BaseModel):
+    phoneNumber: Optional[str] = None
+    PIN: Optional[Union[str, int]] = None
+    expiredAt: Optional[str] = None
+    status: Optional[str] = None
+
+
 class GrabReceiver(BaseModel):
     name: Optional[str] = None
     phones: Optional[str] = None
     address: Optional[GrabAddress] = None
+    virtualContact: Optional[GrabVirtualContact] = None
+
+
+class GrabReplacementItem(BaseModel):
+    replacementItemID: Optional[str] = None
+    replacementGrabItemID: Optional[str] = None
+    quantity: int = 1
+
+
+class GrabOutOfStockInstruction(BaseModel):
+    title: Optional[str] = None
+    instructionType: Optional[str] = None
+    replacementItemID: Optional[str] = None
+    replacementGrabItemID: Optional[str] = None
+    replacementItems: Optional[List[GrabReplacementItem]] = Field(default_factory=list)
 
 
 class GrabOrderItemModifier(BaseModel):
@@ -189,6 +211,9 @@ class GrabOrderItem(BaseModel):
     price: int = 0
     tax: Optional[int] = 0
     specifications: Optional[str] = None
+    soldByWeight: Optional[bool] = False
+    weight: Optional[float] = None
+    outOfStockInstruction: Optional[GrabOutOfStockInstruction] = None
     modifiers: Optional[List[GrabOrderItemModifier]] = Field(default_factory=list)
 
     @field_validator("modifiers", mode="before")

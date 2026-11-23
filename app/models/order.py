@@ -119,6 +119,81 @@ class UnifiedOrder(Base, TimestampMixin):
     def store_name(self) -> Optional[str]:
         return self.store.name if self.store else None
 
+    @property
+    def virtual_contact(self) -> Optional[dict]:
+        """Extract GrabMart virtual phone & PIN if present in raw_payload."""
+        raw = self.raw_payload if isinstance(self.raw_payload, dict) else None
+        if not raw:
+            return None
+        receiver = raw.get("receiver")
+        if not isinstance(receiver, dict):
+            return None
+        vc = receiver.get("virtualContact")
+        if not isinstance(vc, dict) or not vc.get("phoneNumber"):
+            return None
+        return {
+            "phoneNumber": vc.get("phoneNumber"),
+            "PIN": vc.get("PIN"),
+            "expiredAt": vc.get("expiredAt"),
+            "status": vc.get("status"),
+        }
+
+    @property
+    def is_edited(self) -> bool:
+        """True if order has been edited either via GrabMart isMexEditOrder webhook or NAM-UMP portal."""
+        raw = self.raw_payload if isinstance(self.raw_payload, dict) else None
+        if not raw:
+            return False
+        ff = raw.get("featureFlags")
+        return bool((isinstance(ff, dict) and ff.get("isMexEditOrder")) or raw.get("_ump_edited"))
+
+    @property
+    def grab_edit_context(self) -> Optional[dict]:
+        """Sanitized GrabMart item editability context derived from raw_payload."""
+        raw = self.raw_payload if isinstance(self.raw_payload, dict) else None
+        if not raw or not isinstance(raw.get("items"), list):
+            return None
+        if not (raw.get("orderID") or raw.get("merchantID")):
+            return None
+
+        currency = raw.get("currency") if isinstance(raw.get("currency"), dict) else {}
+        try:
+            exponent = int(currency.get("exponent") or 0)
+        except (TypeError, ValueError):
+            exponent = 0
+
+        cur_status = self.status.value if hasattr(self.status, "value") else str(self.status)
+        can_edit = cur_status in (
+            UnifiedOrderStatus.PENDING.value,
+            UnifiedOrderStatus.ACCEPTED.value,
+            UnifiedOrderStatus.PREPARING.value,
+        )
+
+        items_ctx = []
+        for itm in raw.get("items") or []:
+            if not isinstance(itm, dict):
+                continue
+            mods = itm.get("modifiers") or []
+            items_ctx.append(
+                {
+                    "sku": str(itm.get("id") or "").strip(),
+                    "grabItemID": itm.get("grabItemID") or itm.get("id"),
+                    "name": itm.get("name"),
+                    "quantity": int(itm.get("quantity") or 1),
+                    "priceInMin": itm.get("price"),
+                    "soldByWeight": bool(itm.get("soldByWeight", False)),
+                    "weight": itm.get("weight"),
+                    "hasModifiers": bool(mods),
+                    "outOfStockInstruction": itm.get("outOfStockInstruction"),
+                }
+            )
+
+        return {
+            "currencyExponent": max(0, exponent),
+            "canEditByStatus": can_edit,
+            "items": items_ctx,
+        }
+
 
 class OrderItem(Base, TimestampMixin):
     """Line item in a unified order."""

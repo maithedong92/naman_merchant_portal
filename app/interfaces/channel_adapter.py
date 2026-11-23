@@ -76,3 +76,17 @@ class BaseChannelAdapter(ABC):
         (e.g., ACCEPT, READY, CANCEL).
         """
         pass
+
+    async def edit_order(
+        self,
+        channel_order_id: str,
+        partner_store_id: str,
+        items: List[Dict[str, Any]],
+        db: AsyncSession,
+        only_recalculate: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Edit an active order on the external channel platform (e.g., GrabMart PUT /partner/v1/orders/{orderID}).
+        Channels without an outbound order-edit API raise NotImplementedError by default.
+        """
+        raise NotImplementedError("Kênh bán hàng này chưa hỗ trợ API chỉnh sửa đơn hàng trực tiếp.")

@@ -15,7 +15,7 @@ from app.models.operational_error import ErrorSeverity
 from app.models.order import OrderItem, OrderStatusHistory, UnifiedOrder, UnifiedOrderStatus
 from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
-from app.schemas.order import OrderFilterParams, OrderStatusUpdateSchema
+from app.schemas.order import OrderEditRequest, OrderFilterParams, OrderStatusUpdateSchema
 from app.services.channel_registry import channel_registry
 from app.services.error_service import error_service
 from app.services.inventory_service import InventoryService
@@ -447,11 +447,16 @@ class OrderService:
     @staticmethod
     async def get_order_by_id(order_id: str, db: AsyncSession) -> UnifiedOrder:
         """Fetch single order by internal UUID with full items and status history."""
-        stmt = select(UnifiedOrder).where(UnifiedOrder.id == order_id).options(
-            selectinload(UnifiedOrder.items),
-            selectinload(UnifiedOrder.status_history),
-            selectinload(UnifiedOrder.store),
-            selectinload(UnifiedOrder.channel)
+        stmt = (
+            select(UnifiedOrder)
+            .where(UnifiedOrder.id == order_id)
+            .options(
+                selectinload(UnifiedOrder.items),
+                selectinload(UnifiedOrder.status_history),
+                selectinload(UnifiedOrder.store),
+                selectinload(UnifiedOrder.channel),
+            )
+            .execution_options(populate_existing=True)
         )
         res = await db.execute(stmt)
         order = res.scalar_one_or_none()
@@ -807,3 +812,386 @@ class OrderService:
                         logger.error(f"Lỗi khi gửi cập nhật trạng thái lên sàn {channel.code}: {str(ex)}")
 
         return await OrderService.get_order_by_id(order.id, db)
+
+    @staticmethod
+    async def reconcile_edited_inbound_order(
+        order_id: str,
+        order_data: Dict[str, Any],
+        items_data: List[Dict[str, Any]],
+        db: AsyncSession,
+        changed_by: str = "CHANNEL_WEBHOOK",
+        note: str = "Cập nhật danh sách món và tổng tiền từ sàn",
+    ) -> UnifiedOrder:
+        """
+        Idempotently reconcile an edited order's line items, financials, and virtual stock
+        reservation delta (`new_qty - old_qty`) under row locks.
+        """
+        stmt = (
+            select(UnifiedOrder)
+            .where(UnifiedOrder.id == order_id)
+            .options(
+                selectinload(UnifiedOrder.items),
+                selectinload(UnifiedOrder.status_history),
+                selectinload(UnifiedOrder.store),
+                selectinload(UnifiedOrder.channel),
+            )
+            .execution_options(populate_existing=True)
+            .with_for_update()
+        )
+        order = (await db.execute(stmt)).scalar_one_or_none()
+        if not order:
+            raise NotFoundError("Order", order_id)
+
+        if order.status == UnifiedOrderStatus.CANCELLED:
+            logger.info(f"Bỏ qua đồng bộ sửa món cho đơn đã hủy {order.order_code}.")
+            return order
+
+        old_sku_qty: Dict[str, int] = {}
+        for old_itm in (order.items or []):
+            sku_key = str(old_itm.sku or "").strip()
+            if sku_key and sku_key != "UNKNOWN":
+                q = int(old_itm.quantity or 0)
+                if q > 0:
+                    old_sku_qty[sku_key] = old_sku_qty.get(sku_key, 0) + q
+
+        new_sku_qty: Dict[str, int] = {}
+        for new_itm in (items_data or []):
+            sku_key = str(new_itm.get("sku") or "").strip()
+            if sku_key and sku_key != "UNKNOWN":
+                q = int(new_itm.get("quantity") or 0)
+                if q > 0:
+                    new_sku_qty[sku_key] = new_sku_qty.get(sku_key, 0) + q
+
+        stock_sync_items: List[Dict[str, Any]] = []
+        all_skus = sorted(set(old_sku_qty) | set(new_sku_qty))
+
+        if order.stock_reservation_status == "RESERVED" and all_skus:
+            delta_skus = [s for s in all_skus if (new_sku_qty.get(s, 0) - old_sku_qty.get(s, 0)) != 0]
+            if delta_skus:
+                inv_by_sku = await OrderService._lock_inventories_sorted(order.store_id, sorted(delta_skus), db)
+                settings = get_settings()
+                for sku_val in sorted(delta_skus):
+                    delta = float(new_sku_qty.get(sku_val, 0) - old_sku_qty.get(sku_val, 0))
+                    inv_obj = inv_by_sku.get(sku_val)
+                    if inv_obj is None:
+                        continue
+                    avail_before = float(inv_obj.available_stock or 0.0)
+                    was_oos = bool(inv_obj.is_out_of_stock)
+                    if delta > 0 and settings.VIRTUAL_STOCK_STRICT_MODE and avail_before < delta:
+                        raise ValidationError(
+                            f"Tồn kho khả dụng không đủ để tăng/thêm SKU '{sku_val}' cho đơn {order.order_code}: "
+                            f"cần thêm {delta}, còn {avail_before}."
+                        )
+                    reserved_before = float(inv_obj.reserved_stock or 0.0)
+                    inv_obj.reserved_stock = max(0.0, reserved_before + delta)
+                    inv_obj.available_stock = InventoryService.compute_available_stock(
+                        float(inv_obj.total_stock or 0.0),
+                        float(inv_obj.reserved_stock),
+                        float(inv_obj.safety_stock or 0.0),
+                    )
+                    inv_obj.is_out_of_stock = inv_obj.available_stock <= 0.0
+                    db.add(
+                        InventoryStockLog(
+                            store_id=order.store_id,
+                            sku=sku_val,
+                            change_type="ORDER_EDIT",
+                            quantity_before=avail_before,
+                            quantity_delta=-delta,
+                            quantity_after=float(inv_obj.available_stock),
+                            reference_id=order.order_code,
+                            note=f"Điều chỉnh giữ tồn ảo do sửa đơn {order.order_code} (delta={int(delta):+d})",
+                        )
+                    )
+                    if (not was_oos and inv_obj.is_out_of_stock) or (was_oos and not inv_obj.is_out_of_stock):
+                        stock_sync_items.append(
+                            {
+                                "sku": sku_val,
+                                "available_stock": max(0, int(inv_obj.available_stock)),
+                                "is_out_of_stock": inv_obj.is_out_of_stock,
+                            }
+                        )
+
+        # Replace OrderItems safely when items_data is supplied
+        if items_data:
+            order.items.clear()
+            await db.flush()
+
+            sku_list = list({str(it.get("sku") or "").strip() for it in items_data if it.get("sku") and it.get("sku") != "UNKNOWN"})
+            prod_id_map: Dict[str, str] = {}
+            if sku_list:
+                p_rows = (await db.execute(select(Product).where(Product.sku.in_(sku_list)))).scalars().all()
+                prod_id_map = {p.sku: p.id for p in p_rows}
+
+            for item in items_data:
+                sku_val = str(item.get("sku") or "UNKNOWN").strip()
+                qty_val = max(1, int(item.get("quantity", 1)))
+                unit_p = float(item.get("unit_price", 0.0))
+                total_p = float(item.get("total_price", unit_p * qty_val))
+                order.items.append(
+                    OrderItem(
+                        order_id=order.id,
+                        product_id=item.get("product_id") or prod_id_map.get(sku_val),
+                        sku=sku_val,
+                        item_name=item.get("item_name") or "Unknown Item",
+                        quantity=qty_val,
+                        unit_price=unit_p,
+                        total_price=total_p,
+                        notes=item.get("notes"),
+                        modifiers=item.get("modifiers"),
+                    )
+                )
+
+        for fld in ("subtotal_amount", "discount_amount", "delivery_fee", "total_amount"):
+            if fld in order_data and order_data[fld] is not None:
+                setattr(order, fld, float(order_data[fld]))
+
+        if isinstance(order_data.get("raw_payload"), dict):
+            merged_raw = dict(order_data["raw_payload"])
+            prev_raw = order.raw_payload if isinstance(order.raw_payload, dict) else {}
+            if prev_raw.get("_ump_edited") and not merged_raw.get("_ump_edited"):
+                merged_raw["_ump_edited"] = True
+            order.raw_payload = merged_raw
+
+        db.add(
+            OrderStatusHistory(
+                order_id=order.id,
+                from_status=order.status,
+                to_status=order.status,
+                note=note,
+                changed_by=changed_by,
+            )
+        )
+        await db.commit()
+
+        if stock_sync_items:
+            try:
+                mappings_res = await db.execute(
+                    select(StoreChannelMapping)
+                    .options(selectinload(StoreChannelMapping.channel))
+                    .where(StoreChannelMapping.store_id == order.store_id, StoreChannelMapping.is_active == True)
+                )
+                for m in mappings_res.scalars().all():
+                    if m.channel and m.partner_store_id:
+                        ch_adapter = channel_registry.get(m.channel.code)
+                        if ch_adapter:
+                            await ch_adapter.sync_inventory(
+                                store_id=order.store_id,
+                                partner_store_id=m.partner_store_id,
+                                stock_items=stock_sync_items,
+                                db=db,
+                            )
+            except Exception as sync_ex:
+                logger.warning(f"Could not propagate inventory delta after editing order {order.order_code}: {sync_ex}")
+
+        return await OrderService.get_order_by_id(order.id, db)
+
+    @staticmethod
+    async def edit_order(
+        order_id: str,
+        payload: OrderEditRequest,
+        changed_by: str,
+        db: AsyncSession,
+    ) -> UnifiedOrder:
+        """
+        Validate, push outbound edit request to supported channel (e.g., GrabMart),
+        and update local UnifiedOrder items & virtual stock delta.
+        """
+        if not payload.customer_confirmed:
+            raise ValidationError("Bắt buộc phải xác nhận đã trao đổi và được khách hàng đồng ý trước khi sửa đơn.")
+
+        order = await OrderService.get_order_by_id(order_id, db)
+        editable_statuses = (
+            UnifiedOrderStatus.PENDING,
+            UnifiedOrderStatus.ACCEPTED,
+            UnifiedOrderStatus.PREPARING,
+        )
+        if order.status not in editable_statuses:
+            raise ValidationError(
+                f"Chỉ được phép chỉnh sửa đơn ở trạng thái PENDING / ACCEPTED / PREPARING (hiện tại: {order.status.value})."
+            )
+
+        active_items = [it for it in payload.items if it.status != "DELETED" and it.quantity > 0]
+        if not active_items:
+            raise ValidationError("Đơn hàng sau chỉnh sửa phải còn ít nhất 1 món có số lượng >= 1.")
+
+        channel = (
+            await db.execute(select(Channel).where(Channel.id == order.channel_id))
+        ).scalars().first()
+        if not channel:
+            raise NotFoundError("Channel", order.channel_id)
+
+        adapter = channel_registry.get(channel.code)
+        if not adapter:
+            raise ValidationError(f"Không tìm thấy Channel Adapter cho kênh {channel.code}.")
+
+        mapping = (
+            await db.execute(
+                select(StoreChannelMapping).where(
+                    StoreChannelMapping.channel_id == channel.id,
+                    StoreChannelMapping.store_id == order.store_id,
+                )
+            )
+        ).scalars().first()
+        partner_store_id = mapping.partner_store_id if mapping else ""
+
+        raw_payload = dict(order.raw_payload) if isinstance(order.raw_payload, dict) else {}
+        raw_items_list = list(raw_payload.get("items") or []) if isinstance(raw_payload.get("items"), list) else []
+        raw_by_sku = {
+            str(it.get("id") or "").strip(): it
+            for it in raw_items_list
+            if isinstance(it, dict) and str(it.get("id") or "").strip()
+        }
+        existing_by_sku = {
+            str(it.sku or "").strip(): it
+            for it in (order.items or [])
+            if str(it.sku or "").strip()
+        }
+
+        channel_items_payload: List[Dict[str, Any]] = []
+        added_payloads: List[Dict[str, Any]] = []
+        for it in payload.items:
+            sku_str = it.sku.strip()
+            raw_meta = raw_by_sku.get(sku_str, {})
+            sold_by_weight = bool(raw_meta.get("soldByWeight", False))
+            if it.status != "ADDED" and (it.adjusted_price_in_min is not None or it.adjusted_weight is not None):
+                if not sold_by_weight:
+                    raise ValidationError(f"Món '{sku_str}' không phải hàng cân ký (soldByWeight=true), không thể sửa giá/trọng lượng trực tiếp.")
+
+            entry = {
+                "sku": sku_str,
+                "grab_item_id": it.grab_item_id or raw_meta.get("grabItemID") or sku_str,
+                "status": it.status,
+                "quantity": 0 if it.status == "DELETED" else max(1, int(it.quantity)),
+                "adjusted_price_in_min": it.adjusted_price_in_min,
+                "adjusted_weight": it.adjusted_weight,
+                "sold_by_weight": sold_by_weight,
+                "is_external_item_id": (it.status == "ADDED") or not bool(raw_meta.get("grabItemID") or it.grab_item_id),
+            }
+            if it.status == "ADDED":
+                added_payloads.append(entry)
+            else:
+                channel_items_payload.append(entry)
+
+        # GrabMart spec requires ADDED replacement items at the end of the array
+        ordered_channel_items = [*channel_items_payload, *added_payloads]
+
+        try:
+            await adapter.edit_order(
+                channel_order_id=order.channel_order_id,
+                partner_store_id=partner_store_id,
+                items=ordered_channel_items,
+                db=db,
+                only_recalculate=payload.only_recalculate,
+            )
+        except NotImplementedError as nie:
+            raise ValidationError(str(nie))
+
+        if payload.only_recalculate:
+            return order
+
+        # Build updated local OrderItems & estimated totals (authoritative recalculation will also arrive via webhook)
+        added_skus = [it.sku.strip() for it in active_items if it.sku.strip() not in existing_by_sku]
+        prod_map: Dict[str, Product] = {}
+        if added_skus:
+            p_rows = (await db.execute(select(Product).where(Product.sku.in_(added_skus)))).scalars().all()
+            prod_map = {p.sku: p for p in p_rows}
+
+        currency_obj = raw_payload.get("currency") if isinstance(raw_payload.get("currency"), dict) else {}
+        try:
+            exp_val = max(0, int(currency_obj.get("exponent") or 0))
+        except (TypeError, ValueError):
+            exp_val = 0
+        divisor = float(10 ** exp_val) if exp_val > 0 else 1.0
+
+        updated_items_data: List[Dict[str, Any]] = []
+        new_subtotal = 0.0
+        for it in active_items:
+            sku_str = it.sku.strip()
+            existing_itm = existing_by_sku.get(sku_str)
+            prod_obj = prod_map.get(sku_str)
+            if existing_itm is not None:
+                unit_p = (
+                    (float(it.adjusted_price_in_min) / divisor)
+                    if it.adjusted_price_in_min is not None
+                    else float(it.unit_price if it.unit_price is not None else existing_itm.unit_price)
+                )
+                itm_name = it.item_name or existing_itm.item_name
+                mods = existing_itm.modifiers
+                notes = existing_itm.notes
+                pid = existing_itm.product_id
+            else:
+                unit_p = float(
+                    it.unit_price
+                    if it.unit_price is not None
+                    else (prod_obj.base_price if prod_obj and prod_obj.base_price is not None else 0.0)
+                )
+                itm_name = it.item_name or (prod_obj.name if prod_obj else f"SKU {sku_str}")
+                mods = None
+                notes = "Món thay thế theo xác nhận khách"
+                pid = prod_obj.id if prod_obj else None
+
+            qty = max(1, int(it.quantity))
+            line_total = round(unit_p * qty, 2)
+            new_subtotal += line_total
+            updated_items_data.append(
+                {
+                    "product_id": pid,
+                    "sku": sku_str,
+                    "item_name": itm_name,
+                    "quantity": qty,
+                    "unit_price": unit_p,
+                    "total_price": line_total,
+                    "notes": notes,
+                    "modifiers": mods,
+                }
+            )
+
+        discount_amt = float(order.discount_amount or 0.0)
+        delivery_fee = float(order.delivery_fee or 0.0)
+        new_total = max(0.0, round(new_subtotal - discount_amt + delivery_fee, 2))
+
+        raw_payload["_ump_edited"] = True
+        raw_payload["_ump_edit_meta"] = {
+            "edited_by": changed_by,
+            "reason": payload.edit_reason,
+            "edited_at": datetime.now(timezone.utc).isoformat(),
+        }
+        updated_raw_items = []
+        for it in active_items:
+            sku_str = it.sku.strip()
+            prev_raw_item = dict(raw_by_sku.get(sku_str) or {})
+            if prev_raw_item:
+                prev_raw_item["quantity"] = int(it.quantity)
+                if it.adjusted_price_in_min is not None:
+                    prev_raw_item["price"] = int(it.adjusted_price_in_min)
+                if it.adjusted_weight is not None:
+                    prev_raw_item["weight"] = float(it.adjusted_weight)
+                updated_raw_items.append(prev_raw_item)
+            else:
+                matched_new = next((x for x in updated_items_data if x["sku"] == sku_str), {})
+                updated_raw_items.append(
+                    {
+                        "id": sku_str,
+                        "name": matched_new.get("item_name") or sku_str,
+                        "quantity": int(it.quantity),
+                        "price": int(round(float(matched_new.get("unit_price", 0.0)) * divisor)),
+                    }
+                )
+        raw_payload["items"] = updated_raw_items
+
+        order_data = {
+            "subtotal_amount": round(new_subtotal, 2),
+            "discount_amount": discount_amt,
+            "delivery_fee": delivery_fee,
+            "total_amount": new_total,
+            "raw_payload": raw_payload,
+        }
+
+        return await OrderService.reconcile_edited_inbound_order(
+            order_id=order.id,
+            order_data=order_data,
+            items_data=updated_items_data,
+            db=db,
+            changed_by=changed_by,
+            note=f"Sửa đơn ({payload.edit_reason})",
+        )
