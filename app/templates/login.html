@@ -93,42 +93,6 @@
                 </button>
             </form>
 
-            <!-- Quick Demo Account Selector (Testing & Evaluation Helper) -->
-            <div class="pt-3 border-t border-slate-100">
-                <details class="group text-xs">
-                    <summary class="cursor-pointer text-slate-500 hover:text-slate-800 font-semibold flex items-center justify-between select-none py-1.5 transition-colors">
-                        <span class="flex items-center space-x-2">
-                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
-                            <span>Tài khoản dùng thử phân quyền</span>
-                        </span>
-                        <svg class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </summary>
-                    <div class="mt-2.5 p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                        <p class="text-[11px] text-slate-500 leading-relaxed font-medium">
-                            Chọn tài khoản để điền nhanh username (nhập mật khẩu được cấp):
-                        </p>
-                        <div class="space-y-1.5">
-                            <button type="button" onclick="selectDemoAccount('admin')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
-                                <div class="font-bold text-rose-600 text-xs">Super Admin</div>
-                                <div class="text-[11px] text-slate-500 font-mono">admin (Toàn chuỗi)</div>
-                            </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10001')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
-                                <div class="font-bold text-blue-600 text-xs">CHT Thảo Điền</div>
-                                <div class="text-[11px] text-slate-500 font-mono">manager_10001</div>
-                            </button>
-                            <button type="button" onclick="selectDemoAccount('staff_10001')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
-                                <div class="font-bold text-emerald-600 text-xs">NV Thảo Điền</div>
-                                <div class="text-[11px] text-slate-500 font-mono">staff_10001</div>
-                            </button>
-                            <button type="button" onclick="selectDemoAccount('manager_10004')" class="w-full p-2.5 rounded-xl bg-white hover:bg-slate-100 text-left border border-slate-200/80 transition-colors flex items-center justify-between">
-                                <div class="font-bold text-purple-600 text-xs">CHT Phú Mỹ Hưng</div>
-                                <div class="text-[11px] text-slate-500 font-mono">manager_10004</div>
-                            </button>
-                        </div>
-                    </div>
-                </details>
-            </div>
-
             <!-- Internal SSO Notice -->
             <div class="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
                 <span class="flex items-center space-x-2">
@@ -144,17 +108,6 @@
     </div>
 
     <script>
-        function selectDemoAccount(username, password = '') {
-            document.getElementById('username').value = username;
-            const pwdEl = document.getElementById('password');
-            if (pwdEl) {
-                pwdEl.value = password || '';
-                if (!password) pwdEl.focus();
-            }
-            const errEl = document.getElementById('error-alert');
-            if (errEl) errEl.classList.add('hidden');
-        }
-
         async function handleLogin(e) {
             e.preventDefault();
             const errEl = document.getElementById('error-alert');

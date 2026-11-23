@@ -589,6 +589,8 @@ def test_templates_contain_cs_store_10008_and_hr_cron_ui():
     assert 'value="10008"' in reports_html
     assert "Tên đăng nhập (Username)" in login_html
     assert "hoặc email" not in login_html
+    assert "Tài khoản dùng thử phân quyền" not in login_html
+    assert "selectDemoAccount" not in login_html
 
 
 @pytest.mark.asyncio
