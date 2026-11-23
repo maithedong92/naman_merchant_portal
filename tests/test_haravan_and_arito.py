@@ -227,6 +227,7 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
     # Mock MongoDB collection
     mock_col = MagicMock()
     mock_col.find_one.return_value = mock_order_doc
+    mock_col.find_one_and_update.return_value = mock_order_doc
     mock_col.count_documents.return_value = 1
     mock_col.find.return_value.sort.return_value.skip.return_value.limit.return_value = [mock_order_doc]
 
@@ -250,9 +251,9 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
             note="Khách cần gấp trước 12h",
             current_user=mock_admin_user,
         )
-        mock_col.update_one.assert_called()
+        mock_col.find_one_and_update.assert_called()
         # Verify snapshot and fields were updated
-        update_args = mock_col.update_one.call_args[0][1]
+        update_args = mock_col.find_one_and_update.call_args[0][1]
         assert update_args["$set"]["internal.assigned_store"] == "10001"
         assert update_args["$set"]["internal.order_processing_status"] == "Đã phân tuyến"
         assert "internal.assignment_stock" in update_args["$set"]
@@ -265,7 +266,7 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
             note="Hết thăn bò Úc tại kệ",
             current_user=staff_10001,
         )
-        reassign_update = mock_col.update_one.call_args[0][1]
+        reassign_update = mock_col.find_one_and_update.call_args[0][1]
         assert reassign_update["$set"]["internal.assigned_store"] is None
         assert reassign_update["$set"]["internal.order_processing_status"] == "Yêu cầu phân tuyến lại"
 
@@ -274,7 +275,7 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
             order_id_or_sn="HV_TEST_999",
             current_user=staff_10001,
         )
-        pack_update = mock_col.update_one.call_args[0][1]
+        pack_update = mock_col.find_one_and_update.call_args[0][1]
         assert pack_update["$set"]["internal.order_processing_status"] == "Đã đóng gói"
 
         # 5. Gửi vận đơn
@@ -284,7 +285,7 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
             carrier="Ahamove",
             current_user=staff_10001,
         )
-        ship_update = mock_col.update_one.call_args[0][1]
+        ship_update = mock_col.find_one_and_update.call_args[0][1]
         assert ship_update["$set"]["internal.order_processing_status"] == "Đã gửi vận đơn"
         assert ship_update["$set"]["internal.tracking_code"] == "AHA12345678"
 
@@ -298,7 +299,7 @@ async def test_haravan_order_dispatch_workflow(mock_admin_user):
             note="Giao thành công, khách đã trả tiền mặt",
             current_user=staff_10001,
         )
-        complete_update = mock_col.update_one.call_args[0][1]
+        complete_update = mock_col.find_one_and_update.call_args[0][1]
         assert complete_update["$set"]["internal.order_processing_status"] == "Hoàn thành"
         assert complete_update["$set"]["internal.completion_info"]["actual_total"] == "505000.0"
         assert complete_update["$set"]["internal.completion_info"]["actual_carrier"] == "Ahamove"

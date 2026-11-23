@@ -4,7 +4,7 @@
 
 {% block extra_head %}
 <!-- Chart.js for High-performance Interactive Visualizations -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -273,19 +273,9 @@
     let trendChartInstance = null;
     let channelChartInstance = null;
 
-    // Helper: format Currency & escape HTML
+    // Helper: format Currency
     function formatVND(val) {
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
-    }
-
-    function escapeHtml(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
     }
 
     // Set quick date range
@@ -637,11 +627,11 @@
 
     function getReconcileChannelBadge(code) {
         const c = String(code || '').toUpperCase();
-        if (c === 'SHOPEEFOOD') {
+        if (c === 'SHOPEEFOOD' || c === 'SHOPEE_FOOD') {
             return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#FDECC8] text-[#D9730D]">ShopeeFood</span>';
-        } else if (c === 'GRABMART') {
+        } else if (c === 'GRABMART' || c === 'GRAB' || c === 'GRAB_MART') {
             return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#DBEDDB] text-[#0F7B6C]">GrabMart</span>';
-        } else if (c === 'SHOPEEMART') {
+        } else if (c === 'SHOPEEMART' || c === 'SHOPEE_MART' || c === 'SHOPEE_FRESH') {
             return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#D3E5EF] text-[#18537A]">ShopeeMart</span>';
         } else if (c.includes('HARAVAN') || c === 'WEB' || c === 'CHECKOUT_NEXT') {
             return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#E7F3F8] text-[#2F7EA6]">Haravan / Web</span>';

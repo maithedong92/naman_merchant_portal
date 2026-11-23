@@ -5,12 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     check_store_access,
+    check_store_access_by_key,
     get_current_user,
     has_cross_store_read_access,
+    is_head_office_manager_or_admin,
+    require_head_office_manager,
     require_staff,
     require_store_manager,
     require_super_admin,
 )
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.responses import APIResponse
@@ -30,6 +34,7 @@ from app.services.inventory_service import InventoryService
 from app.services.poppies_service import poppies_service
 
 router = APIRouter(prefix="/inventory", tags=["Multi-Store Inventory"])
+settings = get_settings()
 
 
 @router.get(
@@ -184,6 +189,8 @@ async def seed_inventory_catalog(
     current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.ENVIRONMENT.lower() == "production" and not settings.DEBUG:
+        raise ForbiddenError("Endpoint khởi tạo dữ liệu mẫu bị vô hiệu hóa trong môi trường Production.")
     result = await InventoryService.seed_sample_catalog(db)
     return APIResponse.ok(
         data=result,
@@ -227,7 +234,7 @@ async def batch_update_inventory(
     db: AsyncSession = Depends(get_db)
 ):
     """Batch update physical stock counts per store and optionally trigger real-time stock sync."""
-    check_store_access(current_user, payload.store_id)
+    await check_store_access_by_key(db, current_user, payload.store_id)
     updated = await InventoryService.update_store_inventory(payload, db)
     return APIResponse.ok(
         data=updated,
@@ -261,10 +268,9 @@ async def sync_poppies_master_data(
     limit: int = Query(250, ge=1, le=1000, description="Số lượng SKU mỗi trang"),
     offset: int = Query(0, ge=0, description="Vị trí bắt đầu"),
     fetch_all: bool = Query(True, description="Đồng bộ toàn bộ danh mục kinh doanh (tất cả các trang)"),
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     result = await poppies_service.sync_master_data_from_poppies(
         db=db,
         branch_code=branch_code,
@@ -289,13 +295,16 @@ async def sync_poppies_stock_realtime(
     current_user: User = Depends(require_store_manager),
     db: AsyncSession = Depends(get_db),
 ):
+    effective_store_code = store_code
     if store_code:
-        check_store_access(current_user, f"st-{store_code}" if not store_code.startswith("st-") else store_code)
-    elif current_user.store_id and not current_user.is_superuser:
+        store = await check_store_access_by_key(db, current_user, store_code)
+        if store is not None and isinstance(getattr(store, "code", None), str):
+            effective_store_code = store.code
+    elif not is_head_office_manager_or_admin(current_user):
         raise ForbiddenError("Chỉ quản trị viên toàn chuỗi mới được phép đồng bộ tồn kho toàn bộ chi nhánh.")
     result = await poppies_service.sync_stock_cttk_realtime(
         db=db,
-        store_code=store_code
+        store_code=effective_store_code
     )
     return APIResponse.ok(
         data=result,
@@ -316,10 +325,9 @@ async def sync_and_match_poppies_all(
     branch_code: str = Query("10001", description="Mã chi nhánh đối chiếu giá bán"),
     sync_master_skus: bool = Query(True, description="Đồng bộ danh mục SKU & giá gốc STORE"),
     sync_stock: bool = Query(True, description="Đồng bộ tồn kho CTTK đa chi nhánh"),
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     result = await poppies_service.sync_and_match_all_from_poppies(
         db=db,
         branch_code=branch_code,

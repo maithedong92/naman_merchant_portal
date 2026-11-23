@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_super_admin
+from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.exceptions import ForbiddenError
 from app.core.responses import APIResponse
 from app.models.user import User, UserRole
 from app.schemas.common import PaginatedResponse, PaginationMeta
@@ -18,6 +20,7 @@ from app.services.auth_service import auth_service
 
 router = APIRouter(prefix="/users", tags=["Core - User Management & RBAC"])
 logger = logging.getLogger("naman_portal.users")
+settings = get_settings()
 
 
 @router.get(
@@ -70,7 +73,7 @@ async def create_user(
     current_admin: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await auth_service.create_user(db=db, user_in=payload)
+    user = await auth_service.create_user(db=db, user_in=payload, actor_user=current_admin)
     return APIResponse.ok(
         data=UserResponse.model_validate(user),
         message=f"Đã tạo người dùng '{user.username}' thành công."
@@ -106,10 +109,12 @@ async def seed_sample_staff(
     current_admin: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.ENVIRONMENT.lower() == "production" and not settings.DEBUG:
+        raise ForbiddenError("Endpoint khởi tạo tài khoản mẫu bị vô hiệu hóa trong môi trường Production.")
     created = await auth_service.seed_branch_staff_users(db=db)
     return APIResponse.ok(
         data={"created_accounts": created, "count": len(created)},
-        message=f"Đã khởi tạo {len(created)} tài khoản nhân sự chi nhánh (Mật khẩu: 'NamAn@2026')."
+        message=f"Đã khởi tạo {len(created)} tài khoản nhân sự chi nhánh."
     )
 
 
@@ -186,7 +191,17 @@ async def update_user(
     current_admin: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await auth_service.update_user(db=db, user_id=user_id, user_in=payload)
+    if user_id == current_admin.id and (
+        payload.is_active is False
+        or (payload.role is not None and payload.role != UserRole.SUPER_ADMIN)
+    ):
+        raise ForbiddenError("Không thể tự vô hiệu hóa hoặc tự hạ quyền tài khoản của chính mình.")
+    user = await auth_service.update_user(
+        db=db,
+        user_id=user_id,
+        user_in=payload,
+        actor_user=current_admin,
+    )
     return APIResponse.ok(
         data=UserResponse.model_validate(user),
         message=f"Đã cập nhật tài khoản '{user.username}' thành công."
@@ -204,10 +219,13 @@ async def deactivate_user(
     current_admin: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if user_id == current_admin.id:
+        raise ForbiddenError("Không thể tự vô hiệu hóa tài khoản của chính mình.")
     await auth_service.update_user(
         db=db,
         user_id=user_id,
         user_in=UserUpdate(is_active=False),
+        actor_user=current_admin,
     )
     return APIResponse.ok(
         data={"deactivated": True},

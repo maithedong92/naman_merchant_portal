@@ -648,7 +648,7 @@
         }
 
         try {
-            const res = await authFetch(`/api/v1/system/errors/${errorId}/resolve`, {
+            const res = await authFetch(`/api/v1/system/errors/${encodeURIComponent(errorId)}/resolve`, {
                 method: 'POST',
                 body: JSON.stringify({
                     resolved_by: resolvedBy,
@@ -678,7 +678,7 @@
     async function reopenIncident(errorId) {
         if (!confirm("Bạn có chắc chắn muốn mở lại sự cố này để tiếp tục kiểm tra?")) return;
         try {
-            const res = await authFetch(`/api/v1/system/errors/${errorId}/reopen`, { method: 'POST' });
+            const res = await authFetch(`/api/v1/system/errors/${encodeURIComponent(errorId)}/reopen`, { method: 'POST' });
             if (res.ok) {
                 showToast("Đã mở lại sự cố (INVESTIGATING)", "info");
                 loadAllSystemData();

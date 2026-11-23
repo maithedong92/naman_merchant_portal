@@ -200,18 +200,20 @@ async def test_staff_cannot_toggle_inventory_of_another_store():
 
 @pytest.mark.asyncio
 async def test_login_page_renders_clean_without_hardcoded_values():
-    """Verify login page has no hardcoded values in input elements and includes demo account switcher."""
+    """Verify login page has no hardcoded credentials or demo account switcher."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         res = await ac.get("/admin/login")
         assert res.status_code == 200
-        # Inputs must be clean (no hardcoded prefilled values)
+        # Inputs must be clean (no hardcoded prefilled values or demo credentials)
         assert 'value="admin"' not in res.text
         assert 'value="phhthtnkhk"' not in res.text
-        assert 'Mặc định SuperAdmin: admin' not in res.text
-        # Must have demo switcher helper
-        assert "selectDemoAccount" in res.text
-        assert "manager_10001" in res.text
+        assert "phhthtnkhk" not in res.text
+        assert "NamAn@2026" not in res.text
+        assert "Mặc định SuperAdmin: admin" not in res.text
+        # Demo switcher helper must not be present
+        assert "selectDemoAccount" not in res.text
+        assert "manager_10001" not in res.text
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.exceptions import BadRequestError
 from app.core.security import redact_sensitive_headers
 from app.models.channel import Channel
 from app.models.product import ChannelProductMapping, Product
@@ -94,6 +95,8 @@ class PoppiesOutboxWebhookMixin:
         ).strip()
         affected_skus: List[str] = payload.get("affected_skus") or []
         incoming_ts = parse_iso_timestamp(payload.get("timestamp"))
+        if incoming_ts is not None and (incoming_ts - datetime.now(timezone.utc)).total_seconds() > 60:
+            raise BadRequestError("Timestamp webhook Poppies không hợp lệ (ở tương lai quá 60 giây).")
         incoming_ts_iso = (
             incoming_ts.isoformat()
             if incoming_ts
@@ -239,7 +242,22 @@ class PoppiesOutboxWebhookMixin:
                         response_status=200,
                     )
                 )
-            await db.commit()
+            try:
+                await db.commit()
+            except IntegrityError:
+                await db.rollback()
+                logger.warning(
+                    f"Concurrent channel webhook conflict resolved via rollback for event_id={event_id} channel={poppies_channel_code}"
+                )
+                return {
+                    "success": True,
+                    "event_id": event_id or None,
+                    "duplicate": True,
+                    "channel_code": poppies_channel_code,
+                    "processed_count": 0,
+                    "external_channel_sync": [],
+                    "message": f"Sự kiện {event_id} đã được xử lý đồng thời (Idempotent).",
+                }
             ext_sync = await propagate_channel_menu_to_external_channel(
                 db=db,
                 raw_channel_code=poppies_channel_code,
@@ -268,7 +286,18 @@ class PoppiesOutboxWebhookMixin:
                         response_status=200,
                     )
                 )
-                await db.commit()
+                try:
+                    await db.commit()
+                except IntegrityError:
+                    await db.rollback()
+                    return {
+                        "success": True,
+                        "event_id": event_id,
+                        "duplicate": True,
+                        "processed_count": 0,
+                        "external_channel_sync": [],
+                        "message": f"Sự kiện {event_id} đã được xử lý đồng thời (Idempotent).",
+                    }
             return {
                 "success": True,
                 "event_id": event_id or None,
@@ -338,6 +367,17 @@ class PoppiesOutboxWebhookMixin:
                 await db.commit()
             except IntegrityError:
                 await db.rollback()
+                logger.warning(
+                    f"Concurrent conversion webhook conflict resolved via rollback for event_id={event_id}"
+                )
+                return {
+                    "success": True,
+                    "event_id": event_id or None,
+                    "duplicate": True,
+                    "processed_count": 0,
+                    "external_channel_sync": [],
+                    "message": f"Sự kiện {event_id} đã được xử lý đồng thời (Idempotent).",
+                }
 
             ext_sync: List[Dict[str, Any]] = []
             if propagated_skus:
@@ -553,6 +593,16 @@ class PoppiesOutboxWebhookMixin:
             logger.warning(
                 f"Concurrent webhook upsert conflict resolved via rollback for event_id={event_id} channel={poppies_channel_code}"
             )
+            return {
+                "success": True,
+                "event_id": event_id or None,
+                "duplicate": True,
+                "channel_code": poppies_channel_code,
+                "processed_count": 0,
+                "skipped_out_of_order": skipped_stale,
+                "external_channel_sync": [],
+                "message": f"Sự kiện {event_id} đã được xử lý đồng thời (Idempotent).",
+            }
 
         ext_sync = (
             await propagate_skus_to_external_channel(

@@ -478,10 +478,14 @@ class InventoryService:
         if not prod:
             raise NotFoundError("Product", payload.sku)
 
-        # 3. Resolve or create StoreInventory
-        inv_stmt = select(StoreInventory).where(
-            StoreInventory.store_id == store.id,
-            StoreInventory.product_id == prod.id,
+        # 3. Resolve or create StoreInventory (row-locked to prevent concurrent stock race conditions)
+        inv_stmt = (
+            select(StoreInventory)
+            .where(
+                StoreInventory.store_id == store.id,
+                StoreInventory.product_id == prod.id,
+            )
+            .with_for_update()
         )
         inv = (await db.execute(inv_stmt)).scalar_one_or_none()
 
@@ -489,12 +493,17 @@ class InventoryService:
         qty_before = float(inv.available_stock) if inv else 0.0
 
         if not inv:
-            new_avail = 0.0 if payload.is_out_of_stock else (payload.available_stock or 10.0)
+            new_total = 0.0 if payload.is_out_of_stock else float(payload.available_stock if payload.available_stock is not None else 10.0)
+            new_avail = (
+                0.0
+                if payload.is_out_of_stock
+                else InventoryService.compute_available_stock(new_total, 0.0, 0.0)
+            )
             inv = StoreInventory(
                 store_id=store.id,
                 product_id=prod.id,
                 sku=prod.sku,
-                total_stock=new_avail,
+                total_stock=new_total,
                 reserved_stock=0.0,
                 available_stock=new_avail,
                 safety_stock=0.0,
@@ -508,11 +517,14 @@ class InventoryService:
                 inv.available_stock = 0.0
             else:
                 if payload.available_stock is not None:
-                    inv.available_stock = float(payload.available_stock)
-                    inv.total_stock = max(float(inv.total_stock), float(payload.available_stock))
-                elif inv.available_stock <= 0:
-                    inv.available_stock = 10.0
-                    inv.total_stock = max(float(inv.total_stock), 10.0)
+                    inv.total_stock = max(float(inv.total_stock or 0.0), float(payload.available_stock))
+                elif float(inv.available_stock or 0.0) <= 0:
+                    inv.total_stock = max(float(inv.total_stock or 0.0), 10.0)
+                inv.available_stock = InventoryService.compute_available_stock(
+                    float(inv.total_stock or 0.0),
+                    float(inv.reserved_stock or 0.0),
+                    float(inv.safety_stock or 0.0),
+                )
             inv.last_synced_at = now
 
         # Log movement
@@ -680,10 +692,13 @@ class InventoryService:
         inv_by_prod_id: Dict[str, StoreInventory] = {}
         if product_ids:
             inv_res = await db.execute(
-                select(StoreInventory).where(
+                select(StoreInventory)
+                .where(
                     StoreInventory.store_id == store.id,
                     StoreInventory.product_id.in_(product_ids),
                 )
+                .order_by(StoreInventory.product_id.asc())
+                .with_for_update()
             )
             inv_by_prod_id = {str(inv.product_id): inv for inv in inv_res.scalars().all()}
 
@@ -781,6 +796,6 @@ class InventoryService:
                 )
                 results.append(res)
             except Exception as ex:
-                logger.error(f"Lỗi khi đẩy tồn kho lên kênh {mapping.channel.code}: {str(ex)}")
+                logger.error(f"Lỗi khi đẩy tồn kho lên kênh {ch_code}: {str(ex)}")
 
         return results

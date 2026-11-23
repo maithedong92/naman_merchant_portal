@@ -13,6 +13,7 @@ class UserRole(str, Enum):
     SUPER_ADMIN = "SUPER_ADMIN"        # Toàn quyền hệ thống & cấu hình kênh
     STORE_MANAGER = "STORE_MANAGER"    # Quản lý kho, tồn kho, giá và đơn hàng tại chi nhánh
     CS = "CS"                          # Chăm sóc khách hàng: xem & phân đơn toàn hệ thống
+    HQ_AUDITOR = "HQ_AUDITOR"          # Auditor đọc báo cáo & đối soát tài chính toàn chuỗi
     STAFF = "STAFF"                    # Nhân viên chi nhánh, xem & chuẩn bị đơn hàng
     READ_ONLY = "READ_ONLY"            # Chỉ xem báo cáo, tra cứu dữ liệu
 
@@ -46,7 +47,7 @@ class User(Base, TimestampMixin):
     )
     role: Mapped[str] = mapped_column(
         String(30), default=UserRole.STAFF.value, nullable=False, index=True,
-        comment="Vai trò RBAC (SUPER_ADMIN, STORE_MANAGER, CS, STAFF, READ_ONLY)"
+        comment="Vai trò RBAC (SUPER_ADMIN, STORE_MANAGER, CS, HQ_AUDITOR, STAFF, READ_ONLY)"
     )
     store_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True,
@@ -55,6 +56,10 @@ class User(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False,
         comment="Trạng thái kích hoạt tài khoản"
+    )
+    portal_disabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        comment="Vô hiệu hóa trực tiếp trên Portal (chặn HR sync tự động mở lại)"
     )
     is_superuser: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False,

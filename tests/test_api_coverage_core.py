@@ -678,11 +678,25 @@ def test_inventory_poppies_health_and_sync_endpoints(client, admin_user, manager
     # POST /api/v1/inventory/poppies/sync -> staff forbidden
     assert client.post("/api/v1/inventory/poppies/sync?branch_code=10001").status_code == 403
 
-    # Manager of 10001 cannot sync 10004
+    # Branch manager of 10001 cannot trigger chain-wide master sync (requires Head Office or SuperAdmin)
     app.dependency_overrides[get_current_user] = lambda: manager_user
     assert client.post("/api/v1/inventory/poppies/sync?branch_code=10004").status_code == 403
+    assert client.post("/api/v1/inventory/poppies/sync?branch_code=10001").status_code == 403
 
-    # Manager of 10001 can sync 10001
+    # Branch manager of 10001 CAN trigger branch-scoped sync-stock?store_code=10001 once Store resolves
+    store_res = MagicMock()
+    store_res.scalar_one_or_none.return_value = Store(id="st-10001", code="10001", name="Nam An 10001")
+    mock_db.execute = AsyncMock(return_value=store_res)
+    with patch(
+        "app.api.v1.inventory.poppies_service.sync_stock_cttk_realtime",
+        new=AsyncMock(return_value={"inventories_updated": 120}),
+    ):
+        res_branch_stock = client.post("/api/v1/inventory/poppies/sync-stock?store_code=10001")
+    assert res_branch_stock.status_code == 200
+    assert res_branch_stock.json()["data"]["inventories_updated"] == 120
+
+    # SuperAdmin can trigger chain-wide master sync & global sync-stock
+    app.dependency_overrides[get_current_user] = lambda: admin_user
     with patch(
         "app.api.v1.inventory.poppies_service.sync_master_data_from_poppies",
         new=AsyncMock(return_value={"total_fetched": 120, "branch_code": "10001"}),
@@ -691,7 +705,8 @@ def test_inventory_poppies_health_and_sync_endpoints(client, admin_user, manager
     assert res_sync.status_code == 200
     assert res_sync.json()["data"]["total_fetched"] == 120
 
-    # POST /api/v1/inventory/poppies/sync-stock -> branch manager cannot trigger global sync
+    # Branch manager cannot trigger global sync-stock (store_code=None)
+    app.dependency_overrides[get_current_user] = lambda: manager_user
     res_global_denied = client.post("/api/v1/inventory/poppies/sync-stock")
     assert res_global_denied.status_code == 403
 

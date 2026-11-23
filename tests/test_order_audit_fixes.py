@@ -174,14 +174,21 @@ def test_grabmart_oauth_secret_check_and_webhook_500_on_db_crash(client):
     with patch.object(grab_router_settings, "GRABMART_PARTNER_CLIENT_SECRET", "real_prod_grab_secret_999"):
         r_bad_oauth = client.post(
             "/api/v1/grabmart/oauth/token",
-            json={"client_id": "grab", "client_secret": "wrong_attacker_secret"},
+            json={"client_id": "naman_grabmart_pos", "client_secret": "wrong_attacker_secret"},
             headers={"X-Forwarded-Proto": "https"},
         )
         assert r_bad_oauth.status_code == 401
 
-        r_good_oauth = client.post(
+        r_bad_client_id = client.post(
             "/api/v1/grabmart/oauth/token",
             json={"client_id": "grab", "client_secret": "real_prod_grab_secret_999"},
+            headers={"X-Forwarded-Proto": "https"},
+        )
+        assert r_bad_client_id.status_code == 401
+
+        r_good_oauth = client.post(
+            "/api/v1/grabmart/oauth/token",
+            json={"client_id": "naman_grabmart_pos", "client_secret": "real_prod_grab_secret_999"},
             headers={"X-Forwarded-Proto": "https"},
         )
         assert r_good_oauth.status_code == 200
@@ -753,7 +760,11 @@ def test_frontend_templates_enforce_security_and_urgent_order_monitoring():
     login_html = (templates_dir / "login.html").read_text(encoding="utf-8")
     assert "phhthtnkhk" not in login_html, "Plaintext SuperAdmin password must not appear in login.html"
     assert "NamAn@2026" not in login_html, "Plaintext branch password must not appear in login.html"
-    assert "startsWith('/')" in login_html and "!redirect.startsWith('//')" in login_html, "Open redirect guard missing in login.html"
+    assert (
+        "resolveSafeRedirect" in login_html
+        and "new URL(" in login_html
+        and "parsed.origin !== window.location.origin" in login_html
+    ), "Hardened WHATWG Open redirect guard missing in login.html"
 
     orders_html = (templates_dir / "orders.html").read_text(encoding="utf-8")
     assert "checkUrgentPlatformOrders" in orders_html, "Urgent platform order background monitor missing in orders.html"

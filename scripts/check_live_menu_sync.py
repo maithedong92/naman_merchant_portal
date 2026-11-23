@@ -1,5 +1,5 @@
 import asyncio
-import json
+import os
 import sys
 import httpx
 
@@ -7,34 +7,50 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
 
-BASE_URL = "https://ump.namanmarket.com"
-ADMIN_USER = "admin"
-ADMIN_PASS = "phhthtnkhk"
+DEFAULT_BASE_URL = "https://ump.namanmarket.com"
+DEFAULT_ADMIN_USER = "admin"
+
+
+def _require_env(name: str) -> str:
+    value = (os.environ.get(name) or "").strip()
+    if not value:
+        print(f"[ERROR] Missing required environment variable: {name}", file=sys.stderr)
+        raise SystemExit(1)
+    return value
+
 
 async def main():
-    async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+    base_url = os.environ.get("UMP_BASE_URL", DEFAULT_BASE_URL).strip().rstrip("/")
+    admin_user = os.environ.get("UMP_ADMIN_USER", DEFAULT_ADMIN_USER).strip()
+    admin_pass = _require_env("UMP_ADMIN_PASSWORD")
+    sf_user = os.environ.get("SHOPEEFOOD_MENU_USERNAME", "namanmarket").strip()
+    sf_pass = _require_env("SHOPEEFOOD_MENU_PASSWORD")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # 1. Login
         login_res = await client.post(
-            f"{BASE_URL}/api/v1/auth/login",
-            json={"username": ADMIN_USER, "password": ADMIN_PASS}
+            f"{base_url}/api/v1/auth/login",
+            json={"username": admin_user, "password": admin_pass}
         )
         if login_res.status_code != 200:
-            print("Login failed:", login_res.text)
+            print(f"Login failed: HTTP {login_res.status_code}")
             return
         token = login_res.json()["data"]["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
         # 2. Channels
         print("\n=== 1. CHANNELS & CONFIG ===")
-        ch_res = await client.get(f"{BASE_URL}/api/v1/channels", headers=headers)
+        ch_res = await client.get(f"{base_url}/api/v1/channels", headers=headers)
         channels = ch_res.json().get("data", [])
         for ch in channels:
+            cfg = ch.get("config")
+            cfg_count = len(cfg) if isinstance(cfg, dict) else 0
             print(f"- Code: {ch.get('code')}, Name: {ch.get('name')}, Active: {ch.get('is_active')}")
-            print(f"  Config: {ch.get('config')}")
+            print(f"  Config: <{cfg_count} keys configured (masked)>")
 
         # 3. Stores & Channel Mappings
         print("\n=== 2. STORES & CHANNEL MAPPINGS ===")
-        map_res = await client.get(f"{BASE_URL}/api/v1/stores/mappings", headers=headers)
+        map_res = await client.get(f"{base_url}/api/v1/stores/mappings", headers=headers)
         mappings = map_res.json().get("data", [])
         print(f"Total Store Channel Mappings: {len(mappings)}")
         for m in mappings:
@@ -42,7 +58,7 @@ async def main():
 
         # 4. Products Count
         print("\n=== 3. PRODUCT CATALOG IN DB ===")
-        prod_res = await client.get(f"{BASE_URL}/api/v1/products?limit=10", headers=headers)
+        prod_res = await client.get(f"{base_url}/api/v1/products?limit=10", headers=headers)
         prod_data = prod_res.json().get("data", {})
         print(f"Products response: {prod_data.get('total') if isinstance(prod_data, dict) else len(prod_data)}")
         if isinstance(prod_data, dict) and "items" in prod_data:
@@ -56,17 +72,16 @@ async def main():
 
         # 5. Check ShopeeFood Menu cache / endpoint
         print("\n=== 4. TEST MENU SYNC SIMULATION / CALL ===")
-        stores_res = await client.get(f"{BASE_URL}/api/v1/stores", headers=headers)
+        stores_res = await client.get(f"{base_url}/api/v1/stores", headers=headers)
         stores = stores_res.json().get("data", [])
         for store in stores:
-            st_id = store.get("id")
             st_code = store.get("code")
             print(f"\n--- Testing Store {st_code} ({store.get('name')}) ---")
             
             # ShopeeFood with HTTP Basic Auth
             sf_res = await client.get(
-                f"{BASE_URL}/shopeefoodapi/{st_code}.json",
-                auth=("namanmarket", "shopeefoodapi")
+                f"{base_url}/shopeefoodapi/{st_code}.json",
+                auth=(sf_user, sf_pass)
             )
             print(f"  [ShopeeFood] GET /shopeefoodapi/{st_code}.json -> Status: {sf_res.status_code}")
             if sf_res.status_code == 200:
@@ -80,7 +95,7 @@ async def main():
                 print(f"    -> Body: {sf_res.text[:200]}")
 
             # GrabMart
-            gm_res = await client.get(f"{BASE_URL}/grabmart/menu?merchantID={st_code}&partnerMerchantID={st_code}")
+            gm_res = await client.get(f"{base_url}/grabmart/menu?merchantID={st_code}&partnerMerchantID={st_code}")
             print(f"  [GrabMart] GET /grabmart/menu -> Status: {gm_res.status_code}")
             if gm_res.status_code == 200:
                 gm_json = gm_res.json()
@@ -94,7 +109,7 @@ async def main():
 
         # ShopeeMart connection status
         print("\n--- ShopeeMart Connection Status ---")
-        sm_res = await client.get(f"{BASE_URL}/shopeemart/connection-status", headers=headers)
+        sm_res = await client.get(f"{base_url}/shopeemart/connection-status", headers=headers)
         print(f"  [ShopeeMart] GET /shopeemart/connection-status -> Status: {sm_res.status_code}, Body: {sm_res.text}")
 
 

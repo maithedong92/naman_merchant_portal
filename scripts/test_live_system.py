@@ -3,31 +3,42 @@ Live Verification & Testing Script for Nam An Merchant Portal (Production)
 Tests live integration with Haravan Omnichannel, Arito ERP, and Unified Orders.
 """
 import asyncio
-import json
+import os
 import sys
 import httpx
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
-BASE_URL = "https://ump.namanmarket.com"
-ADMIN_USER = "admin"
-ADMIN_PASS = "phhthtnkhk"
+DEFAULT_BASE_URL = "https://ump.namanmarket.com"
+DEFAULT_ADMIN_USER = "admin"
+
+
+def _require_env(name: str) -> str:
+    value = (os.environ.get(name) or "").strip()
+    if not value:
+        print(f"[ERROR] Missing required environment variable: {name}", file=sys.stderr)
+        raise SystemExit(1)
+    return value
 
 
 async def run_live_tests():
+    base_url = os.environ.get("UMP_BASE_URL", DEFAULT_BASE_URL).strip().rstrip("/")
+    admin_user = os.environ.get("UMP_ADMIN_USER", DEFAULT_ADMIN_USER).strip()
+    admin_pass = _require_env("UMP_ADMIN_PASSWORD")
+
     print("=" * 70)
     print("  NAM AN MERCHANT PORTAL - LIVE PRODUCTION SYSTEM TEST")
-    print(f"  Target: {BASE_URL}")
+    print(f"  Target: {base_url}")
     print("=" * 70)
 
     results = []
 
-    async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # TEST 1: Health Check
         print("\n[TEST 1] Kiểm tra Endpoint /api/v1/health...")
         try:
-            r = await client.get(f"{BASE_URL}/api/v1/health")
+            r = await client.get(f"{base_url}/api/v1/health")
             assert r.status_code == 200, f"Expected 200, got {r.status_code}"
             body = r.json()
             assert body.get("success") is True, "Health check success is not True"
@@ -44,8 +55,8 @@ async def run_live_tests():
         token = None
         try:
             r = await client.post(
-                f"{BASE_URL}/api/v1/auth/login",
-                json={"username": ADMIN_USER, "password": ADMIN_PASS},
+                f"{base_url}/api/v1/auth/login",
+                json={"username": admin_user, "password": admin_pass},
             )
             assert r.status_code == 200, f"Login failed: {r.status_code} - {r.text}"
             token_data = r.json()
@@ -67,7 +78,7 @@ async def run_live_tests():
         # TEST 3: Haravan Omnichannel Connection & Sync Worker Status
         print("\n[TEST 3] Kiểm tra trạng thái kết nối Haravan API & Sync Worker...")
         try:
-            r = await client.get(f"{BASE_URL}/api/v1/haravan/status", headers=headers)
+            r = await client.get(f"{base_url}/api/v1/haravan/status", headers=headers)
             assert r.status_code == 200, f"Status failed: {r.status_code} - {r.text}"
             data = r.json().get("data", {})
             conn = data.get("connection", {})
@@ -83,7 +94,7 @@ async def run_live_tests():
         # TEST 4: Arito ERP Database Connection Status
         print("\n[TEST 4] Kiểm tra kết nối cơ sở dữ liệu Arito ERP (cttk)...")
         try:
-            r = await client.get(f"{BASE_URL}/api/v1/haravan/arito-status", headers=headers)
+            r = await client.get(f"{base_url}/api/v1/haravan/arito-status", headers=headers)
             assert r.status_code == 200, f"Arito status failed: {r.status_code} - {r.text}"
             data = r.json().get("data", {})
             assert data.get("connected") is True, "Arito ERP is not connected"
@@ -99,7 +110,7 @@ async def run_live_tests():
         print("\n[TEST 5] Tra cứu tồn kho thực tế Arito ERP cho danh sách SKU...")
         test_skus = "001020,001021,001022"
         try:
-            r = await client.get(f"{BASE_URL}/api/v1/haravan/inventory-check?skus={test_skus}", headers=headers)
+            r = await client.get(f"{base_url}/api/v1/haravan/inventory-check?skus={test_skus}", headers=headers)
             assert r.status_code == 200, f"Inventory check failed: {r.status_code} - {r.text}"
             data = r.json().get("data", {})
             assert len(data) > 0, "No inventory data returned for sample SKUs"
@@ -125,7 +136,7 @@ async def run_live_tests():
                     {"sku": "001021", "quantity": 2}
                 ]
             }
-            r = await client.post(f"{BASE_URL}/api/v1/haravan/recommend-store", json=payload, headers=headers)
+            r = await client.post(f"{base_url}/api/v1/haravan/recommend-store", json=payload, headers=headers)
             assert r.status_code == 200, f"Recommend store failed: {r.status_code} - {r.text}"
             data = r.json().get("data", {})
             rec_store = data.get("recommended_store")
@@ -142,7 +153,7 @@ async def run_live_tests():
         print("\n[TEST 7] Truy vấn danh sách đơn hàng Haravan từ MongoDB (pmdonhang.donhang)...")
         first_order_id = None
         try:
-            r = await client.get(f"{BASE_URL}/api/v1/haravan/orders?page=1&page_size=5", headers=headers)
+            r = await client.get(f"{base_url}/api/v1/haravan/orders?page=1&page_size=5", headers=headers)
             assert r.status_code == 200, f"List orders failed: {r.status_code} - {r.text}"
             data = r.json().get("data", {})
             items = data.get("items", [])
@@ -166,7 +177,7 @@ async def run_live_tests():
         # TEST 8: Query Unassigned Orders Feed
         print("\n[TEST 8] Kiểm tra bộ lọc đơn CHƯA PHÂN TUYẾN (Cần tổng đài điều phối)...")
         try:
-            r = await client.get(f"{BASE_URL}/api/v1/haravan/orders?unassigned_only=true&page=1&page_size=5", headers=headers)
+            r = await client.get(f"{base_url}/api/v1/haravan/orders?unassigned_only=true&page=1&page_size=5", headers=headers)
             assert r.status_code == 200, f"Unassigned query failed: {r.status_code} - {r.text}"
             data = r.json().get("data", {})
             unassigned_total = data.get("total", 0)
@@ -180,7 +191,7 @@ async def run_live_tests():
         if first_order_id:
             print(f"\n[TEST 9] Lấy chi tiết đơn hàng ID={first_order_id} kèm tồn kho Arito thời gian thực...")
             try:
-                r = await client.get(f"{BASE_URL}/api/v1/haravan/orders/{first_order_id}", headers=headers)
+                r = await client.get(f"{base_url}/api/v1/haravan/orders/{first_order_id}", headers=headers)
                 assert r.status_code == 200, f"Get detail failed: {r.status_code} - {r.text}"
                 order_detail = r.json().get("data", {})
                 live_stock = order_detail.get("arito_live_stock", {})
@@ -194,7 +205,7 @@ async def run_live_tests():
         # TEST 10: HTML Frontend Template Verification
         print("\n[TEST 10] Kiểm tra giao diện Web /admin/orders trên Production...")
         try:
-            r = await client.get(f"{BASE_URL}/admin/orders")
+            r = await client.get(f"{base_url}/admin/orders")
             assert r.status_code == 200, f"Page failed: {r.status_code}"
             html = r.text
             assert "Haravan Omnichannel" in html, "Missing Haravan Omnichannel tab"

@@ -1,5 +1,8 @@
+from collections import OrderedDict
 import json
 import logging
+import re
+import time
 import traceback
 from typing import Any, Dict, List, Optional
 from sqlalchemy import select
@@ -28,7 +31,14 @@ from app.modules.shopeefood.service import shopeefood_client
 logger = logging.getLogger("naman_portal.modules.shopeefood.adapter")
 
 # In-memory store menu cache for ShopeeFood pull requests (/shopeefoodapi/{store_code}.json)
-_shopeefood_menu_cache: Dict[str, Dict[str, Any]] = {}
+_shopeefood_menu_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+_shopeefood_menu_cache_ts: Dict[str, float] = {}
+MENU_CACHE_TTL_SECONDS = 300.0
+MAX_MENU_CACHE_ENTRIES = 50
+
+
+def _normalize_menu_cache_key(store_code: Any) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "", str(store_code or ""))
 
 
 def _extract_money_val(val: Any) -> float:
@@ -214,7 +224,13 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             }]
         }
 
-        _shopeefood_menu_cache[partner_store_id] = menu_payload
+        cache_key = _normalize_menu_cache_key(partner_store_id) or str(partner_store_id)
+        _shopeefood_menu_cache[cache_key] = menu_payload
+        _shopeefood_menu_cache.move_to_end(cache_key)
+        _shopeefood_menu_cache_ts[cache_key] = time.monotonic()
+        while len(_shopeefood_menu_cache) > MAX_MENU_CACHE_ENTRIES:
+            evicted_key, _ = _shopeefood_menu_cache.popitem(last=False)
+            _shopeefood_menu_cache_ts.pop(evicted_key, None)
         return menu_payload
 
     async def sync_menu(
@@ -301,13 +317,30 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
 
     def get_cached_menu(self, store_code: str) -> Optional[Dict[str, Any]]:
         """Retrieve pre-built menu from cache for ShopeeFood GET /shopeefoodapi/{code}.json."""
-        return _shopeefood_menu_cache.get(store_code)
+        cache_key = _normalize_menu_cache_key(store_code)
+        if not cache_key:
+            return None
+        cached = _shopeefood_menu_cache.get(cache_key)
+        if cached is None:
+            return None
+        cached_at = _shopeefood_menu_cache_ts.get(cache_key)
+        if cached_at is not None and (time.monotonic() - cached_at) > MENU_CACHE_TTL_SECONDS:
+            _shopeefood_menu_cache.pop(cache_key, None)
+            _shopeefood_menu_cache_ts.pop(cache_key, None)
+            return None
+        _shopeefood_menu_cache.move_to_end(cache_key)
+        return cached
 
     def invalidate_cached_menu(self, *store_codes: str) -> None:
         """Evict cached store menus when SKU prices or availability change."""
         for code in store_codes:
             if code:
                 _shopeefood_menu_cache.pop(code, None)
+                _shopeefood_menu_cache_ts.pop(code, None)
+                norm = _normalize_menu_cache_key(code)
+                if norm:
+                    _shopeefood_menu_cache.pop(norm, None)
+                    _shopeefood_menu_cache_ts.pop(norm, None)
 
     # ==========================================================================
     # 2. Inventory / Stock Synchronization
@@ -525,111 +558,155 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
             }
 
         payload = json.loads(raw_body.decode("utf-8"))
-        details = verified_order_details if isinstance(verified_order_details, dict) else {}
-        details_rest = details.get("restaurant") if isinstance(details.get("restaurant"), dict) else {}
-
-        partner_restaurant_id = str(
-            payload.get("partner_restaurant_id")
-            or details_rest.get("partner_restaurant_id")
-            or payload.get("restaurant_id")
-            or details_rest.get("id")
-            or "10001"
-        )
-        channel_order_id = str(
-            payload.get("order_id") or payload.get("order_code") or details.get("code") or ""
-        )
-
-        # Check auto-confirm toggle
         auto_confirm = await channel_service.is_feature_enabled(self.channel_code, "auto_confirm_enabled", db)
-        raw_status = (
-            payload.get("order_status")
-            if payload.get("order_status") is not None
-            else (payload.get("status") if payload.get("status") is not None else details.get("status"))
-        )
-        mapped_status = self._map_webhook_status(raw_status)
 
-        if mapped_status in (
-            UnifiedOrderStatus.CANCELLED,
-            UnifiedOrderStatus.DELIVERED,
-            UnifiedOrderStatus.PICKED_UP,
-            UnifiedOrderStatus.READY,
-            UnifiedOrderStatus.PREPARING,
-        ):
-            initial_status = mapped_status
-        else:
-            initial_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else (mapped_status or UnifiedOrderStatus.PENDING)
+        if verified_order_details is not None:
+            details = verified_order_details if isinstance(verified_order_details, dict) else {}
+            details_rest = details.get("restaurant") if isinstance(details.get("restaurant"), dict) else {}
 
-        deliver_addr = details.get("deliver_address") if isinstance(details.get("deliver_address"), dict) else {}
-        customer_info = payload.get("customer") or details.get("customer") or deliver_addr or {}
-        driver_info = payload.get("driver") or payload.get("shipper") or details.get("assignee") or {}
+            partner_restaurant_id = str(
+                details_rest.get("partner_restaurant_id") or details_rest.get("id") or ""
+            ).strip()
+            if not partner_restaurant_id:
+                raise ValueError("Verified S2S ShopeeFood order details missing restaurant identifier.")
 
-        driver_name = (
-            (driver_info.get("name") if isinstance(driver_info, dict) else None)
-            or payload.get("driver_name")
-            or payload.get("shipper_name")
-        )
-        driver_phone = (
-            (driver_info.get("phone") if isinstance(driver_info, dict) else None)
-            or payload.get("driver_phone")
-            or payload.get("shipper_phone")
-        )
-        driver_plate = (
-            (
+            channel_order_id = str(
+                details.get("code") or details.get("order_code") or details.get("order_id") or ""
+            ).strip()
+            raw_status = details.get("status") if details.get("status") is not None else details.get("order_status")
+            mapped_status = self._map_webhook_status(raw_status)
+
+            if mapped_status in (
+                UnifiedOrderStatus.CANCELLED,
+                UnifiedOrderStatus.DELIVERED,
+                UnifiedOrderStatus.PICKED_UP,
+                UnifiedOrderStatus.READY,
+                UnifiedOrderStatus.PREPARING,
+            ):
+                initial_status = mapped_status
+            else:
+                initial_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else (mapped_status or UnifiedOrderStatus.PENDING)
+
+            deliver_addr = details.get("deliver_address") if isinstance(details.get("deliver_address"), dict) else {}
+            customer_obj = details.get("customer") if isinstance(details.get("customer"), dict) else {}
+            customer_name = customer_obj.get("name") or deliver_addr.get("name")
+            customer_phone = customer_obj.get("phone") or deliver_addr.get("phone")
+            delivery_address = deliver_addr.get("address") or customer_obj.get("address")
+
+            driver_info = details.get("assignee") if isinstance(details.get("assignee"), dict) else {}
+            driver_name = driver_info.get("name")
+            driver_phone = driver_info.get("phone")
+            driver_plate = (
                 driver_info.get("license_plate")
                 or driver_info.get("plate")
                 or driver_info.get("vehicle_number")
-                if isinstance(driver_info, dict)
-                else None
             )
-            or payload.get("driver_license_plate")
-            or payload.get("license_plate")
-        )
 
-        customer_bill = details.get("customer_bill") if isinstance(details.get("customer_bill"), dict) else {}
-        subtotal_amount = (
-            float(payload["subtotal"])
-            if payload.get("subtotal") is not None
-            else _extract_money_val(details.get("order_value"))
-        )
-        discount_amount = (
-            float(payload["discount"])
-            if payload.get("discount") is not None
-            else _extract_money_val(details.get("total_merchant_discount"))
-        )
-        delivery_fee = (
-            float(payload["shipping_fee"])
-            if payload.get("shipping_fee") is not None
-            else _extract_money_val(customer_bill.get("shipping_fee"))
-        )
-        total_amount = (
-            float(payload["total_amount"])
-            if payload.get("total_amount") is not None
-            else _extract_money_val(details.get("total_value"))
-        )
+            customer_bill = details.get("customer_bill") if isinstance(details.get("customer_bill"), dict) else {}
+            subtotal_amount = _extract_money_val(details.get("order_value"))
+            discount_amount = _extract_money_val(details.get("total_merchant_discount"))
+            delivery_fee = _extract_money_val(customer_bill.get("shipping_fee"))
+            total_amount = _extract_money_val(details.get("total_value"))
 
-        order_data = {
-            "display_order_id": payload.get("display_order_id") or (channel_order_id[-6:] if channel_order_id else None),
-            "initial_status": initial_status,
-            "subtotal_amount": subtotal_amount,
-            "discount_amount": discount_amount,
-            "delivery_fee": delivery_fee,
-            "total_amount": total_amount,
-            "customer_name": customer_info.get("name") if isinstance(customer_info, dict) else None,
-            "customer_phone": customer_info.get("phone") if isinstance(customer_info, dict) else None,
-            "delivery_address": (
-                (customer_info.get("address") if isinstance(customer_info, dict) else None)
-                or deliver_addr.get("address")
-            ),
-            "driver_name": driver_name,
-            "driver_phone": driver_phone,
-            "driver_license_plate": driver_plate,
-            "raw_payload": {"webhook": payload, "s2s_order_details": details} if details else payload,
-        }
+            order_data = {
+                "display_order_id": channel_order_id[-6:] if channel_order_id else None,
+                "initial_status": initial_status,
+                "subtotal_amount": subtotal_amount,
+                "discount_amount": discount_amount,
+                "delivery_fee": delivery_fee,
+                "total_amount": total_amount,
+                "customer_name": customer_name,
+                "customer_phone": customer_phone,
+                "delivery_address": delivery_address,
+                "driver_name": driver_name,
+                "driver_phone": driver_phone,
+                "driver_license_plate": driver_plate,
+                "raw_payload": {"webhook": payload, "s2s_order_details": details},
+            }
+            items_data = _extract_s2s_items(details.get("dish_groups"))
+            status_note = (
+                details.get("cancel_reason")
+                or details.get("cancellation_reason")
+                or details.get("note")
+                or details.get("message")
+                or "ShopeeFood S2S verified update"
+            )
+        else:
+            partner_restaurant_id = str(
+                payload.get("partner_restaurant_id")
+                or payload.get("restaurant_id")
+                or "10001"
+            )
+            channel_order_id = str(
+                payload.get("order_id") or payload.get("order_code") or ""
+            )
 
-        items_data = []
-        raw_items = payload.get("items") or []
-        if raw_items:
-            for itm in raw_items:
+            raw_status = (
+                payload.get("order_status")
+                if payload.get("order_status") is not None
+                else payload.get("status")
+            )
+            mapped_status = self._map_webhook_status(raw_status)
+
+            if mapped_status in (
+                UnifiedOrderStatus.CANCELLED,
+                UnifiedOrderStatus.DELIVERED,
+                UnifiedOrderStatus.PICKED_UP,
+                UnifiedOrderStatus.READY,
+                UnifiedOrderStatus.PREPARING,
+            ):
+                initial_status = mapped_status
+            else:
+                initial_status = UnifiedOrderStatus.ACCEPTED if auto_confirm else (mapped_status or UnifiedOrderStatus.PENDING)
+
+            customer_info = payload.get("customer") or {}
+            driver_info = payload.get("driver") or payload.get("shipper") or {}
+
+            driver_name = (
+                (driver_info.get("name") if isinstance(driver_info, dict) else None)
+                or payload.get("driver_name")
+                or payload.get("shipper_name")
+            )
+            driver_phone = (
+                (driver_info.get("phone") if isinstance(driver_info, dict) else None)
+                or payload.get("driver_phone")
+                or payload.get("shipper_phone")
+            )
+            driver_plate = (
+                (
+                    driver_info.get("license_plate")
+                    or driver_info.get("plate")
+                    or driver_info.get("vehicle_number")
+                    if isinstance(driver_info, dict)
+                    else None
+                )
+                or payload.get("driver_license_plate")
+                or payload.get("license_plate")
+            )
+
+            subtotal_amount = float(payload["subtotal"]) if payload.get("subtotal") is not None else 0.0
+            discount_amount = float(payload["discount"]) if payload.get("discount") is not None else 0.0
+            delivery_fee = float(payload["shipping_fee"]) if payload.get("shipping_fee") is not None else 0.0
+            total_amount = float(payload["total_amount"]) if payload.get("total_amount") is not None else 0.0
+
+            order_data = {
+                "display_order_id": payload.get("display_order_id") or (channel_order_id[-6:] if channel_order_id else None),
+                "initial_status": initial_status,
+                "subtotal_amount": subtotal_amount,
+                "discount_amount": discount_amount,
+                "delivery_fee": delivery_fee,
+                "total_amount": total_amount,
+                "customer_name": customer_info.get("name") if isinstance(customer_info, dict) else None,
+                "customer_phone": customer_info.get("phone") if isinstance(customer_info, dict) else None,
+                "delivery_address": customer_info.get("address") if isinstance(customer_info, dict) else None,
+                "driver_name": driver_name,
+                "driver_phone": driver_phone,
+                "driver_license_plate": driver_plate,
+                "raw_payload": payload,
+            }
+
+            items_data = []
+            for itm in (payload.get("items") or []):
                 qty = int(itm.get("quantity", 1))
                 unit_price = float(itm.get("price", 0.0))
                 items_data.append({
@@ -640,8 +717,13 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                     "total_price": unit_price * qty,
                     "notes": itm.get("notes") or itm.get("note"),
                 })
-        elif details.get("dish_groups"):
-            items_data = _extract_s2s_items(details.get("dish_groups"))
+            status_note = (
+                payload.get("cancel_reason")
+                or payload.get("cancellation_reason")
+                or payload.get("note")
+                or payload.get("message")
+                or "ShopeeFood webhook update"
+            )
 
         order, created = await OrderService.create_or_get_inbound_order(
             channel_code=self.channel_code,
@@ -666,21 +748,14 @@ class ShopeeFoodChannelAdapter(BaseChannelAdapter):
                 driver_updated = True
 
             if mapped_status is not None and mapped_status != order.status:
-                note_str = (
-                    payload.get("cancel_reason")
-                    or payload.get("cancellation_reason")
-                    or payload.get("note")
-                    or payload.get("message")
-                    or "ShopeeFood webhook update"
-                )
                 updated_order = await OrderService.update_order_status(
                     db=db,
                     order_id=order.id,
                     payload=OrderStatusUpdateSchema(
                         new_status=mapped_status,
-                        note=str(note_str),
+                        note=str(status_note),
                         changed_by="SHOPEEFOOD_WEBHOOK",
-                        cancellation_reason=str(note_str) if mapped_status == UnifiedOrderStatus.CANCELLED else None,
+                        cancellation_reason=str(status_note) if mapped_status == UnifiedOrderStatus.CANCELLED else None,
                     ),
                     sync_to_channel=False,
                     trigger_channel_sync=False,

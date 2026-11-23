@@ -7,7 +7,12 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import _is_trusted_proxy, get_client_ip_and_ua, get_current_user
+from app.api.deps import (
+    _is_trusted_proxy,
+    _validate_cookie_csrf,
+    get_client_ip_and_ua,
+    get_current_user,
+)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UnauthorizedError
@@ -155,7 +160,7 @@ async def login(
     credentials: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    _enforce_rate_limit(req, "login", max_requests=10, window_seconds=60)
+    _enforce_rate_limit(req, "auth_login", max_requests=10, window_seconds=60)
     ip, ua = get_client_ip_and_ua(req)
     _, token_response = await auth_service.authenticate_user(
         db=db,
@@ -187,7 +192,9 @@ async def oauth2_login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ):
-    _enforce_rate_limit(req, "token", max_requests=10, window_seconds=60)
+    if settings.ENVIRONMENT.lower() == "production" and not settings.DEBUG:
+        raise HTTPException(status_code=404, detail="Not Found")
+    _enforce_rate_limit(req, "auth_login", max_requests=10, window_seconds=60)
     ip, ua = get_client_ip_and_ua(req)
     _, token_response = await auth_service.authenticate_user(
         db=db,
@@ -218,7 +225,10 @@ async def refresh_token(
     db: AsyncSession = Depends(get_db),
 ):
     _enforce_rate_limit(req, "refresh", max_requests=20, window_seconds=60)
-    raw_refresh_token = (payload.refresh_token if payload else None) or req.cookies.get("naman_refresh_token")
+    cookie_refresh_token = req.cookies.get("naman_refresh_token")
+    if not (payload and payload.refresh_token) and cookie_refresh_token:
+        _validate_cookie_csrf(req)
+    raw_refresh_token = (payload.refresh_token if payload else None) or cookie_refresh_token
     if not raw_refresh_token:
         raise UnauthorizedError("Thiếu Refresh Token.")
     ip, ua = get_client_ip_and_ua(req)

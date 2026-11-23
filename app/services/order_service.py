@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -196,8 +197,13 @@ class OrderService:
                             partner_store_id=preferred_id,
                             is_active=True
                         )
-                        db.add(new_map)
-                        await db.flush()
+                        if isinstance(db, AsyncSession):
+                            async with db.begin_nested():
+                                db.add(new_map)
+                                await db.flush()
+                        else:
+                            db.add(new_map)
+                            await db.flush()
                 except Exception:
                     pass
         else:
@@ -212,7 +218,13 @@ class OrderService:
         }
         ch_prefix = prefix_map.get(channel_code.upper(), channel_code[:3].upper())
         today_str = datetime.now(VN_TZ).strftime("%Y%m%d")
-        order_code = f"NAM-{ch_prefix}-{today_str}-{str(channel_order_id)[-6:]}"
+        raw_oid = str(channel_order_id)
+        if len(raw_oid) > 6:
+            oid_hash = hashlib.sha256(raw_oid.encode("utf-8")).hexdigest()[:4].upper()
+            order_suffix = f"{raw_oid[-6:]}-{oid_hash}"
+        else:
+            order_suffix = raw_oid
+        order_code = f"NAM-{ch_prefix}-{today_str}-{order_suffix}"
 
         # 5. Construct Unified Order & Reserve Virtual Stock atomically
         depleted_stock_items: List[Dict[str, Any]] = []
@@ -467,7 +479,11 @@ class OrderService:
         if params.channel_id:
             query = query.where(UnifiedOrder.channel_id == params.channel_id)
         if params.channel_code:
-            query = query.join(UnifiedOrder.channel).where(Channel.code == params.channel_code.upper())
+            family_codes = get_channel_family_codes(params.channel_code)
+            if family_codes:
+                query = query.join(UnifiedOrder.channel).where(Channel.code.in_(family_codes))
+            else:
+                query = query.join(UnifiedOrder.channel).where(Channel.code == params.channel_code.upper())
         if params.status:
             if params.status.upper() in ("INCOMPLETE", "CHUA_HOAN_THANH") or params.status == "Chưa hoàn thành":
                 query = query.where(

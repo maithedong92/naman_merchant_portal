@@ -24,7 +24,7 @@
             <span id="hr-sync-cron-badge" class="px-2.5 py-1.5 rounded-md bg-[#F7F6F3] border border-[rgba(55,53,47,0.09)] text-[11px] font-medium text-[#787774]" title="Cronjob đồng bộ tài khoản HR từ MongoDB (UTC+7); phân quyền do IT quản lý thủ công">
                 ⏰ Tự động HR: 07:00 &amp; 14:00 (2 lần/ngày)
             </span>
-            <button id="btn-seed-staff" onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] disabled:opacity-50 transition-colors flex items-center space-x-1 font-medium" title="Chạy đồng bộ nhân sự HR ngay từ MongoDB naman_internal_app.user (không ghi đè phân quyền IT đã gán)">
+            <button id="btn-seed-staff" onclick="triggerSeedStaff()" class="px-2.5 py-1.5 rounded-md bg-white border border-[rgba(55,53,47,0.12)] text-[#37352F] hover:bg-[rgba(55,53,47,0.06)] disabled:opacity-50 transition-colors flex items-center space-x-1 font-medium" title="Chạy đồng bộ nhân sự HR từ hệ thống nhân sự nội bộ (không ghi đè phân quyền IT đã gán)">
                 <span>🔄</span>
                 <span>Đồng Bộ HR Ngay</span>
             </button>
@@ -722,7 +722,7 @@
     // Edit Modal Handlers
     async function openEditUserModal(userId) {
         try {
-            const res = await authFetch(`/api/v1/users/${userId}`);
+            const res = await authFetch(`/api/v1/users/${encodeURIComponent(userId)}`);
             if (res.ok) {
                 const json = await res.json();
                 if (json.success && json.data) {
@@ -781,7 +781,7 @@
                 is_active: document.getElementById('edit-is-active').checked
             };
 
-            const res = await authFetch(`/api/v1/users/${userId}`, {
+            const res = await authFetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
                 method: 'PUT',
                 body: JSON.stringify(payload)
             });
@@ -830,7 +830,7 @@
         btn.innerHTML = '<span>Đang cập nhật...</span>';
 
         try {
-            const res = await authFetch(`/api/v1/users/${userId}`, {
+            const res = await authFetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
                 method: 'PUT',
                 body: JSON.stringify({ password: p1 })
             });
@@ -856,7 +856,7 @@
         if (!confirm(`Bạn có chắc chắn muốn ${actionText} tài khoản người dùng này?`)) return;
 
         try {
-            const res = await authFetch(`/api/v1/users/${userId}`, {
+            const res = await authFetch(`/api/v1/users/${encodeURIComponent(userId)}`, {
                 method: 'PUT',
                 body: JSON.stringify({ is_active: !currentStatus })
             });
@@ -931,9 +931,9 @@
         tbody.innerHTML = html;
     }
 
-    // Sync Staff from MongoDB naman_internal_app.user
+    // Sync Staff from internal HR source
     async function triggerSeedStaff() {
-        if (!confirm('Xác nhận đồng bộ danh sách tài khoản nhân sự từ MongoDB nội bộ (naman_internal_app.user)?')) return;
+        if (!confirm('Xác nhận đồng bộ danh sách tài khoản nhân sự từ hệ thống nhân sự nội bộ?')) return;
 
         const btn = document.getElementById('btn-seed-staff');
         const origHtml = btn ? btn.innerHTML : '';
@@ -947,7 +947,7 @@
             });
             const json = await res.json();
             if (res.ok && json.success) {
-                showToast(json.message || "Đã đồng bộ nhân sự từ naman_internal_app thành công!", "success");
+                showToast(json.message || "Đã đồng bộ nhân sự nội bộ thành công!", "success");
                 await loadUsers();
             } else {
                 showToast(json.message || "Không thể đồng bộ tài khoản nhân sự", "error");

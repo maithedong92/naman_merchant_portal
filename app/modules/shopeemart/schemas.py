@@ -19,6 +19,10 @@ class ShopeeMartTokenResponse(BaseModel):
     refresh_token: str = Field(..., description="Refresh token used to obtain new access token (valid for 30 days)")
     expire_in: int = Field(..., description="Expiration duration in seconds (usually 14400s)")
     shop_id: Optional[int] = Field(None, description="Shopee Shop ID associated with token")
+    authorized_shop_ids: List[str] = Field(
+        default_factory=list,
+        description="All Shopee Shop IDs authorized during this OAuth exchange (including main_account_id shop_id_list)",
+    )
     error: Optional[str] = Field(None, description="Shopee error code if failed")
     message: Optional[str] = Field(None, description="Shopee error message")
 
@@ -33,6 +37,18 @@ class ShopeeMartConnectionStatus(BaseModel):
     is_sandbox_mode: bool = Field(..., description="True if running in mock/sandbox mode without real credentials")
     partner_id: Optional[str] = None
     shop_id: Optional[str] = None
+
+
+class ShopeeMartRefreshStatusResponse(BaseModel):
+    """Sanitized OAuth token refresh status (never returns raw access_token or refresh_token)."""
+    channel_code: str = "SHOPEEMART"
+    shop_id: Optional[int] = Field(None, description="Shopee Shop ID associated with token")
+    expire_in: int = Field(..., description="Token expiration duration in seconds")
+    token_expires_at: Optional[str] = Field(None, description="ISO timestamp when token expires")
+    has_valid_token: bool = True
+    refreshed: bool = True
+    error: Optional[str] = None
+    message: Optional[str] = None
 
 
 class ShopeeMartCredentialsUpdateRequest(BaseModel):

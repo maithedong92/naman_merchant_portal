@@ -53,7 +53,7 @@ class ShopeeFoodClient:
     ) -> bool:
         """
         Verify inbound ShopeeFood / Foody webhook HMAC-SHA256 signature.
-        Supports both raw body signing and Foody canonical base_string (METHOD|URL|BODY).
+        Strictly requires Foody canonical base_string (`METHOD|URL|BODY`).
         """
         if not signature:
             return False
@@ -68,10 +68,15 @@ class ShopeeFoodClient:
             if isinstance(raw_body, (bytes, bytearray))
             else str(raw_body or "")
         )
-        candidates = [body_str]
-        for url_candidate in (full_url, public_url):
+        candidates: List[str] = []
+        for url_candidate in (public_url, full_url):
             if url_candidate:
-                candidates.append(f"{method.upper()}|{url_candidate}|{body_str}")
+                msg = f"{method.upper()}|{url_candidate}|{body_str}"
+                if msg not in candidates:
+                    candidates.append(msg)
+
+        if not candidates:
+            return False
 
         for msg in candidates:
             if verify_hmac_sha256(self.app_key, msg, sig_clean, is_hex_key=True):

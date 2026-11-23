@@ -6,8 +6,19 @@ from app.schemas.user import UserResponse, validate_password_policy
 
 class LoginRequest(BaseModel):
     """Schema for username/password authentication request."""
-    username: str = Field(..., description="Tên đăng nhập (username) hoặc mã nhân viên")
-    password: str = Field(..., description="Mật khẩu tài khoản")
+    username: str = Field(..., min_length=1, max_length=100, description="Tên đăng nhập (username) hoặc mã nhân viên")
+    password: str = Field(..., min_length=1, max_length=128, description="Mật khẩu tài khoản")
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str) -> str:
+        """Strip whitespace and block control/null characters in login identifier."""
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Tên đăng nhập không được để trống.")
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in cleaned):
+            raise ValueError("Tên đăng nhập chứa ký tự điều khiển không hợp lệ.")
+        return cleaned
 
 
 class TokenResponse(BaseModel):
@@ -21,7 +32,7 @@ class TokenResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     """Schema for requesting a new token pair using a valid refresh token."""
-    refresh_token: str = Field(..., description="Chuỗi refresh token hợp lệ")
+    refresh_token: Optional[str] = Field(None, description="Chuỗi refresh token hợp lệ")
 
 
 class ChangePasswordRequest(BaseModel):

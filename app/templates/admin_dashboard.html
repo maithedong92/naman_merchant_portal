@@ -73,7 +73,7 @@
                 <div id="kpi-uptime" class="text-xl font-semibold text-[#37352F]">--</div>
                 <span class="text-[11px] text-[#0F7B6C] font-medium">Uptime liên tục</span>
             </div>
-            <p class="mt-1 text-[11px] text-[#9B9A97]">PostgreSQL UMP + Nginx :3001</p>
+            <p class="mt-1 text-[11px] text-[#9B9A97]">Cơ sở dữ liệu &amp; Dịch vụ đồng bộ</p>
         </div>
 
         <!-- Metric 2: Open Operational Incidents -->
@@ -152,7 +152,7 @@
                             </div>
                             <div>
                                 <h3 class="font-semibold text-[#37352F] text-xs">ShopeeFood S2S</h3>
-                                <p class="text-[11px] text-[#9B9A97] font-mono">App ID: 10045</p>
+                                <p class="text-[11px] text-[#9B9A97] font-mono">Kết nối S2S trực tiếp</p>
                             </div>
                         </div>
                         <!-- Master Channel Toggle & Badge -->
@@ -228,7 +228,7 @@
 
                 <!-- Card Footer -->
                 <div class="mt-3 pt-3 border-t border-[#E9E9E7]/60 flex items-center justify-between text-xs">
-                    <span class="text-[#9B9A97] font-mono text-[11px]">Port 3002 • Adapter</span>
+                    <span class="text-[#9B9A97] font-mono text-[11px]">Kênh tích hợp • Adapter</span>
                     <button onclick="triggerSync('SHOPEEFOOD')" class="text-xs font-medium text-[#2F3437] hover:underline transition-colors">
                         Đồng bộ Menu &rarr;
                     </button>
@@ -322,7 +322,7 @@
 
                 <!-- Card Footer -->
                 <div class="mt-3 pt-3 border-t border-[#E9E9E7]/60 flex items-center justify-between text-xs">
-                    <span class="text-[#9B9A97] font-mono text-[11px]">Port 3002 • Adapter</span>
+                    <span class="text-[#9B9A97] font-mono text-[11px]">Kênh tích hợp • Adapter</span>
                     <button onclick="triggerSync('GRABMART')" class="text-xs font-medium text-[#2F3437] hover:underline transition-colors">
                         Đồng bộ Menu &rarr;
                     </button>
@@ -427,7 +427,7 @@
 
                 <!-- Card Footer -->
                 <div class="mt-2.5 pt-2.5 border-t border-[#E9E9E7]/60 flex items-center justify-between text-xs">
-                    <span class="text-[#9B9A97] font-mono text-[11px]">Port 3002 • Adapter</span>
+                    <span class="text-[#9B9A97] font-mono text-[11px]">Kênh tích hợp • Adapter</span>
                     <button onclick="triggerSync('SHOPEEMART')" class="text-xs font-medium text-[#2F3437] hover:underline transition-colors">
                         Đồng bộ Danh mục &rarr;
                     </button>
@@ -447,7 +447,7 @@
                     <span id="poppies-match-summary-badge" class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-[#DBEDDB] text-[#28456C]">-- / -- Kênh</span>
                 </div>
                 <p class="text-xs text-[#787774] mt-0.5">
-                    Đối chiếu trực tiếp danh mục kênh từ <code>Poppies ERP (/api/v1/pos/pricing/channels)</code> với mã kế toán Arito, cơ chế kế thừa giá và Adapter tại NAM-UMP.
+                    Đối chiếu trực tiếp danh mục kênh bán hàng từ <strong>Poppies ERP</strong> với mã kế toán Arito, cơ chế kế thừa giá và Adapter tại NAM-UMP.
                 </p>
             </div>
             <button onclick="triggerPoppiesChannelSync(false)" class="px-3 py-1.5 rounded text-xs font-medium text-[#0F7B6C] bg-[#DBEDDB]/50 border border-[#DBEDDB] hover:bg-[#DBEDDB] transition-colors inline-flex items-center space-x-1.5 self-start sm:self-auto shrink-0">
@@ -519,9 +519,9 @@
 
     <!-- Quick Action / Core Architecture Notice -->
     <div class="bg-white rounded-lg border border-[#E9E9E7] p-4 shadow-2xs">
-        <h3 class="text-sm font-semibold text-[#37352F] mb-1">Quy Hoạch Hạ Tầng 3 Lớp & Phân Vùng Cổng 3001+</h3>
+        <h3 class="text-sm font-semibold text-[#37352F] mb-1">Kiến Trúc Vận Hành &amp; Đồng Bộ Đa Kênh</h3>
         <p class="text-xs text-[#787774] mb-3 leading-relaxed">
-            Hệ thống chạy trên kiến trúc an toàn 3 lớp: <strong>Host Nginx</strong> (SSL Termination cổng 80/443) &rarr; <strong>Docker Stack</strong> (Nginx Container cổng 3001 &rarr; FastAPI Backend cổng 3002) &rarr; <strong>PostgreSQL UMP</strong> (Cụm Database tập trung).
+            Hệ thống vận hành theo kiến trúc tách lớp bảo mật giữa tầng điều phối đơn hàng, các Adapter kết nối sàn thương mại và cụm lưu trữ dữ liệu tập trung.
         </p>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -546,7 +546,7 @@
             <div class="p-3 rounded-md bg-[#F7F6F3] border border-[#E9E9E7]/80">
                 <div class="flex items-center justify-between">
                     <span class="font-medium text-xs text-[#37352F]">Cơ Sở Dữ Liệu UMP</span>
-                    <span class="text-[11px] font-mono text-[#0F7B6C] font-semibold">103.175.248.250:6767</span>
+                    <span class="text-[11px] font-mono text-[#0F7B6C] font-semibold">UMP Cluster (Active)</span>
                 </div>
                 <p class="text-[11px] text-[#787774] mt-1">PostgreSQL UMP tập trung lưu trữ đồng bộ sản phẩm, tồn kho và đơn hàng.</p>
             </div>
@@ -678,7 +678,7 @@
         inputEl.disabled = true;
 
         try {
-            const res = await authFetch(`/api/v1/channels/${channelCode}/features`, {
+            const res = await authFetch(`/api/v1/channels/${encodeURIComponent(channelCode)}/features`, {
                 method: 'PATCH',
                 body: JSON.stringify({ [featureKey]: isChecked })
             });
@@ -793,6 +793,16 @@
                 showToast('Liên kết OAuth ShopeeMart phải sử dụng giao thức HTTPS.', 'error');
                 return;
             }
+            const oauthHost = parsedAuthUrl.hostname.toLowerCase();
+            const isAllowedShopeeHost = (
+                oauthHost === 'shopeemobile.com' || oauthHost.endsWith('.shopeemobile.com') ||
+                oauthHost === 'shopee.com' || oauthHost.endsWith('.shopee.com') ||
+                oauthHost === 'shopee.vn' || oauthHost.endsWith('.shopee.vn')
+            );
+            if (!isAllowedShopeeHost) {
+                showToast('Tên miền OAuth ShopeeMart không hợp lệ.', 'error');
+                return;
+            }
             const safeAuthUrl = parsedAuthUrl.toString();
             const popup = window.open(safeAuthUrl, 'shopee_oauth_popup', 'width=980,height=720,menubar=no,toolbar=no,location=yes,status=no');
             if (!popup) {
@@ -884,7 +894,7 @@
                             <div class="text-[10px] text-[#787774]">${Number(ch.mapped_stores_count) || 0} chi nhánh • ${Number(ch.custom_price_skus_count) || 0} giá riêng • ${Number(ch.blocked_skus_count) || 0} cấm bán</div>`;
             } else if (ch.integration_mode === 'POS_BASE') {
                 modeDesc = `<div class="font-medium text-[#37352F]">🏪 Kênh Gốc POS Tại Quầy</div>
-                            <div class="text-[10px] text-[#787774]">Giá chuẩn Base VAT (${(report.total_local_products || 0).toLocaleString()} SKU)</div>`;
+                            <div class="text-[10px] text-[#787774]">Giá chuẩn Base VAT (${Number(report.total_local_products || 0).toLocaleString()} SKU)</div>`;
             } else {
                 modeDesc = `<div class="font-medium text-[#28456C]">🌐 Omnichannel / Haravan</div>
                             <div class="text-[10px] text-[#787774]">${Number(ch.custom_price_skus_count) || 0} giá riêng • ${Number(ch.blocked_skus_count) || 0} cấm bán</div>`;

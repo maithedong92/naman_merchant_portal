@@ -67,9 +67,10 @@ def test_file_service_clean_file_url():
     img_path = "/uploadIMG/sample.png"
     assert file_service.clean_file_url(img_path) == "https://namanapi.namanmarket.com/images/sample.png"
 
-    # Path tương đối
-    rel_path = "/custom/file.pdf"
-    assert file_service.clean_file_url(rel_path) == "https://namanapi.namanmarket.com/custom/file.pdf"
+    # Path tương đối trong whitelist (/files/, /orders/, /images/) và chặn path lạ + ép HTTPS
+    assert file_service.clean_file_url("/files/file.pdf") == "https://namanapi.namanmarket.com/files/file.pdf"
+    assert file_service.clean_file_url("/custom/file.pdf") == ""
+    assert file_service.clean_file_url("http://namanapi.namanmarket.com/orders/test.pdf") == "https://namanapi.namanmarket.com/orders/test.pdf"
 
 
 @pytest.mark.asyncio
@@ -89,14 +90,23 @@ async def test_file_service_upload_file_mocked():
 
 @pytest.mark.asyncio
 async def test_file_service_download_bytes_mocked():
-    """Kiểm tra proxy download file bytes."""
-    mock_resp = Response(
-        200,
-        content=b"%PDF-1.4 sample content",
-        headers={"content-type": "application/pdf"},
-    )
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = mock_resp
+    """Kiểm tra proxy download file bytes qua streaming giới hạn dung lượng."""
+    class _FakeStreamResp:
+        status_code = 200
+        headers = {"content-type": "application/pdf", "content-length": "23"}
+
+        async def aiter_bytes(self):
+            yield b"%PDF-1.4 "
+            yield b"sample content"
+
+    class _FakeStreamCM:
+        async def __aenter__(self):
+            return _FakeStreamResp()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    with patch("httpx.AsyncClient.stream", return_value=_FakeStreamCM()) as mock_stream:
         success, content, ctype, fname = await file_service.download_file_bytes(
             "https://namanapi.namanmarket.com/orders/sample.pdf"
         )
@@ -104,6 +114,7 @@ async def test_file_service_download_bytes_mocked():
         assert content == b"%PDF-1.4 sample content"
         assert ctype == "application/pdf"
         assert fname == "sample.pdf"
+        assert mock_stream.call_args.kwargs.get("follow_redirects") is False
 
 
 @pytest.mark.asyncio
@@ -119,6 +130,7 @@ async def test_haravan_order_service_attach_and_remove_file(mock_admin_user):
     }
 
     mock_col = MagicMock()
+    mock_col.find_one_and_update.return_value = sample_order
     with patch.object(haravan_order_service, "_get_orders_collection", return_value=mock_col):
         with patch.object(haravan_order_service, "get_order_detail", new_callable=AsyncMock) as mock_get_detail:
             mock_get_detail.return_value = sample_order
@@ -132,8 +144,8 @@ async def test_haravan_order_service_attach_and_remove_file(mock_admin_user):
                 current_user=mock_admin_user,
             )
             assert updated is not None
-            mock_col.update_one.assert_called()
-            args, kwargs = mock_col.update_one.call_args
+            mock_col.find_one_and_update.assert_called()
+            args, kwargs = mock_col.find_one_and_update.call_args
             update_payload = args[1]
             assert update_payload["$set"]["internal.order_file"] == "https://namanapi.namanmarket.com/orders/2026/10/invoice.pdf"
             assert update_payload["$set"]["internal.order_file_name"] == "invoice.pdf"
@@ -148,7 +160,7 @@ async def test_haravan_order_service_attach_and_remove_file(mock_admin_user):
                 file_name="tracking.pdf",
                 current_user=mock_admin_user,
             )
-            args, kwargs = mock_col.update_one.call_args
+            args, kwargs = mock_col.find_one_and_update.call_args
             update_payload = args[1]
             assert update_payload["$set"]["internal.tracking_file"] == "https://namanapi.namanmarket.com/orders/2026/10/tracking.pdf"
             assert update_payload["$push"]["internal.history"]["action"] == "Upload file vận đơn"
@@ -159,7 +171,7 @@ async def test_haravan_order_service_attach_and_remove_file(mock_admin_user):
                 file_type="order",
                 current_user=mock_admin_user,
             )
-            args, kwargs = mock_col.update_one.call_args
+            args, kwargs = mock_col.find_one_and_update.call_args
             update_payload = args[1]
             assert "internal.order_file" in update_payload["$unset"]
             assert update_payload["$push"]["internal.history"]["action"] == "Xóa file đơn hàng"

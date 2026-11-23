@@ -1,5 +1,6 @@
+import inspect
 import ipaddress
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 from urllib.parse import urlparse
 from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
@@ -11,6 +12,9 @@ from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import decode_token
 from app.models.user import User, UserRole
+
+if TYPE_CHECKING:
+    from app.models.store import Store
 
 settings = get_settings()
 
@@ -130,6 +134,9 @@ async def get_current_user(
     if not user.is_active:
         raise UnauthorizedError("Tài khoản người dùng đã bị vô hiệu hóa.")
 
+    if getattr(user, "portal_disabled", False):
+        raise UnauthorizedError("Tài khoản đã bị vô hiệu hóa trên cổng Portal.")
+
     raw_ver = payload.get("ver", 0)
     try:
         token_ver = int(0 if raw_ver is None else raw_ver)
@@ -170,24 +177,52 @@ def require_roles(*roles: UserRole) -> RoleChecker:
 # Pre-defined convenience guards
 require_super_admin = require_roles(UserRole.SUPER_ADMIN)
 require_store_manager = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER)
+require_financial_reader = require_roles(
+    UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.HQ_AUDITOR
+)
 require_order_dispatcher = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.CS)
 require_order_operator = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.CS, UserRole.STAFF)
 require_staff = require_roles(UserRole.SUPER_ADMIN, UserRole.STORE_MANAGER, UserRole.STAFF)
 
 
+def is_head_office_manager_or_admin(current_user: User) -> bool:
+    """True for SUPER_ADMIN (or is_superuser) or head-office STORE_MANAGER (store_id=None)."""
+    return bool(
+        current_user.is_superuser
+        or current_user.role == UserRole.SUPER_ADMIN.value
+        or (current_user.role == UserRole.STORE_MANAGER.value and current_user.store_id is None)
+    )
+
+
+async def require_head_office_manager(
+    current_user: User = Depends(require_store_manager),
+) -> User:
+    """Enforce SUPER_ADMIN or head-office STORE_MANAGER without single-branch assignment."""
+    if is_head_office_manager_or_admin(current_user):
+        return current_user
+    raise ForbiddenError(
+        "Thao tác toàn chuỗi chỉ dành cho quản trị viên hệ thống hoặc quản lý tổng bộ (Head Office)."
+    )
+
+
 def has_cross_store_read_access(current_user: User) -> bool:
     """
-    True for SUPER_ADMIN, CS dispatchers, or head-office STORE_MANAGER/READ_ONLY
-    without a single-branch assignment.
+    True for SUPER_ADMIN, HQ_AUDITOR, CS dispatchers, or head-office STORE_MANAGER
+    without a single-branch assignment. Unassigned READ_ONLY fails closed (False).
     """
-    if current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN.value:
+    if is_head_office_manager_or_admin(current_user):
         return True
-    if current_user.role == UserRole.CS.value:
+    return current_user.role in (UserRole.HQ_AUDITOR.value, UserRole.CS.value)
+
+
+def has_financial_global_read_access(current_user: User) -> bool:
+    """
+    True for SUPER_ADMIN, HQ_AUDITOR, or head-office STORE_MANAGER (store_id=None).
+    Excludes CS and unassigned READ_ONLY accounts.
+    """
+    if is_head_office_manager_or_admin(current_user):
         return True
-    return (
-        current_user.store_id is None
-        and current_user.role in (UserRole.STORE_MANAGER.value, UserRole.READ_ONLY.value)
-    )
+    return current_user.role == UserRole.HQ_AUDITOR.value
 
 
 def check_store_access(current_user: User, store_id: str) -> None:
@@ -208,6 +243,36 @@ def check_store_access(current_user: User, store_id: str) -> None:
     raise ForbiddenError(
         f"Bạn không có quyền quản trị hoặc thao tác trên chi nhánh '{store_id}'."
     )
+
+
+async def check_store_access_by_key(
+    db: AsyncSession,
+    current_user: User,
+    store_key: str,
+) -> Optional["Store"]:
+    """
+    Resolve Store by ID or code before enforcing check_store_access.
+    Fails closed (403) for branch-scoped users when no store record is resolved,
+    while preserving mock-DB fallback for head-office/admin users.
+    """
+    from app.models.store import Store
+
+    res = await db.execute(
+        select(Store).where((Store.id == store_key) | (Store.code == store_key))
+    )
+    store = res.scalar_one_or_none()
+    if inspect.iscoroutine(store):
+        store.close()
+        store = None
+    store_id = getattr(store, "id", None) if store is not None else None
+    if isinstance(store_id, str):
+        check_store_access(current_user, store_id)
+        return store
+    if not is_head_office_manager_or_admin(current_user):
+        raise ForbiddenError(
+            f"Bạn không có quyền quản trị hoặc thao tác trên chi nhánh '{store_key}'."
+        )
+    return None
 
 
 def reject_non_channel_mutator(current_user: User) -> None:

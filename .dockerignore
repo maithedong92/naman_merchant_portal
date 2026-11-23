@@ -1,0 +1,52 @@
+# Secrets & Environment Files
+.env
+.env.*
+*.pfx
+*.pem
+*.key
+*.crt
+cert/
+certs/
+
+# Runtime Data & Databases
+data/
+*.log
+*.sqlite3
+*.db
+
+# Git & Backups
+.git/
+.ag-kit-backups/
+
+# Python Caches & Virtualenvs
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Archives
+*.rar
+*.zip
+*.tar.gz
+
+# AI Agent & IDE Directories
+.agent/
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.kiro/
+.opencode/
+.vscode/
+.idea/
+
+# Tests & Temporary Outputs
+tests/
+output/
+scratch/

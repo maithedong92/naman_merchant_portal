@@ -804,11 +804,11 @@
     // Channel Styling Helpers (Apple Retail & Merchant Pro: Clean Badges & Contrast)
     function getChannelBadge(code) {
         const c = (code || '').toUpperCase();
-        if (c === 'SHOPEEFOOD') {
+        if (c === 'SHOPEEFOOD' || c === 'SHOPEE_FOOD') {
             return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200">ShopeeFood</span>`;
-        } else if (c === 'GRABMART') {
+        } else if (c === 'GRABMART' || c === 'GRAB' || c === 'GRAB_MART') {
             return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">GrabMart</span>`;
-        } else if (c === 'SHOPEEMART') {
+        } else if (c === 'SHOPEEMART' || c === 'SHOPEE_MART' || c === 'SHOPEE_FRESH') {
             return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">ShopeeMart</span>`;
         } else if (c === 'HARAVAN') {
             return `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">Haravan</span>`;
@@ -2189,7 +2189,7 @@
     // Order State Transition (1-Click Action)
     async function transitionOrderStatus(orderId, targetStatus, note = '') {
         try {
-            const res = await authFetch(`/api/v1/orders/${orderId}/status`, {
+            const res = await authFetch(`/api/v1/orders/${encodeURIComponent(orderId)}/status`, {
                 method: 'PATCH',
                 body: JSON.stringify({
                     new_status: targetStatus,
@@ -2257,7 +2257,7 @@
 
         try {
             if (currentCancellingOrderIsHaravan) {
-                const res = await authFetch(`/api/v1/haravan/orders/${currentCancellingOrderId}/cancel`, {
+                const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(currentCancellingOrderId)}/cancel`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -2274,7 +2274,7 @@
                     showToast(`Lỗi: ${data.message || 'Không thể hủy đơn'}`, 'error');
                 }
             } else {
-                const res = await authFetch(`/api/v1/orders/${currentCancellingOrderId}/status`, {
+                const res = await authFetch(`/api/v1/orders/${encodeURIComponent(currentCancellingOrderId)}/status`, {
                     method: 'PATCH',
                     body: JSON.stringify({
                         new_status: 'CANCELLED',
@@ -2304,24 +2304,14 @@
     // =========================================================================
     let currentDetailOrder = null;
 
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
     function formatDateTime(dateStr) {
         if (!dateStr) return '--';
         try {
             const d = new Date(dateStr);
-            if (isNaN(d.getTime())) return String(dateStr);
+            if (isNaN(d.getTime())) return window.escapeHtml(String(dateStr));
             return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.toLocaleDateString('vi-VN');
         } catch (e) {
-            return String(dateStr);
+            return window.escapeHtml(String(dateStr));
         }
     }
 
@@ -2438,7 +2428,7 @@
         btn.innerHTML = `<span>⏳</span><span>Đang lưu...</span>`;
 
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${orderId}/admin-note`, {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}/admin-note`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ note: note })
@@ -2507,6 +2497,8 @@
         }
     }
 
+    const SAFE_PREVIEW_TYPES = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);
+
     async function downloadHaravanFile(orderId, fileType) {
         const fileLabel = fileType === 'order' ? 'File đơn hàng' : 'File vận đơn';
         try {
@@ -2516,18 +2508,41 @@
                 showToast(`❌ Không thể tải ${fileLabel}: ${errText || ('HTTP ' + res.status)}`, 'error');
                 return;
             }
-            const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            const win = window.open(blobUrl, '_blank', 'noopener,noreferrer');
-            if (!win) {
+            const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+            const rawBlob = await res.blob();
+            const safeBaseName = `${String(fileType || 'file').replace(/[^a-zA-Z0-9_-]/g, '_')}_${String(orderId || 'order').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+            const extMap = {
+                'application/pdf': '.pdf',
+                'image/png': '.png',
+                'image/jpeg': '.jpg',
+                'image/webp': '.webp',
+            };
+            const fileExt = extMap[contentType] || '.bin';
+
+            if (SAFE_PREVIEW_TYPES.has(contentType)) {
+                const previewBlob = new Blob([rawBlob], { type: contentType });
+                const blobUrl = URL.createObjectURL(previewBlob);
+                const win = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+                if (!win) {
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = `${safeBaseName}${fileExt}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                }
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+            } else {
+                const downloadBlob = new Blob([rawBlob], { type: 'application/octet-stream' });
+                const blobUrl = URL.createObjectURL(downloadBlob);
                 const a = document.createElement('a');
                 a.href = blobUrl;
-                a.download = `${fileType}_${orderId}.pdf`;
+                a.download = `${safeBaseName}${fileExt}`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
             }
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
         } catch (err) {
             console.error('File download error:', err);
             showToast(`❌ Lỗi kết nối khi tải ${fileLabel}: ${err.message}`, 'error');
@@ -2847,7 +2862,7 @@
                                 ${!readOnlyUser ? `
                                 <label class="cursor-pointer py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
+                                    <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
                                 </label>
                                 <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'order')" class="py-1.5 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
@@ -2860,7 +2875,7 @@
                                 <label class="cursor-pointer w-full py-2 px-3 rounded-lg border border-dashed border-sky-400 hover:border-sky-600 bg-sky-50/60 hover:bg-sky-100/70 text-sky-800 text-[11px] font-semibold text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Đơn Hàng (PDF/Ảnh)</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
+                                    <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'order')">
                                 </label>
                                 ` : `<span class="text-[11px] text-slate-500 italic">Chưa có tệp đính kèm</span>`}
                             </div>
@@ -2895,7 +2910,7 @@
                                 ${!readOnlyUser ? `
                                 <label class="cursor-pointer py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold transition-colors flex items-center space-x-1" title="Thay thế file khác">
                                     <span>🔄 Đổi</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
+                                    <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
                                 </label>
                                 <button type="button" data-id="${escapeHtml(order.id)}" onclick="triggerDeleteOrderFile(this.dataset.id, 'tracking')" class="py-1.5 px-2.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors" title="Gỡ bỏ file này">
                                     <span>🗑️</span>
@@ -2908,7 +2923,7 @@
                                 <label class="cursor-pointer w-full py-2 px-3 rounded-lg border border-dashed border-emerald-400 hover:border-emerald-600 bg-emerald-50/60 hover:bg-emerald-100/70 text-emerald-800 text-[11px] font-semibold text-center transition-colors flex items-center justify-center space-x-1.5">
                                     <span>📁</span>
                                     <span>Chọn File Vận Đơn (PDF/Ảnh)</span>
-                                    <input type="file" accept=".pdf,image/*" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
+                                    <input type="file" accept=".pdf,image/png,image/jpeg,image/webp" class="hidden" data-id="${escapeHtml(order.id)}" onchange="handleOrderFileUpload(event, this.dataset.id, 'tracking')">
                                 </label>
                                 ` : `<span class="text-[11px] text-slate-500 italic">Chưa có tệp đính kèm</span>`}
                             </div>
@@ -3050,8 +3065,8 @@
                 if (isLoadingLiveStock) {
                     stockCellsHtml += `<td class="py-2.5 px-2 text-center text-slate-500 text-[11px] animate-pulse">...</td>`;
                 } else {
-                    const st = getStockForLocation(liveStock, snapshotStock, item.sku, b.code);
-                    const stDisplay = Number(Number(st || 0).toFixed(2)).toString();
+                    const st = Number(getStockForLocation(liveStock, snapshotStock, item.sku, b.code) || 0);
+                    const stDisplay = Number(st.toFixed(2)).toString();
                     let badge = '';
                     if (st >= reqQty) {
                         badge = `<span class="inline-block px-1.5 py-0.5 rounded-md text-[11px] font-mono tabular-nums whitespace-nowrap bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold" title="Tồn Arito: ${st}">${stDisplay}</span>`;
@@ -3381,12 +3396,12 @@
         // Fallback: If not found in memory cache, fetch directly from API
         if (!order) {
             try {
-                let res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
+                let res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}`);
                 let json = await res.json();
                 if (res.ok && json.success && json.data) {
                     order = json.data;
                 } else {
-                    res = await authFetch(`/api/v1/orders/${orderId}`);
+                    res = await authFetch(`/api/v1/orders/${encodeURIComponent(orderId)}`);
                     json = await res.json();
                     if (res.ok && json.success && json.data) {
                         order = json.data;
@@ -3418,7 +3433,7 @@
 
                 // Tải chi tiết và tồn kho Arito thời gian thực từ API
                 try {
-                    const res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
+                    const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}`);
                     if (res.ok) {
                         const json = await res.json();
                         if (json.success && json.data && typeof json.data === 'object' && !Array.isArray(json.data)) {
@@ -3469,7 +3484,7 @@
         modal.style.display = 'flex';
 
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${orderId}`);
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}`);
             const json = await res.json();
             if (!res.ok || !json.success || !json.data) {
                 showToast(`Không thể tải thông tin đơn: ${json.message || ''}`, 'error');
@@ -3506,14 +3521,15 @@
                 const sku = it.sku || '';
                 const reqQty = Number(it.quantity || 1);
                 const skuStock = liveStock[sku] || { branches: {} };
-                const b10001 = (skuStock.branches && skuStock.branches['10001'] && skuStock.branches['10001'].stock) || 0;
-                const b10004 = (skuStock.branches && skuStock.branches['10004'] && skuStock.branches['10004'].stock) || 0;
-                const b10005 = (skuStock.branches && skuStock.branches['10005'] && skuStock.branches['10005'].stock) || 0;
-                const b10006 = (skuStock.branches && skuStock.branches['10006'] && skuStock.branches['10006'].stock) || 0;
+                const b10001 = Number((skuStock.branches && skuStock.branches['10001'] && skuStock.branches['10001'].stock) || 0);
+                const b10004 = Number((skuStock.branches && skuStock.branches['10004'] && skuStock.branches['10004'].stock) || 0);
+                const b10005 = Number((skuStock.branches && skuStock.branches['10005'] && skuStock.branches['10005'].stock) || 0);
+                const b10006 = Number((skuStock.branches && skuStock.branches['10006'] && skuStock.branches['10006'].stock) || 0);
 
                 const getCell = (stk) => {
-                    const ok = stk >= reqQty;
-                    return `<td class="px-2 py-1.5 text-center ${ok ? 'text-[#448361] font-semibold bg-[#EDF3EC]/70' : 'text-[#D44C47] font-medium bg-[#FDEBEC]/70'}">${stk}</td>`;
+                    const numStk = Number(stk || 0);
+                    const ok = numStk >= reqQty;
+                    return `<td class="px-2 py-1.5 text-center ${ok ? 'text-[#448361] font-semibold bg-[#EDF3EC]/70' : 'text-[#D44C47] font-medium bg-[#FDEBEC]/70'}">${numStk}</td>`;
                 };
 
                 tbodyHtml += `
@@ -3549,7 +3565,7 @@
                         recBox.innerHTML = `
                             <div class="flex items-center space-x-2">
                                 <span class="text-base">💡</span>
-                                <span>Gợi ý hệ thống: Chi nhánh <strong>${escapeHtml(rec.store_name)} (${safeRecStore})</strong> có đủ <strong>${rec.fulfilled_items_count}/${rec.total_items_count}</strong> sản phẩm theo tồn Arito.</span>
+                                <span>Gợi ý hệ thống: Chi nhánh <strong>${escapeHtml(rec.store_name)} (${safeRecStore})</strong> có đủ <strong>${Number(rec.fulfilled_items_count || 0)}/${Number(rec.total_items_count || 0)}</strong> sản phẩm theo tồn Arito.</span>
                             </div>
                             <button data-store="${safeRecStore}" onclick="selectAssignStore(this.dataset.store)" class="px-2.5 py-1 rounded-md bg-[#2F3437] hover:bg-[#191919] text-white font-medium text-[11px] shrink-0 transition-colors">
                                 ⚡ Chọn chi nhánh này
@@ -3607,7 +3623,7 @@
         btn.disabled = true;
 
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/assign`, {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(currentHaravanOrderId)}/assign`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3666,7 +3682,7 @@
         btn.disabled = true;
 
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/reassign`, {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(currentHaravanOrderId)}/reassign`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ reason: reason, note: note })
@@ -3691,7 +3707,7 @@
     async function executeHaravanPack(orderId) {
         if (!confirm('Xác nhận: Nhân viên chi nhánh đã gom và đóng gói xong toàn bộ hàng?')) return;
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${orderId}/pack`, {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(orderId)}/pack`, {
                 method: 'POST'
             });
             const json = await res.json();
@@ -3748,7 +3764,7 @@
         btn.disabled = true;
 
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/ship`, {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(currentHaravanOrderId)}/ship`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3822,7 +3838,7 @@
         btn.disabled = true;
 
         try {
-            const res = await authFetch(`/api/v1/haravan/orders/${currentHaravanOrderId}/complete`, {
+            const res = await authFetch(`/api/v1/haravan/orders/${encodeURIComponent(currentHaravanOrderId)}/complete`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

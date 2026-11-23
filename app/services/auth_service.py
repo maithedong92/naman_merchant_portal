@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -11,7 +12,13 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.exceptions import ConflictError, NotFoundError, UnauthorizedError, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -88,9 +95,16 @@ class AuthService:
         return docs[0]
 
     def _list_active_mongo_users_sync(self) -> List[Dict[str, Any]]:
-        """Fetch all active user documents from MongoDB naman_internal_app.user."""
+        """Fetch all active, non-deleted user documents from MongoDB naman_internal_app.user."""
         col = self._get_mongo_user_collection()
-        return list(col.find({"status": {"$regex": "^active$", "$options": "i"}}))
+        return list(
+            col.find(
+                {
+                    "status": {"$regex": "^active$", "$options": "i"},
+                    "MarkForDelete": {"$ne": True},
+                }
+            )
+        )
 
     def _update_mongo_password_sync(self, mongo_id: Any, new_hashed_password: str) -> None:
         """Update password hash in MongoDB naman_internal_app.user."""
@@ -136,7 +150,7 @@ class AuthService:
 
         stored_pw = str(doc.get("password") or "").strip()
         if not stored_pw:
-            stored_pw = hash_password(f"disabled_{user_id_code}")
+            stored_pw = "!DISABLED!"
 
         return {
             "username": raw_username,
@@ -187,7 +201,10 @@ class AuthService:
             user.hashed_password = mapped["hashed_password"]
             user.full_name = mapped["full_name"]
             user.phone_number = mapped["phone_number"]
-            user.is_active = mapped["is_active"]
+            if getattr(user, "portal_disabled", False):
+                user.is_active = False
+            else:
+                user.is_active = mapped["is_active"]
         else:
             user = User(
                 username=mapped["username"],
@@ -210,6 +227,21 @@ class AuthService:
             )
         ).scalar_one()
         return reloaded
+
+    async def _revoke_all_refresh_tokens(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        now: datetime,
+    ) -> None:
+        """Mark all unrevoked refresh tokens belonging to a user as revoked."""
+        stmt = select(RefreshToken).where(
+            RefreshToken.user_id == user_id,
+            RefreshToken.revoked_at.is_(None),
+        )
+        result = await db.execute(stmt)
+        for tok in result.scalars().all():
+            tok.revoked_at = now
 
     async def log_security_event(
         self,
@@ -314,8 +346,8 @@ class AuthService:
                 f"Tài khoản đang bị tạm khóa do nhập sai mật khẩu quá nhiều lần. Vui lòng thử lại sau {remaining_mins} phút."
             )
 
-        # Check if user is active (synced from MongoDB status == 'active')
-        if not user.is_active:
+        # Check if user is active (synced from MongoDB status == 'active' and not portal_disabled)
+        if not user.is_active or getattr(user, "portal_disabled", False):
             await self.log_security_event(
                 db=db,
                 event_type="LOGIN_BLOCKED_INACTIVE",
@@ -323,8 +355,11 @@ class AuthService:
                 username=user.username,
                 ip_address=ip_address,
                 user_agent=user_agent,
+                details={"portal_disabled": bool(getattr(user, "portal_disabled", False))},
             )
             await db.commit()
+            if getattr(user, "portal_disabled", False):
+                raise UnauthorizedError("Tài khoản đã bị vô hiệu hóa trên cổng Portal.")
             raise UnauthorizedError("Tài khoản nhân sự đã ngừng kích hoạt trên hệ thống nội bộ Nam An.")
 
         # Verify password directly against MongoDB hash (or PG hash if Mongo auth disabled)
@@ -464,12 +499,7 @@ class AuthService:
 
         if token_record.revoked_at is not None:
             # Token reuse detection! Possible security breach: revoke all tokens for this user
-            revoke_all_stmt = select(RefreshToken).where(
-                RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None)
-            )
-            all_tokens_result = await db.execute(revoke_all_stmt)
-            for tok in all_tokens_result.scalars().all():
-                tok.revoked_at = now
+            await self._revoke_all_refresh_tokens(db, user_id, now)
 
             user_stmt = select(User).where(User.id == user_id).with_for_update()
             user_obj = (await db.execute(user_stmt)).scalar_one_or_none()
@@ -508,7 +538,7 @@ class AuthService:
                 logger.error(f"Không thể đối chiếu lại MongoDB khi refresh token cho '{user.username}': {refresh_mongo_ex}")
                 raise UnauthorizedError("Không thể xác minh trạng thái tài khoản trên hệ thống nội bộ. Vui lòng đăng nhập lại.")
 
-        if not user or not user.is_active:
+        if not user or not user.is_active or getattr(user, "portal_disabled", False):
             token_record.revoked_at = now
             await db.commit()
             raise UnauthorizedError("Người dùng không tồn tại hoặc đã bị vô hiệu hóa.")
@@ -584,13 +614,7 @@ class AuthService:
                 token.revoked_at = now
         else:
             # Revoke all active sessions of this user
-            stmt = select(RefreshToken).where(
-                RefreshToken.user_id == user.id,
-                RefreshToken.revoked_at.is_(None),
-            )
-            result = await db.execute(stmt)
-            for tok in result.scalars().all():
-                tok.revoked_at = now
+            await self._revoke_all_refresh_tokens(db, user.id, now)
 
         user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
 
@@ -707,13 +731,7 @@ class AuthService:
         user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
 
         # Invalidate all existing refresh tokens for security
-        stmt = select(RefreshToken).where(
-            RefreshToken.user_id == user.id,
-            RefreshToken.revoked_at.is_(None),
-        )
-        result = await db.execute(stmt)
-        for tok in result.scalars().all():
-            tok.revoked_at = now
+        await self._revoke_all_refresh_tokens(db, user.id, now)
 
         await self.log_security_event(
             db=db,
@@ -729,15 +747,27 @@ class AuthService:
     # User Management CRUD (Admin / Supervisor)
     # ==========================================================================
 
-    async def create_user(self, db: AsyncSession, user_in: UserCreate) -> User:
+    async def create_user(
+        self,
+        db: AsyncSession,
+        user_in: UserCreate,
+        actor_user: Optional[User] = None,
+    ) -> User:
         """Create a new portal user."""
-        # Check uniqueness of username
-        check_user = await db.execute(select(User).where(User.username == user_in.username))
-        if check_user.scalar_one_or_none():
-            raise ConflictError(f"Tên đăng nhập '{user_in.username}' đã tồn tại trong hệ thống.")
+        normalized_username = user_in.username.strip()
+        normalized_email = user_in.email.strip().lower()
 
-        # Check uniqueness of email
-        check_email = await db.execute(select(User).where(User.email == user_in.email.lower()))
+        # Check case-insensitive uniqueness of username
+        check_user = await db.execute(
+            select(User).where(func.lower(User.username) == normalized_username.lower())
+        )
+        if check_user.scalar_one_or_none():
+            raise ConflictError(f"Tên đăng nhập '{normalized_username}' đã tồn tại trong hệ thống.")
+
+        # Check case-insensitive uniqueness of email
+        check_email = await db.execute(
+            select(User).where(func.lower(User.email) == normalized_email)
+        )
         if check_email.scalar_one_or_none():
             raise ConflictError(f"Email '{user_in.email}' đã được đăng ký cho tài khoản khác.")
 
@@ -748,17 +778,30 @@ class AuthService:
                 raise NotFoundError("Store", user_in.store_id)
 
         user = User(
-            username=user_in.username.strip(),
-            email=user_in.email.strip().lower(),
+            username=normalized_username,
+            email=normalized_email,
             hashed_password=hash_password(user_in.password),
             full_name=user_in.full_name.strip(),
             phone_number=user_in.phone_number.strip() if user_in.phone_number else None,
             role=user_in.role.value,
             store_id=user_in.store_id,
             is_active=True,
+            portal_disabled=False,
             is_superuser=(user_in.role == UserRole.SUPER_ADMIN),
         )
         db.add(user)
+        await db.flush()
+        await self.log_security_event(
+            db=db,
+            event_type="USER_CREATED",
+            user_id=user.id,
+            username=user.username,
+            details={
+                "role": user.role,
+                "store_id": user.store_id,
+                "created_by": actor_user.username if actor_user else None,
+            },
+        )
         await db.commit()
         await db.refresh(user)
         logger.info(f"Đã tạo người dùng mới: {user.username} ({user.role})")
@@ -816,17 +859,69 @@ class AuthService:
             raise NotFoundError("User", user_id)
         return user
 
-    async def update_user(self, db: AsyncSession, user_id: str, user_in: UserUpdate) -> User:
-        """Update user profile or permissions."""
-        user = await self.get_user_by_id(db, user_id)
+    async def update_user(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        user_in: UserUpdate,
+        actor_user: Optional[User] = None,
+    ) -> User:
+        """Update user profile or permissions with self-lockout, last-admin, and audit guards."""
+        stmt = (
+            select(User)
+            .where(User.id == user_id)
+            .options(selectinload(User.store))
+            .with_for_update()
+        )
+        user = (await db.execute(stmt)).scalar_one_or_none()
+        if not user:
+            raise NotFoundError("User", user_id)
 
-        if user_in.email is not None and user_in.email.lower() != user.email:
+        if actor_user is not None and actor_user.id == user.id:
+            if user_in.is_active is False or (
+                user_in.role is not None and user_in.role != UserRole.SUPER_ADMIN
+            ):
+                raise ForbiddenError(
+                    "Không thể tự vô hiệu hóa hoặc tự hạ quyền tài khoản của chính mình."
+                )
+
+        is_target_super_admin = bool(
+            user.is_active and (user.is_superuser or user.role == UserRole.SUPER_ADMIN.value)
+        )
+        will_disable = user_in.is_active is False
+        will_demote = user_in.role is not None and user_in.role != UserRole.SUPER_ADMIN
+        if is_target_super_admin and (will_disable or will_demote):
+            other_admins_stmt = select(func.count(User.id)).where(
+                User.id != user.id,
+                User.is_active.is_(True),
+                or_(
+                    User.role == UserRole.SUPER_ADMIN.value,
+                    User.is_superuser.is_(True),
+                ),
+            )
+            other_admin_count = (await db.execute(other_admins_stmt)).scalar() or 0
+            if other_admin_count == 0:
+                raise ConflictError(
+                    "Không thể vô hiệu hóa hoặc hạ quyền SUPER_ADMIN đang hoạt động cuối cùng của hệ thống."
+                )
+
+        if user_in.password and settings.AUTH_MONGO_ENABLED:
+            raise ValidationError(
+                "Tài khoản đồng bộ từ HR cần đổi mật khẩu trực tiếp trên hệ thống HR nội bộ."
+            )
+
+        old_role = user.role
+        old_store_id = user.store_id
+        old_is_active = user.is_active
+
+        if user_in.email is not None and user_in.email.strip().lower() != user.email:
+            normalized_email = user_in.email.strip().lower()
             check_email = await db.execute(
-                select(User).where(User.email == user_in.email.lower(), User.id != user_id)
+                select(User).where(func.lower(User.email) == normalized_email, User.id != user_id)
             )
             if check_email.scalar_one_or_none():
                 raise ConflictError(f"Email '{user_in.email}' đã được sử dụng bởi người dùng khác.")
-            user.email = user_in.email.lower()
+            user.email = normalized_email
 
         if user_in.full_name is not None:
             user.full_name = user_in.full_name.strip()
@@ -838,7 +933,10 @@ class AuthService:
         if user_in.role is not None:
             user.role = user_in.role.value
             user.is_superuser = (user_in.role == UserRole.SUPER_ADMIN)
-            if user_in.role in (UserRole.SUPER_ADMIN, UserRole.CS) and "store_id" not in fields_set:
+            if (
+                user_in.role in (UserRole.SUPER_ADMIN, UserRole.CS, UserRole.HQ_AUDITOR)
+                and "store_id" not in fields_set
+            ):
                 user.store_id = None
 
         if "store_id" in fields_set or user_in.store_id is not None:
@@ -850,24 +948,76 @@ class AuthService:
             else:
                 user.store_id = None
 
+        now = datetime.now(timezone.utc)
+        token_revoked = False
+
         if user_in.is_active is not None:
-            user.is_active = user_in.is_active
+            if user_in.is_active is False:
+                user.is_active = False
+                user.portal_disabled = True
+                user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+                await self._revoke_all_refresh_tokens(db, user.id, now)
+                token_revoked = True
+            else:
+                user.is_active = True
+                user.portal_disabled = False
 
         if user_in.password:
             user.hashed_password = hash_password(user_in.password)
+            if not token_revoked:
+                user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
+                await self._revoke_all_refresh_tokens(db, user.id, now)
+                token_revoked = True
+
+        if (old_role != user.role or old_store_id != user.store_id) and not token_revoked:
             user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
-            # Revoke refresh tokens on admin password reset
-            now = datetime.now(timezone.utc)
-            stmt = select(RefreshToken).where(
-                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
-            )
-            result = await db.execute(stmt)
-            for tok in result.scalars().all():
-                tok.revoked_at = now
+
+        changes: Dict[str, Any] = {}
+        if old_role != user.role:
+            changes["role"] = {"from": old_role, "to": user.role}
+        if old_store_id != user.store_id:
+            changes["store_id"] = {"from": old_store_id, "to": user.store_id}
+        if old_is_active != user.is_active:
+            changes["is_active"] = {"from": old_is_active, "to": user.is_active}
+        if user_in.password:
+            changes["password_reset"] = True
+
+        if old_is_active and not user.is_active:
+            event_type = "USER_DEACTIVATED"
+        elif not old_is_active and user.is_active:
+            event_type = "USER_REACTIVATED"
+        else:
+            event_type = "USER_UPDATED"
+
+        await self.log_security_event(
+            db=db,
+            event_type=event_type,
+            user_id=user.id,
+            username=user.username,
+            details={
+                "changes": changes,
+                "portal_disabled": bool(getattr(user, "portal_disabled", False)),
+                "updated_by": actor_user.username if actor_user else None,
+            },
+        )
 
         await db.commit()
         await db.refresh(user)
         return user
+
+    async def deactivate_user(
+        self,
+        db: AsyncSession,
+        user_id: str,
+        actor_user: Optional[User] = None,
+    ) -> User:
+        """Deactivate a user account on the portal and revoke all active tokens."""
+        return await self.update_user(
+            db=db,
+            user_id=user_id,
+            user_in=UserUpdate(is_active=False),
+            actor_user=actor_user,
+        )
 
     async def list_security_logs(
         self,
@@ -935,18 +1085,21 @@ class AuthService:
 
         purged_count = 0
         deactivated_count = 0
-        if purge_demo_accounts and synced_usernames_lower:
+        now = datetime.now(timezone.utc)
+        if synced_usernames_lower:
             demo_prefixes = ("manager_1000", "staff_1000")
             demo_exact = {"admin", "shopee_tester"}
             pg_users = (await db.execute(select(User))).scalars().all()
             for u in pg_users:
                 ulow = u.username.lower()
                 if ulow not in synced_usernames_lower:
-                    if ulow in demo_exact or ulow.startswith(demo_prefixes):
+                    if purge_demo_accounts and (ulow in demo_exact or ulow.startswith(demo_prefixes)):
                         await db.delete(u)
                         purged_count += 1
-                    elif u.is_active:
+                    elif ulow != "admin" and u.is_active:
                         u.is_active = False
+                        u.token_version = int(getattr(u, "token_version", 0) or 0) + 1
+                        await self._revoke_all_refresh_tokens(db, u.id, now)
                         deactivated_count += 1
 
         await db.commit()
@@ -1016,7 +1169,7 @@ class AuthService:
     async def seed_branch_staff_users(
         self,
         db: AsyncSession,
-        default_password: str = "NamAn@2026",
+        default_password: Optional[str] = None,
     ) -> List[dict]:
         """
         Idempotent function that seeds Store Managers and Staff accounts for all 4 Nam An branches.
@@ -1024,6 +1177,7 @@ class AuthService:
         """
         from app.services.channel_service import DEFAULT_STORES
 
+        effective_password = default_password or secrets.token_urlsafe(12)
         created_accounts = []
         try:
             # 1. Ensure all default stores exist in DB
@@ -1051,7 +1205,7 @@ class AuthService:
                     mgr_user = User(
                         username=mgr_username,
                         email=f"manager.{code}@namanmarket.com",
-                        hashed_password=hash_password(default_password),
+                        hashed_password=hash_password(effective_password),
                         full_name=f"Cửa Hàng Trưởng - {store_short}",
                         phone_number=store.phone,
                         role=UserRole.STORE_MANAGER.value,
@@ -1066,7 +1220,6 @@ class AuthService:
                         "role": mgr_user.role,
                         "store_code": store.code,
                         "store_name": store.name,
-                        "default_password": default_password,
                     })
 
                 # 3. Seed Staff for this store
@@ -1077,7 +1230,7 @@ class AuthService:
                     staff_user = User(
                         username=staff_username,
                         email=f"staff.{code}@namanmarket.com",
-                        hashed_password=hash_password(default_password),
+                        hashed_password=hash_password(effective_password),
                         full_name=f"Nhân Viên - {store_short}",
                         phone_number=store.phone,
                         role=UserRole.STAFF.value,
@@ -1092,7 +1245,6 @@ class AuthService:
                         "role": staff_user.role,
                         "store_code": store.code,
                         "store_name": store.name,
-                        "default_password": default_password,
                     })
 
             await db.commit()

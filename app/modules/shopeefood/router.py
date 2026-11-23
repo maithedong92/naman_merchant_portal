@@ -1,5 +1,7 @@
+import ipaddress
 import json
 import logging
+import os
 import re
 import secrets
 from typing import Any, Dict, Optional
@@ -9,7 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import check_store_access, get_current_active_user, reject_non_channel_mutator
+from app.api.deps import (
+    _is_trusted_proxy,
+    check_store_access,
+    get_current_active_user,
+    reject_non_channel_mutator,
+)
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError
 from app.core.security import redact_sensitive_headers, verify_hmac_sha256
@@ -33,6 +40,53 @@ security = HTTPBasic(auto_error=False)
 
 def _reject_read_only(current_user: User) -> None:
     reject_non_channel_mutator(current_user)
+
+
+def _is_trusted_webhook_proxy(request: Request) -> bool:
+    """Return True only when direct TCP peer is in TRUSTED_PROXY_CIDRS (or TestClient in test env)."""
+    peer_ip = request.client.host if request.client else None
+    if not peer_ip:
+        return False
+    current_settings = get_settings()
+    if peer_ip == "testclient" and str(getattr(current_settings, "ENVIRONMENT", "")).lower() == "test":
+        return True
+    try:
+        peer_addr = ipaddress.ip_address(peer_ip)
+        for cidr in getattr(current_settings, "TRUSTED_PROXY_CIDRS", []):
+            if peer_addr in ipaddress.ip_network(cidr, strict=False):
+                return True
+    except ValueError:
+        return _is_trusted_proxy(peer_ip)
+    return False
+
+
+def _get_public_base_url() -> str:
+    current_settings = get_settings()
+    return (
+        getattr(current_settings, "PUBLIC_BASE_URL", "")
+        or os.environ.get("PUBLIC_BASE_URL", "")
+        or ""
+    ).strip().rstrip("/")
+
+
+def _build_canonical_webhook_url(request: Request) -> str:
+    """Reconstruct canonical public URL from PUBLIC_BASE_URL or trusted proxy X-Forwarded-* headers."""
+    query_suffix = f"?{request.url.query}" if request.url.query else ""
+    public_base = _get_public_base_url()
+    if public_base:
+        return f"{public_base}{request.url.path}{query_suffix}"
+
+    if _is_trusted_webhook_proxy(request):
+        raw_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+        proto = raw_proto if raw_proto in ("http", "https") else request.url.scheme
+        raw_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+        if raw_host and not any(ch in raw_host for ch in ("/", "\\", " ", "\r", "\n")):
+            host = raw_host
+        else:
+            host = request.headers.get("host") or request.url.netloc
+        return f"{proto}://{host}{request.url.path}{query_suffix}"
+
+    return str(request.url)
 
 
 # ==============================================================================
@@ -99,10 +153,20 @@ async def _verify_shopeefood_order_via_s2s(
     reply_partner_id = str(reply_rest.get("partner_restaurant_id") or "").strip()
     reply_rest_id = str(reply_rest.get("id") or "").strip()
     payload_partner_id = str(payload.get("partner_restaurant_id") or "").strip()
-    if payload_partner_id and reply_partner_id and payload_partner_id != reply_partner_id:
+    payload_rest_id = str(payload.get("restaurant_id") or "").strip()
+    if payload_partner_id and (not reply_partner_id or payload_partner_id != reply_partner_id):
         logger.warning(
             f"ShopeeFood webhook rejected: partner_restaurant_id mismatch "
             f"(payload={payload_partner_id}, s2s={reply_partner_id}) for order_code={order_code}."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="ShopeeFood store mismatch on S2S verification",
+        )
+    if payload_rest_id and (not reply_rest_id or payload_rest_id != reply_rest_id):
+        logger.warning(
+            f"ShopeeFood webhook rejected: restaurant_id mismatch "
+            f"(payload={payload_rest_id}, s2s={reply_rest_id}) for order_code={order_code}."
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -171,15 +235,8 @@ async def receive_shopeefood_order_webhook(
     raw_body = await request.body()
     headers = dict(request.headers)
 
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = (
-        request.headers.get("x-forwarded-host")
-        or request.headers.get("host")
-        or request.url.netloc
-    )
-    public_url = f"{proto}://{host}{request.url.path}"
-    if request.url.query:
-        public_url = f"{public_url}?{request.url.query}"
+    public_base = _get_public_base_url()
+    public_url = _build_canonical_webhook_url(request)
 
     sig_header = (
         authorization
@@ -195,13 +252,14 @@ async def receive_shopeefood_order_webhook(
             else sig_header.strip()
         )
         full_url = str(request.url)
+        effective_full_url = None if public_base else full_url
         alt_public_url = public_url.rstrip("/") if not request.url.query and public_url.endswith("/") else public_url
         try:
             valid = shopeefood_client.verify_hmac_sha256(
                 raw_body,
                 sig,
                 method=request.method,
-                full_url=full_url,
+                full_url=effective_full_url,
                 public_url=public_url,
             )
             if not valid and alt_public_url != public_url:
@@ -209,19 +267,30 @@ async def receive_shopeefood_order_webhook(
                     raw_body,
                     sig,
                     method=request.method,
-                    full_url=full_url.rstrip("/"),
+                    full_url=effective_full_url.rstrip("/") if effective_full_url else None,
                     public_url=alt_public_url,
                 )
         except TypeError:
-            valid = shopeefood_client.verify_hmac_sha256(raw_body, sig)
+            valid = shopeefood_client.verify_hmac_sha256(
+                raw_body,
+                sig,
+                method=request.method,
+                full_url=effective_full_url,
+                public_url=public_url,
+            )
 
         current_app_key = getattr(shopeefood_client, "app_key", "") or getattr(
             get_settings(), "SHOPEEFOOD_APP_KEY", ""
         )
         if not valid and current_app_key:
             body_str = raw_body.decode("utf-8", errors="ignore") if raw_body else ""
-            base_string = f"{request.method.upper()}|{full_url}|{body_str}"
-            valid = verify_hmac_sha256(current_app_key, base_string, sig, is_hex_key=True)
+            for check_url in (public_url, effective_full_url):
+                if not check_url:
+                    continue
+                base_string = f"{request.method.upper()}|{check_url}|{body_str}"
+                if verify_hmac_sha256(current_app_key, base_string, sig, is_hex_key=True):
+                    valid = True
+                    break
 
         if not valid:
             logger.warning("ShopeeFood webhook signature verification failed.")
@@ -293,7 +362,7 @@ async def get_shopeefood_store_menu_json(
 ):
     """
     Public Menu endpoint used by ShopeeFood crawler to fetch store catalog.
-    Secured by HTTP Basic Authentication (namanmarket / shopeefoodapi).
+    Secured by HTTP Basic Authentication.
     Stores:
     - 21 Thảo Điền: 10001
     - 46 Hưng Phúc: 10004
@@ -325,7 +394,10 @@ async def get_shopeefood_store_menu_json(
             headers={"WWW-Authenticate": "Basic"}
         )
 
-    safe_store_code = re.sub(r"[^A-Za-z0-9_-]", "", store_code)
+    safe_store_code = re.sub(r"[^A-Za-z0-9_-]", "", store_code or "")
+    if not safe_store_code or safe_store_code != store_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mã cửa hàng không hợp lệ.")
+
     # 2. Check if cached menu exists
     cached = adapter.get_cached_menu(safe_store_code)
     if cached:
@@ -336,14 +408,14 @@ async def get_shopeefood_store_menu_json(
         )
 
     # 3. Find matching store in database or build catalog
-    stmt = select(Store).where(Store.code == store_code)
+    stmt = select(Store).where(Store.code == safe_store_code)
     res = await db.execute(stmt)
     store = res.scalar_one_or_none()
-    store_id = store.id if store else store_code
+    store_id = store.id if store else safe_store_code
 
     catalog = await adapter.build_catalog_menu(
         store_id=store_id,
-        partner_store_id=store_code,
+        partner_store_id=safe_store_code,
         db=db
     )
 

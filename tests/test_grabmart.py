@@ -53,7 +53,7 @@ async def test_grabmart_client_token_simulation():
 def test_grabmart_partner_oauth_webhook_endpoint(client):
     """GrabMart calls POST /grabmart/oauth/token and /api/v1/grabmart/oauth/token to authenticate."""
     payload = {
-        "client_id": "grabmart_pos_system",
+        "client_id": "naman_grabmart_pos",
         "client_secret": "grabmart_secret_123",
         "grant_type": "client_credentials",
         "scope": "grabmart.partner.pos"

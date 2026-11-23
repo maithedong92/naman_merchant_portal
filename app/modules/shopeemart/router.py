@@ -1,8 +1,10 @@
 from collections import OrderedDict
 import hashlib
 import html
+import ipaddress
 import json
 import logging
+import os
 import re
 import time
 from typing import Any, Dict, Optional
@@ -10,13 +12,16 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import (
+    _is_trusted_proxy,
     check_store_access,
     get_current_active_user,
+    has_cross_store_read_access,
     reject_non_channel_mutator,
     require_store_manager,
     require_super_admin,
@@ -31,6 +36,7 @@ from app.models.inventory import StoreInventory
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
 from app.models.product import Product
 from app.models.store import Store, StoreChannelMapping
+from app.models.sync_log import WebhookAuditLog
 from app.models.user import User, UserRole
 from app.modules.shopeemart.adapter import ShopeeMartChannelAdapter, normalize_shopee_cancel_reason
 from app.modules.shopeemart.schemas import (
@@ -46,8 +52,8 @@ from app.modules.shopeemart.schemas import (
     ShopeeMartDisputeReturnRequest,
     ShopeeMartPublishOutletRequest,
     ShopeeMartPushSkuRequest,
+    ShopeeMartRefreshStatusResponse,
     ShopeeMartShipOrderRequest,
-    ShopeeMartTokenResponse,
     ShopeeMartUpdateItemRequest,
     ShopeeMartCommentListResponse,
     ShopeeMartReplyCommentRequest,
@@ -68,6 +74,57 @@ _ALLOWED_SHOPEE_API_HOSTS = {
     "openplatform.sandbox.test-stable.shopeemobile.com",
 }
 
+_PROCESSED_WEBHOOK_DELIVERIES: "OrderedDict[str, float]" = OrderedDict()
+_MAX_PROCESSED_WEBHOOK_DELIVERIES = 4096
+_WEBHOOK_MAX_SKEW_SECONDS = 300
+
+
+def _is_trusted_webhook_proxy(request: Request) -> bool:
+    """Return True only when the direct TCP peer belongs to TRUSTED_PROXY_CIDRS (or TestClient in test env)."""
+    peer_ip = request.client.host if request.client else None
+    if not peer_ip:
+        return False
+    current_settings = get_settings()
+    if peer_ip == "testclient" and str(getattr(current_settings, "ENVIRONMENT", "")).lower() == "test":
+        return True
+    try:
+        peer_addr = ipaddress.ip_address(peer_ip)
+        for cidr in getattr(current_settings, "TRUSTED_PROXY_CIDRS", []):
+            if peer_addr in ipaddress.ip_network(cidr, strict=False):
+                return True
+    except ValueError:
+        return _is_trusted_proxy(peer_ip)
+    return False
+
+
+def _get_public_base_url() -> str:
+    current_settings = get_settings()
+    return (
+        getattr(current_settings, "PUBLIC_BASE_URL", "")
+        or os.environ.get("PUBLIC_BASE_URL", "")
+        or ""
+    ).strip().rstrip("/")
+
+
+def _build_canonical_webhook_url(request: Request) -> str:
+    """Reconstruct canonical public URL from PUBLIC_BASE_URL or trusted proxy X-Forwarded-* headers."""
+    query_suffix = f"?{request.url.query}" if request.url.query else ""
+    public_base = _get_public_base_url()
+    if public_base:
+        return f"{public_base}{request.url.path}{query_suffix}"
+
+    if _is_trusted_webhook_proxy(request):
+        raw_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+        proto = raw_proto if raw_proto in ("http", "https") else request.url.scheme
+        raw_host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip()
+        if raw_host and not any(ch in raw_host for ch in ("/", "\\", " ", "\r", "\n")):
+            host = raw_host
+        else:
+            host = request.headers.get("host") or request.url.netloc
+        return f"{proto}://{host}{request.url.path}{query_suffix}"
+
+    return str(request.url)
+
 
 def _validate_shopee_redirect_url(redirect_url: str) -> str:
     parsed = urlparse(redirect_url)
@@ -75,6 +132,9 @@ def _validate_shopee_redirect_url(redirect_url: str) -> str:
     if parsed.scheme not in ("https", "http") or not host:
         raise HTTPException(status_code=400, detail="redirect_url không hợp lệ.")
     if host in ("localhost", "127.0.0.1"):
+        env = str(getattr(get_settings(), "ENVIRONMENT", "production") or "production").strip().lower()
+        if env == "production":
+            raise HTTPException(status_code=400, detail="redirect_url localhost không được phép trong production.")
         return redirect_url
     if host == "namanmarket.com" or host.endswith(".namanmarket.com"):
         if parsed.scheme != "https":
@@ -85,6 +145,105 @@ def _validate_shopee_redirect_url(redirect_url: str) -> str:
 
 def _reject_read_only(current_user: User) -> None:
     reject_non_channel_mutator(current_user)
+
+
+async def _resolve_shopeemart_store_for_shop(
+    db: AsyncSession,
+    shop_id: Optional[str],
+) -> Optional[str]:
+    clean_shop = str(shop_id or "").strip()
+    if not clean_shop:
+        return None
+    scm_stmt = (
+        select(StoreChannelMapping)
+        .join(Channel, Channel.id == StoreChannelMapping.channel_id)
+        .where(
+            Channel.code.in_(["SHOPEEMART", "SHOPEE_MART"]),
+            StoreChannelMapping.partner_store_id == clean_shop,
+        )
+    )
+    scm_res = await db.execute(scm_stmt)
+    mapping = scm_res.scalars().first()
+    if mapping is not None:
+        if isinstance(mapping, str):
+            return mapping
+        if getattr(mapping, "store_id", None):
+            return str(mapping.store_id)
+
+    store_stmt = select(Store).where(Store.code == clean_shop)
+    store_res = await db.execute(store_stmt)
+    store_obj = store_res.scalars().first()
+    if store_obj is not None:
+        if isinstance(store_obj, str):
+            return store_obj
+        if getattr(store_obj, "id", None):
+            return str(store_obj.id)
+    return None
+
+
+async def _authorize_shopeemart_access(
+    db: AsyncSession,
+    current_user: User,
+    *,
+    order_sn: Optional[str] = None,
+    shop_id: Optional[str] = None,
+    require_order_for_branch: bool = False,
+) -> Optional[UnifiedOrder]:
+    """Enforce branch store access for ShopeeMart endpoints (global roles bypass branch lookup)."""
+    order: Optional[UnifiedOrder] = None
+    if order_sn:
+        try:
+            order_res = await db.execute(
+                select(UnifiedOrder).where(UnifiedOrder.channel_order_id == order_sn)
+            )
+            order = order_res.scalars().first()
+        except Exception as lookup_ex:
+            if not has_cross_store_read_access(current_user):
+                logger.warning(f"Could not look up local order ({order_sn}): {lookup_ex}")
+
+    if has_cross_store_read_access(current_user):
+        return order
+
+    if not getattr(current_user, "store_id", None):
+        raise ForbiddenError("Tài khoản chưa được phân công chi nhánh để thao tác trên ShopeeMart.")
+
+    if order_sn:
+        if order and getattr(order, "store_id", None):
+            check_store_access(current_user, order.store_id)
+            if shop_id:
+                mapped_store = await _resolve_shopeemart_store_for_shop(db, shop_id)
+                if mapped_store:
+                    check_store_access(current_user, mapped_store)
+            return order
+
+        if shop_id:
+            mapped_store = await _resolve_shopeemart_store_for_shop(db, shop_id)
+            if mapped_store:
+                check_store_access(current_user, mapped_store)
+                if not require_order_for_branch:
+                    return None
+            elif not require_order_for_branch:
+                raise ForbiddenError("Không có quyền truy cập đơn hàng hoặc gian hàng ShopeeMart này.")
+
+        if require_order_for_branch:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy đơn hàng ShopeeMart #{order_sn} thuộc chi nhánh của bạn.",
+            )
+
+        effective_shop = shopeemart_client._pick_best_shop_id(None)
+        mapped_store = await _resolve_shopeemart_store_for_shop(db, effective_shop)
+        if mapped_store:
+            check_store_access(current_user, mapped_store)
+            return None
+        raise ForbiddenError("Không xác định được quyền chi nhánh cho đơn hàng ShopeeMart này.")
+
+    effective_shop = shop_id or shopeemart_client._pick_best_shop_id(None)
+    mapped_store = await _resolve_shopeemart_store_for_shop(db, effective_shop)
+    if mapped_store:
+        check_store_access(current_user, mapped_store)
+        return None
+    raise ForbiddenError("Không xác định được quyền chi nhánh cho gian hàng ShopeeMart này.")
 
 
 # ==============================================================================
@@ -105,15 +264,8 @@ async def receive_shopeemart_order_webhook(
     headers = dict(request.headers)
 
     full_url = str(request.url)
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = (
-        request.headers.get("x-forwarded-host")
-        or request.headers.get("host")
-        or request.url.netloc
-    )
-    public_url = f"{proto}://{host}{request.url.path}"
-    if request.url.query:
-        public_url = f"{public_url}?{request.url.query}"
+    public_base = _get_public_base_url()
+    public_url = _build_canonical_webhook_url(request)
 
     if not authorization:
         logger.warning(f"ShopeeMart webhook missing Authorization header on URL: {public_url}")
@@ -122,22 +274,103 @@ async def receive_shopeemart_order_webhook(
             detail="Missing ShopeeMart webhook Authorization signature"
         )
 
-    is_valid = shopeemart_client.verify_webhook_signature(full_url, raw_body, authorization)
-    if not is_valid and public_url != full_url:
-        is_valid = shopeemart_client.verify_webhook_signature(public_url, raw_body, authorization)
+    is_valid = shopeemart_client.verify_webhook_signature(public_url, raw_body, authorization)
+    if not is_valid and not public_base and public_url != full_url:
+        is_valid = shopeemart_client.verify_webhook_signature(full_url, raw_body, authorization)
     if not is_valid:
-        logger.warning(f"ShopeeMart webhook signature invalid for url: {public_url} (internal: {full_url})")
+        logger.warning(f"ShopeeMart webhook signature invalid for url: {public_url}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="ShopeeMart webhook signature verification failed"
         )
 
+    parsed_payload: Any = {}
+    if raw_body:
+        try:
+            parsed_payload = json.loads(raw_body.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON webhook payload")
+
+    if isinstance(parsed_payload, dict) and parsed_payload.get("timestamp") is not None:
+        try:
+            ts_val = float(parsed_payload["timestamp"])
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid ShopeeMart webhook timestamp",
+            )
+        if abs(time.time() - ts_val) > _WEBHOOK_MAX_SKEW_SECONDS:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Expired ShopeeMart webhook timestamp",
+            )
+
     if db is None:
         logger.error("ShopeeMart order webhook rejected: database unavailable.")
         return JSONResponse(status_code=503, content={"code": 503, "message": "database_unavailable"})
 
+    delivery_id = (
+        str(
+            parsed_payload.get("msg_id")
+            or parsed_payload.get("message_id")
+            or request.headers.get("x-shopee-delivery-id")
+            or ""
+        ).strip()
+        if isinstance(parsed_payload, dict)
+        else ""
+    )
+    dedupe_key = (
+        f"msg:{delivery_id}"
+        if delivery_id
+        else f"body:{hashlib.sha256(raw_body).hexdigest()}"
+    )
+
+    if dedupe_key in _PROCESSED_WEBHOOK_DELIVERIES:
+        return {"code": 0, "message": "success", "duplicate": True}
+
+    if isinstance(db, AsyncSession):
+        try:
+            dup_stmt = select(WebhookAuditLog.id).where(
+                WebhookAuditLog.channel_code == "SHOPEEMART_WEBHOOK",
+                WebhookAuditLog.idempotency_key == dedupe_key,
+            )
+            if (await db.execute(dup_stmt)).scalar_one_or_none() is not None:
+                _PROCESSED_WEBHOOK_DELIVERIES[dedupe_key] = time.time()
+                return {"code": 0, "message": "success", "duplicate": True}
+        except SQLAlchemyError:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
     try:
         response = await adapter.handle_order_webhook(headers, raw_body, db)
+        if isinstance(response, dict) and response.get("code") == 0:
+            if isinstance(db, AsyncSession):
+                try:
+                    async with db.begin_nested():
+                        db.add(
+                            WebhookAuditLog(
+                                channel_code="SHOPEEMART_WEBHOOK",
+                                event_type="ORDER_PUSH",
+                                idempotency_key=dedupe_key,
+                                headers=None,
+                                payload={"order_sn": response.get("order_sn")},
+                                response_status=200,
+                            )
+                        )
+                        await db.flush()
+                    await db.commit()
+                except IntegrityError:
+                    await db.rollback()
+                except SQLAlchemyError:
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        pass
+            _PROCESSED_WEBHOOK_DELIVERIES[dedupe_key] = time.time()
+            while len(_PROCESSED_WEBHOOK_DELIVERIES) > _MAX_PROCESSED_WEBHOOK_DELIVERIES:
+                _PROCESSED_WEBHOOK_DELIVERIES.popitem(last=False)
         return response
     except Exception as ex:
         logger.error(f"Error handling ShopeeMart webhook: {ex}", exc_info=True)
@@ -162,11 +395,21 @@ async def get_shopee_auth_url(
     ),
     current_user: User = Depends(require_super_admin),
 ):
-    base_host = str(request.base_url).rstrip("/")
-    forwarded_proto = request.headers.get("x-forwarded-proto", "")
-    if forwarded_proto == "https" or "ump.namanmarket.com" in base_host:
-        base_host = base_host.replace("http://", "https://")
-    final_redirect = _validate_shopee_redirect_url(redirect_url) if redirect_url else f"{base_host}/api/v1/shopeemart/auth/callback"
+    public_base = _get_public_base_url()
+    if redirect_url:
+        final_redirect = _validate_shopee_redirect_url(redirect_url)
+    elif public_base:
+        final_redirect = _validate_shopee_redirect_url(f"{public_base}/api/v1/shopeemart/auth/callback")
+    else:
+        base_host = str(request.base_url).rstrip("/")
+        if _is_trusted_webhook_proxy(request):
+            forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+            if forwarded_proto == "https" or "ump.namanmarket.com" in base_host:
+                base_host = base_host.replace("http://", "https://")
+        elif "ump.namanmarket.com" in base_host:
+            base_host = base_host.replace("http://", "https://")
+        final_redirect = _validate_shopee_redirect_url(f"{base_host}/api/v1/shopeemart/auth/callback")
+
     oauth_state = create_partner_token("shopeemart_oauth", str(current_user.id), expires_seconds=900)
     sep = "&" if "?" in final_redirect else "?"
     final_redirect_with_state = f"{final_redirect}{sep}state={oauth_state}"
@@ -202,15 +445,76 @@ async def handle_shopee_auth_callback(
     state_key = str(state_payload.get("jti") or hashlib.sha256(state.encode("utf-8")).hexdigest())
     if state_key in _CONSUMED_OAUTH_STATES:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tham số state OAuth đã được sử dụng.")
+
+    if isinstance(db, AsyncSession):
+        try:
+            existing_state = (
+                await db.execute(
+                    select(WebhookAuditLog.id).where(
+                        WebhookAuditLog.channel_code == "SHOPEEMART_OAUTH",
+                        WebhookAuditLog.idempotency_key == state_key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_state is not None:
+                _CONSUMED_OAUTH_STATES[state_key] = time.time()
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tham số state OAuth đã được sử dụng.")
+            async with db.begin_nested():
+                db.add(
+                    WebhookAuditLog(
+                        channel_code="SHOPEEMART_OAUTH",
+                        event_type="OAUTH_STATE",
+                        idempotency_key=state_key,
+                        headers=None,
+                        payload={"shop_id": str(shop_id or main_account_id or "")},
+                        response_status=200,
+                    )
+                )
+                await db.flush()
+            await db.commit()
+        except HTTPException:
+            raise
+        except IntegrityError:
+            await db.rollback()
+            _CONSUMED_OAUTH_STATES[state_key] = time.time()
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tham số state OAuth đã được sử dụng.")
+        except SQLAlchemyError:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
     _CONSUMED_OAUTH_STATES[state_key] = time.time()
     while len(_CONSUMED_OAUTH_STATES) > _MAX_CONSUMED_OAUTH_STATES:
         _CONSUMED_OAUTH_STATES.popitem(last=False)
 
-    effective_shop_id = str(shop_id or main_account_id or shopeemart_client.default_shop_id or "").strip()
-    if not effective_shop_id or not re.fullmatch(r"\d{1,20}", effective_shop_id):
+    raw_shop_id = str(shop_id).strip() if shop_id is not None and str(shop_id).strip() else None
+    raw_main_id = str(main_account_id).strip() if main_account_id is not None and str(main_account_id).strip() else None
+    if raw_shop_id and not re.fullmatch(r"\d{1,20}", raw_shop_id):
+        raise HTTPException(status_code=400, detail="Tham số shop_id từ Shopee OAuth callback không hợp lệ.")
+    if raw_main_id and not re.fullmatch(r"\d{1,20}", raw_main_id):
+        raise HTTPException(status_code=400, detail="Tham số main_account_id từ Shopee OAuth callback không hợp lệ.")
+
+    fallback_sid = str(raw_shop_id or raw_main_id or shopeemart_client.default_shop_id or "").strip()
+    if not fallback_sid or not re.fullmatch(r"\d{1,20}", fallback_sid):
         raise HTTPException(status_code=400, detail="Tham số shop_id từ Shopee OAuth callback không hợp lệ.")
 
-    token_resp = await shopeemart_client.exchange_code_for_token(code=code, shop_id=effective_shop_id)
+    token_resp = await shopeemart_client.exchange_code_for_token(
+        code=code,
+        shop_id=raw_shop_id,
+        main_account_id=raw_main_id,
+    )
+    raw_auth_sids = getattr(token_resp, "authorized_shop_ids", None) or [fallback_sid]
+    target_shop_ids = [
+        str(sid).strip()
+        for sid in raw_auth_sids
+        if re.fullmatch(r"\d{1,20}", str(sid).strip())
+    ]
+    if not target_shop_ids:
+        target_shop_ids = [fallback_sid]
+    resp_shop_id = getattr(token_resp, "shop_id", None)
+    effective_shop_id = raw_shop_id or (str(resp_shop_id) if resp_shop_id is not None else "") or target_shop_ids[0]
+
     if shopeemart_client.is_configured and effective_shop_id:
         shopeemart_client.save_credentials(
             partner_id=shopeemart_client.partner_id,
@@ -225,18 +529,19 @@ async def handle_shopee_auth_callback(
             if ch_obj:
                 cfg = dict(ch_obj.config or {})
                 tokens_map = dict(cfg.get("shop_tokens") or {})
-                fresh_entry = dict(shopeemart_client._token_cache.get(effective_shop_id, {}))
-                fresh_entry.pop("unlinked", None)
-                if effective_shop_id in shopeemart_client._token_cache and isinstance(shopeemart_client._token_cache[effective_shop_id], dict):
-                    shopeemart_client._token_cache[effective_shop_id].pop("unlinked", None)
-                tokens_map[effective_shop_id] = fresh_entry
+                for sid in target_shop_ids:
+                    fresh_entry = dict(shopeemart_client._token_cache.get(sid, {}))
+                    fresh_entry.pop("unlinked", None)
+                    if sid in shopeemart_client._token_cache and isinstance(shopeemart_client._token_cache[sid], dict):
+                        shopeemart_client._token_cache[sid].pop("unlinked", None)
+                    tokens_map[sid] = shopeemart_client._encrypt_token_entry(fresh_entry)
                 cfg["shop_tokens"] = tokens_map
                 cfg["default_shop_id"] = effective_shop_id
                 ch_obj.config = cfg
                 flag_modified(ch_obj, "config")
                 await db.commit()
         except Exception as db_ex:
-            logger.warning(f"Could not save Shopee token into Channel.config: {db_ex}")
+            logger.warning(f"Could not save Shopee token into Channel.config: {type(db_ex).__name__}")
 
     accept_hdr = (request.headers.get("accept") or "").lower()
     if "text/html" in accept_hdr and request.query_params.get("format") != "json":
@@ -276,7 +581,15 @@ async def handle_shopee_auth_callback(
     </script>
 </body>
 </html>"""
-        return HTMLResponse(content=html_body, status_code=200)
+        return HTMLResponse(
+            content=html_body,
+            status_code=200,
+            headers={
+                "Cache-Control": "no-store",
+                "Pragma": "no-cache",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
 
     return APIResponse.ok(
         data={
@@ -327,20 +640,72 @@ async def update_shopee_live_credentials(
 
 @router.post(
     "/auth/refresh",
-    response_model=APIResponse[ShopeeMartTokenResponse],
+    response_model=APIResponse[ShopeeMartRefreshStatusResponse],
     summary="Làm mới Token Shopee (Refresh Access Token)",
     description="Chủ động gia hạn Access Token của Shopee trước khi hết hạn sử dụng.",
 )
 async def refresh_shopee_token(
     shop_id: Optional[str] = Query(None, description="Shop ID cần làm mới token"),
     db: Optional[AsyncSession] = Depends(get_optional_db),
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_super_admin),
 ):
     await shopeemart_client.hydrate_from_db(db)
     token_resp = await shopeemart_client.refresh_access_token(shop_id=shop_id)
+    conn_status = shopeemart_client.get_connection_status(
+        shop_id=str(token_resp.shop_id) if token_resp.shop_id is not None else shop_id
+    )
+    sanitized = ShopeeMartRefreshStatusResponse(
+        shop_id=token_resp.shop_id,
+        expire_in=token_resp.expire_in,
+        token_expires_at=conn_status.token_expires_at,
+        has_valid_token=conn_status.has_valid_token,
+        refreshed=True,
+        error=token_resp.error,
+        message=token_resp.message,
+    )
     return APIResponse.ok(
-        data=token_resp,
+        data=sanitized,
         message=f"Đã làm mới Access Token thành công cho Shopee shop #{token_resp.shop_id}."
+    )
+
+
+@router.get(
+    "/auth/partner-shops",
+    response_model=APIResponse[Dict[str, Any]],
+    summary="Danh sách gian hàng Shopee đã ủy quyền cho Partner App",
+    description="Truy vấn trực tiếp Shopee Open Platform (/api/v2/public/get_shops_by_partner) và đối chiếu trạng thái token trong UMP.",
+)
+async def list_shopee_authorized_partner_shops(
+    page_no: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=100),
+    db: Optional[AsyncSession] = Depends(get_optional_db),
+    current_user: User = Depends(require_super_admin),
+):
+    await shopeemart_client.hydrate_from_db(db)
+    partner_data = await shopeemart_client.get_shops_by_partner(page_no=page_no, page_size=page_size)
+    raw_list = partner_data.get("authed_shop_list") or []
+    enriched = []
+    for entry in raw_list:
+        if not isinstance(entry, dict):
+            continue
+        sid = str(entry.get("shop_id") or "").strip()
+        cached = shopeemart_client._token_cache.get(sid) or {}
+        enriched.append({
+            "shop_id": sid,
+            "region": entry.get("region"),
+            "auth_time": entry.get("auth_time"),
+            "expire_time": entry.get("expire_time"),
+            "has_local_token": bool(cached.get("access_token") and not cached.get("unlinked")),
+            "has_refresh_token": bool(cached.get("refresh_token") and not cached.get("unlinked")),
+            "token_expires_at": cached.get("expires_at_iso"),
+        })
+    return APIResponse.ok(
+        data={
+            "partner_id": shopeemart_client.partner_id,
+            "authed_shop_count": len(enriched),
+            "more": bool(partner_data.get("more", False)),
+            "shops": enriched,
+        }
     )
 
 
@@ -795,8 +1160,10 @@ async def batch_update_outlet_stock_endpoint(
 async def get_shopee_tracking(
     order_sn: str,
     shop_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    await _authorize_shopeemart_access(db, current_user, order_sn=order_sn, shop_id=shop_id)
     result = await shopeemart_client.get_tracking_number(order_sn=order_sn, shop_id=shop_id)
     return APIResponse.ok(
         data=result,
@@ -835,8 +1202,10 @@ async def download_shopee_awb(
     order_sn: str,
     shop_id: Optional[str] = Query(None),
     document_type: str = Query("THERMAL_AIR_WAYBILL", description="THERMAL_AIR_WAYBILL hoặc NORMAL_AIR_WAYBILL"),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    await _authorize_shopeemart_access(db, current_user, order_sn=order_sn, shop_id=shop_id)
     pdf_bytes = await shopeemart_client.download_shipping_document_bytes(
         order_sn=order_sn,
         document_type=document_type,
@@ -863,23 +1232,18 @@ async def handle_buyer_cancel(
     order_sn: str,
     payload: ShopeeMartBuyerCancellationRequest,
     shop_id: Optional[str] = Query(None),
-    db: Optional[AsyncSession] = Depends(get_optional_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     _reject_read_only(current_user)
 
-    order: Optional[UnifiedOrder] = None
-    if db is not None:
-        try:
-            order_res = await db.execute(
-                select(UnifiedOrder).where(UnifiedOrder.channel_order_id == order_sn)
-            )
-            order = order_res.scalars().first()
-        except Exception as lookup_ex:
-            logger.warning(f"Could not look up local order for buyer cancellation ({order_sn}): {lookup_ex}")
-
-    if order and getattr(order, "store_id", None):
-        check_store_access(current_user, order.store_id)
+    order = await _authorize_shopeemart_access(
+        db,
+        current_user,
+        order_sn=order_sn,
+        shop_id=shop_id,
+        require_order_for_branch=True,
+    )
 
     result = await shopeemart_client.handle_buyer_cancellation(
         order_sn=order_sn,
@@ -890,7 +1254,6 @@ async def handle_buyer_cancel(
     if (
         payload.operation
         and payload.operation.upper() == "ACCEPT"
-        and db is not None
         and order is not None
         and getattr(order, "status", None) != UnifiedOrderStatus.CANCELLED
     ):
@@ -925,8 +1288,10 @@ async def get_shopee_returns(
     page_no: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=50),
     shop_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    await _authorize_shopeemart_access(db, current_user, shop_id=shop_id)
     result = await shopeemart_client.get_return_list(page_no=page_no, page_size=page_size, shop_id=shop_id)
     return APIResponse.ok(
         data=result,
@@ -942,8 +1307,10 @@ async def get_shopee_returns(
 async def get_shopee_return_detail(
     return_sn: str,
     shop_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    await _authorize_shopeemart_access(db, current_user, shop_id=shop_id)
     result = await shopeemart_client.get_return_detail(return_sn=return_sn, shop_id=shop_id)
     return APIResponse.ok(
         data=result,

@@ -1,17 +1,21 @@
+import asyncio
 from datetime import datetime, timezone, timedelta
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
 from pathlib import Path
 import re
+import socket
 import time
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 import httpx
 
 from app.core.config import get_settings
+from app.core.crypto import decrypt_secret, encrypt_secret, write_restricted_json
 from app.modules.shopeemart.schemas import (
     ShopeeMartAuthUrlResponse,
     ShopeeMartConnectionStatus,
@@ -80,6 +84,24 @@ class ShopeeMartClient:
             await self._http_client.aclose()
             self._http_client = None
 
+    @staticmethod
+    def _encrypt_token_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Encrypt access_token and refresh_token inside a shop token cache dictionary."""
+        out = dict(entry)
+        for field in ("access_token", "refresh_token"):
+            if out.get(field):
+                out[field] = encrypt_secret(str(out[field]))
+        return out
+
+    @staticmethod
+    def _decrypt_token_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
+        """Decrypt access_token and refresh_token inside a shop token cache dictionary."""
+        out = dict(entry)
+        for field in ("access_token", "refresh_token"):
+            if out.get(field):
+                out[field] = decrypt_secret(str(out[field]))
+        return out
+
     def _load_credentials(self):
         """Load dynamically updated Live credentials across workers if saved on disk."""
         try:
@@ -90,14 +112,14 @@ class ShopeeMartClient:
                     if data.get("partner_id"):
                         self.partner_id = str(data["partner_id"]).strip()
                     if data.get("partner_key"):
-                        self.partner_key = str(data["partner_key"]).strip()
+                        self.partner_key = decrypt_secret(str(data["partner_key"]).strip())
                     clean_sid = self._sanitize_shop_id(data.get("shop_id"))
                     if clean_sid:
                         self.default_shop_id = clean_sid
                     if data.get("base_url"):
                         self.base_url = str(data["base_url"]).rstrip("/")
         except Exception as ex:
-            logger.debug(f"Could not load ShopeeMart credentials store: {ex}")
+            logger.debug(f"Could not load ShopeeMart credentials store: {type(ex).__name__}")
 
     def save_credentials(
         self,
@@ -117,19 +139,15 @@ class ShopeeMartClient:
 
         payload = {
             "partner_id": self.partner_id,
-            "partner_key": self.partner_key,
+            "partner_key": encrypt_secret(self.partner_key),
             "shop_id": self.default_shop_id,
             "base_url": self.base_url,
             "updated_at_iso": datetime.now(timezone.utc).isoformat(),
         }
         try:
-            CREDENTIALS_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            CREDENTIALS_STORE_PATH.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            write_restricted_json(CREDENTIALS_STORE_PATH, payload)
         except Exception as ex:
-            logger.warning(f"Failed to persist ShopeeMart credentials to disk: {ex}")
+            logger.warning(f"Failed to persist ShopeeMart credentials to disk: {type(ex).__name__}")
 
     @property
     def is_configured(self) -> bool:
@@ -247,22 +265,33 @@ class ShopeeMartClient:
     async def exchange_code_for_token(
         self,
         code: str,
-        shop_id: str
+        shop_id: Optional[str] = None,
+        main_account_id: Optional[str] = None,
     ) -> ShopeeMartTokenResponse:
         """
         Exchange one-time authorization code for permanent Shopee access & refresh tokens.
+        Supports both single-shop (`shop_id`) and multi-shop Main Account (`main_account_id` -> `shop_id_list`).
         Endpoint: POST /api/v2/auth/token/get
         """
+        clean_shop_id = self._sanitize_shop_id(shop_id)
+        raw_main = str(main_account_id or "").strip()
+        clean_main_id = raw_main if raw_main.isdigit() else ""
+
         if not self.is_configured:
-            # Sandbox simulation
+            fallback_sid = str(clean_shop_id or clean_main_id or shop_id or self.default_shop_id or "").strip()
             mock_resp = ShopeeMartTokenResponse(
                 access_token="mock_shopee_access_token_sandbox",
                 refresh_token="mock_shopee_refresh_token_sandbox",
                 expire_in=14400,
-                shop_id=int(shop_id) if (shop_id and str(shop_id).isdigit()) else None
+                shop_id=int(fallback_sid) if fallback_sid.isdigit() else None,
+                authorized_shop_ids=[fallback_sid] if fallback_sid else [],
             )
-            self._save_token_cache(str(shop_id), mock_resp.access_token, mock_resp.refresh_token, mock_resp.expire_in)
+            if fallback_sid:
+                self._save_token_cache(fallback_sid, mock_resp.access_token, mock_resp.refresh_token, mock_resp.expire_in)
             return mock_resp
+
+        if not clean_shop_id and not clean_main_id:
+            raise ValueError("shop_id hoặc main_account_id là bắt buộc để đổi mã OAuth ShopeeMart.")
 
         timestamp = int(time.time())
         path = "/api/v2/auth/token/get"
@@ -273,33 +302,56 @@ class ShopeeMartClient:
             "timestamp": timestamp,
             "sign": sign,
         }
-        body = {
+        body: Dict[str, Any] = {
             "code": code,
-            "shop_id": int(shop_id),
             "partner_id": int(self.partner_id),
         }
+        if clean_shop_id:
+            body["shop_id"] = int(clean_shop_id)
+        elif clean_main_id:
+            body["main_account_id"] = int(clean_main_id)
 
         client = self._get_http_client()
         resp = await client.post(f"{self.base_url}{path}", params=query_params, json=body, timeout=15.0)
         data = resp.json()
 
         if resp.status_code != 200 or data.get("error"):
-            err_msg = data.get("message", "Failed to exchange Shopee auth code")
-            logger.error(f"Shopee token exchange error: {data}")
+            err_code = str(data.get("error") or "")
+            err_msg = _redact_url_secrets(str(data.get("message") or "Failed to exchange Shopee auth code"))
+            logger.error(f"Shopee token exchange error: error={err_code}, message={err_msg}")
             raise RuntimeError(f"ShopeeMart OAuth Error: {err_msg}")
 
-        access_token = data.get("access_token", "")
-        refresh_token = data.get("refresh_token", "")
+        access_token = str(data.get("access_token") or "")
+        refresh_token = str(data.get("refresh_token") or "")
         expire_in = int(data.get("expire_in", 14400))
 
-        self._save_token_cache(str(shop_id), access_token, refresh_token, expire_in)
-        await self._persist_tokens_to_db(default_shop_id=str(shop_id))
+        authorized_shop_ids: List[str] = []
+        raw_shop_list = data.get("shop_id_list") or []
+        if isinstance(raw_shop_list, list):
+            for sid in raw_shop_list:
+                cs = self._sanitize_shop_id(sid)
+                if cs and cs not in authorized_shop_ids:
+                    authorized_shop_ids.append(cs)
+        resp_shop_id = self._sanitize_shop_id(data.get("shop_id"))
+        if resp_shop_id and resp_shop_id not in authorized_shop_ids:
+            authorized_shop_ids.insert(0, resp_shop_id)
+        if clean_shop_id and clean_shop_id not in authorized_shop_ids:
+            authorized_shop_ids.insert(0, clean_shop_id)
+
+        if not authorized_shop_ids and clean_main_id:
+            authorized_shop_ids = [clean_main_id]
+
+        primary_sid = authorized_shop_ids[0] if authorized_shop_ids else ""
+        for sid in authorized_shop_ids:
+            self._save_token_cache(sid, access_token, refresh_token, expire_in)
+        await self._persist_tokens_to_db(default_shop_id=clean_shop_id or primary_sid or None)
 
         return ShopeeMartTokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expire_in=expire_in,
-            shop_id=int(shop_id)
+            shop_id=int(primary_sid) if primary_sid.isdigit() else None,
+            authorized_shop_ids=authorized_shop_ids,
         )
 
     async def _do_refresh_access_token_locked(self, shop_id: Optional[str] = None) -> ShopeeMartTokenResponse:
@@ -347,8 +399,8 @@ class ShopeeMartClient:
 
         if resp.status_code != 200 or data.get("error"):
             err_code = str(data.get("error") or "")
-            err_msg = str(data.get("message") or "")
-            logger.error(f"Shopee refresh token error (shop={target_shop}): {data}")
+            err_msg = _redact_url_secrets(str(data.get("message") or ""))
+            logger.error(f"Shopee refresh token error (shop={target_shop}): error={err_code}, message={err_msg}")
             if err_code == "shop_no_linked" or "no linked" in err_msg.lower():
                 self._mark_shop_unlinked(target_shop)
                 await self._persist_tokens_to_db()
@@ -532,11 +584,16 @@ class ShopeeMartClient:
                         clean_sid = self._sanitize_shop_id(sid)
                         if not clean_sid or not isinstance(tok_info, dict):
                             continue
+                        try:
+                            decrypted_info = self._decrypt_token_entry(tok_info)
+                        except Exception as dec_ex:
+                            logger.warning(f"Could not decrypt DB token for shop {clean_sid}: {type(dec_ex).__name__}")
+                            continue
                         existing = self._token_cache.get(clean_sid)
-                        new_exp = float(tok_info.get("expires_at") or 0.0)
+                        new_exp = float(decrypted_info.get("expires_at") or 0.0)
                         old_exp = float(existing.get("expires_at") or 0.0) if isinstance(existing, dict) else -1.0
                         if existing is None or new_exp > old_exp:
-                            self._token_cache[clean_sid] = dict(tok_info)
+                            self._token_cache[clean_sid] = decrypted_info
                             changed = True
             return changed
 
@@ -550,10 +607,10 @@ class ShopeeMartClient:
             if changed:
                 self._write_token_cache_file()
         except Exception as ex:
-            logger.debug(f"Could not hydrate ShopeeMart tokens from PostgreSQL: {ex}")
+            logger.debug(f"Could not hydrate ShopeeMart tokens from PostgreSQL: {type(ex).__name__}")
 
     async def _persist_tokens_to_db(self, default_shop_id: Optional[str] = None) -> None:
-        """Persist rotated Shopee OAuth tokens back to PostgreSQL Channel.config."""
+        """Persist rotated Shopee OAuth tokens (encrypted at rest) back to PostgreSQL Channel.config."""
         if not self.is_configured:
             return
         try:
@@ -571,7 +628,7 @@ class ShopeeMartClient:
                     merged_tokens = dict(cfg.get("shop_tokens") or {})
                     for sid, info in self._token_cache.items():
                         if isinstance(info, dict):
-                            merged_tokens[str(sid)] = dict(info)
+                            merged_tokens[str(sid)] = self._encrypt_token_entry(info)
                     cfg["shop_tokens"] = merged_tokens
                     clean_def = self._sanitize_shop_id(default_shop_id or self.default_shop_id)
                     if clean_def:
@@ -580,7 +637,7 @@ class ShopeeMartClient:
                     flag_modified(ch, "config")
                     await session.commit()
         except Exception as ex:
-            logger.debug(f"Could not persist ShopeeMart tokens to PostgreSQL: {ex}")
+            logger.debug(f"Could not persist ShopeeMart tokens to PostgreSQL: {type(ex).__name__}")
 
     async def resolve_shop_and_token(
         self,
@@ -654,21 +711,27 @@ class ShopeeMartClient:
                 if isinstance(data, dict):
                     for sid, info in data.items():
                         if isinstance(info, dict):
+                            try:
+                                dec_info = self._decrypt_token_entry(info)
+                            except Exception as dec_ex:
+                                logger.warning(f"Could not decrypt cached token for shop {sid}: {type(dec_ex).__name__}")
+                                continue
                             existing = self._token_cache.get(sid)
-                            if existing is None or float(info.get("expires_at") or 0) >= float(existing.get("expires_at") or 0):
-                                self._token_cache[sid] = info
+                            if existing is None or float(dec_info.get("expires_at") or 0) >= float(existing.get("expires_at") or 0):
+                                self._token_cache[sid] = dec_info
         except Exception as ex:
-            logger.debug(f"Could not load ShopeeMart token store: {ex}")
+            logger.debug(f"Could not load ShopeeMart token store: {type(ex).__name__}")
 
     def _write_token_cache_file(self):
         try:
-            TOKEN_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-            TOKEN_STORE_PATH.write_text(
-                json.dumps(self._token_cache, ensure_ascii=False, indent=2),
-                encoding="utf-8"
-            )
+            encrypted_cache = {
+                str(sid): self._encrypt_token_entry(info)
+                for sid, info in self._token_cache.items()
+                if isinstance(info, dict)
+            }
+            write_restricted_json(TOKEN_STORE_PATH, encrypted_cache)
         except Exception as ex:
-            logger.warning(f"Failed to persist ShopeeMart token store to disk: {ex}")
+            logger.warning(f"Failed to persist ShopeeMart token store to disk: {type(ex).__name__}")
 
     def _save_token_cache(self, shop_id: str, access_token: str, refresh_token: str, expire_in: int):
         """Helper to cache token with TTL in memory and persist to disk across workers."""
@@ -964,37 +1027,78 @@ class ShopeeMartClient:
     # ==========================================================================
 
     @staticmethod
-    def _validate_external_image_url(image_url: str) -> None:
-        """Validate external image URL to mitigate SSRF (HTTPS/HTTP only, no private/loopback IPs)."""
-        import ipaddress
-        import socket
-        from urllib.parse import urlparse
+    def _assert_global_ip(ip_str: str) -> None:
+        """Ensure an IP address (and any IPv4-mapped IPv6 form) is globally routable."""
+        clean_ip = str(ip_str).split("%", 1)[0].strip()
+        ip_obj = ipaddress.ip_address(clean_ip)
+        if not ip_obj.is_global:
+            raise ValueError("Không được phép tải ảnh từ dải IP nội bộ/riêng tư.")
+        mapped = getattr(ip_obj, "ipv4_mapped", None)
+        if mapped is not None and not mapped.is_global:
+            raise ValueError("Không được phép tải ảnh từ dải IP nội bộ/riêng tư.")
 
+    @classmethod
+    def _validate_image_url_parts(cls, image_url: str) -> str:
+        """Validate HTTPS scheme, non-internal hostname, and return normalized hostname."""
         parsed = urlparse(image_url)
-        if parsed.scheme not in ("https", "http") or not parsed.hostname:
-            raise ValueError("URL ảnh không hợp lệ (chỉ chấp nhận http/https).")
+        if parsed.scheme.lower() != "https" or not parsed.hostname:
+            raise ValueError("URL ảnh không hợp lệ (chỉ chấp nhận giao thức https://).")
+        if parsed.username or parsed.password:
+            raise ValueError("URL ảnh không được chứa thông tin xác thực.")
 
         hostname = parsed.hostname.strip().lower()
-        if hostname in ("localhost", "host.docker.internal") or hostname.endswith(".local") or hostname.endswith(".internal"):
+        if (
+            hostname in ("localhost", "host.docker.internal")
+            or hostname.endswith(".local")
+            or hostname.endswith(".internal")
+        ):
             raise ValueError("Không được phép tải ảnh từ địa chỉ mạng nội bộ.")
 
+        try:
+            ipaddress.ip_address(hostname)
+        except ValueError:
+            pass
+        else:
+            cls._assert_global_ip(hostname)
+
+        return hostname
+
+    @classmethod
+    def _validate_external_image_url(cls, image_url: str) -> None:
+        """Synchronous SSRF check for external image URLs (HTTPS only, globally routable IPs)."""
+        hostname = cls._validate_image_url_parts(image_url)
         try:
             addr_infos = socket.getaddrinfo(hostname, None)
         except socket.gaierror as exc:
             raise ValueError(f"Không thể phân giải tên miền ảnh: {exc}") from exc
 
         for info in addr_infos:
-            ip_str = info[4][0]
-            ip_obj = ipaddress.ip_address(ip_str)
-            if (
-                ip_obj.is_private
-                or ip_obj.is_loopback
-                or ip_obj.is_link_local
-                or ip_obj.is_multicast
-                or ip_obj.is_reserved
-                or ip_obj.is_unspecified
-            ):
-                raise ValueError("Không được phép tải ảnh từ dải IP nội bộ/riêng tư.")
+            cls._assert_global_ip(info[4][0])
+
+    @classmethod
+    async def _validate_external_image_url_async(cls, image_url: str) -> None:
+        """Async SSRF check resolving DNS on the event loop executor without blocking."""
+        hostname = cls._validate_image_url_parts(image_url)
+        try:
+            addr_infos = await asyncio.get_running_loop().getaddrinfo(hostname, None)
+        except OSError as exc:
+            raise ValueError(f"Không thể phân giải tên miền ảnh: {exc}") from exc
+
+        for info in addr_infos:
+            cls._assert_global_ip(info[4][0])
+
+    @staticmethod
+    def _detect_image_magic(img_bytes: bytes) -> Tuple[str, str]:
+        """Validate image magic bytes and return `(extension, mime_type)`."""
+        if img_bytes.startswith(b"\xff\xd8\xff"):
+            return "jpg", "image/jpeg"
+        if img_bytes.startswith(b"\x89PNG"):
+            return "png", "image/png"
+        if len(img_bytes) >= 12 and img_bytes[:4] == b"RIFF" and img_bytes[8:12] == b"WEBP":
+            return "webp", "image/webp"
+        if img_bytes.startswith(b"GIF8"):
+            return "gif", "image/gif"
+        raise ValueError("Nội dung ảnh tải về không khớp định dạng hợp lệ (JPEG, PNG, WEBP, GIF).")
 
     async def upload_image_from_url(self, image_url: str) -> Optional[str]:
         """
@@ -1004,7 +1108,7 @@ class ShopeeMartClient:
         """
         if not image_url:
             return None
-        self._validate_external_image_url(image_url)
+        await self._validate_external_image_url_async(image_url)
         if not self.is_configured:
             digest = hashlib.md5(image_url.encode("utf-8")).hexdigest()[:12]
             return f"vn-sandbox-img-{digest}"
@@ -1037,9 +1141,9 @@ class ShopeeMartClient:
                     raise ValueError("Image exceeds maximum allowed download size (15 MB).")
                 chunks.append(chunk)
             img_bytes = b"".join(chunks)
-            content_type = img_resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-        ext = "png" if "png" in content_type else "jpg"
-        files = {"image": (f"product.{ext}", img_bytes, content_type)}
+
+        ext, verified_mime = self._detect_image_magic(img_bytes)
+        files = {"image": (f"product.{ext}", img_bytes, verified_mime)}
 
         up_resp = await client.post(
             f"{self.base_url}{path}",
@@ -1052,8 +1156,8 @@ class ShopeeMartClient:
             raise RuntimeError(
                 f"Shopee upload_image error [{data.get('error')}]: {data.get('message')}"
             )
-            image_info = (data.get("response") or {}).get("image_info") or {}
-            return image_info.get("image_id")
+        image_info = (data.get("response") or {}).get("image_info") or {}
+        return image_info.get("image_id")
 
     async def get_logistics_channel_list(self, shop_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -1707,6 +1811,48 @@ class ShopeeMartClient:
             partner_id=self.partner_id if self.is_configured else None,
             shop_id=target_shop or None
         )
+
+    async def get_shops_by_partner(
+        self,
+        page_no: int = 1,
+        page_size: int = 100,
+    ) -> Dict[str, Any]:
+        """
+        Query all Shopee shops currently authorized for this Partner App.
+        Endpoint: GET /api/v2/public/get_shops_by_partner
+        """
+        self._load_credentials()
+        if not self.is_configured:
+            return {
+                "authed_shop_list": [
+                    {"shop_id": int(sid) if str(sid).isdigit() else sid, "simulated": True}
+                    for sid in self._token_cache.keys()
+                ],
+                "more": False,
+            }
+
+        timestamp = int(time.time())
+        path = "/api/v2/public/get_shops_by_partner"
+        sign = self.generate_public_sign(path, timestamp)
+        params = {
+            "partner_id": self.partner_id,
+            "timestamp": timestamp,
+            "sign": sign,
+            "page_no": max(1, int(page_no)),
+            "page_size": max(1, min(100, int(page_size))),
+        }
+        client = self._get_http_client()
+        resp = await client.get(f"{self.base_url}{path}", params=params, timeout=15.0)
+        data = resp.json()
+        if resp.status_code != 200 or data.get("error"):
+            err_code = str(data.get("error") or "")
+            err_msg = _redact_url_secrets(str(data.get("message") or "Failed to fetch authorized partner shops"))
+            logger.warning(f"Shopee get_shops_by_partner error={err_code}, message={err_msg}")
+            raise RuntimeError(f"ShopeeMart Partner Shops Error [{err_code}]: {err_msg}")
+        return {
+            "authed_shop_list": data.get("authed_shop_list") or [],
+            "more": bool(data.get("more", False)),
+        }
 
 
 shopeemart_client = ShopeeMartClient()

@@ -1,11 +1,16 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.deps import get_current_user, get_db, require_staff
+from app.core.database import Base
 from app.main import app
+from app.models.channel import Channel
 from app.models.order import UnifiedOrder, UnifiedOrderStatus
+from app.models.store import Store
 from app.models.user import User, UserRole
+from app.schemas.order import OrderFilterParams
 from app.services.order_service import OrderService
 
 
@@ -130,3 +135,72 @@ def test_list_orders_endpoint(client, mock_admin_user):
             assert o["total_amount"] == 170000.0
     finally:
         app.dependency_overrides.clear()
+
+
+async def test_list_orders_grabmart_filter_matches_canonical_grab_channel(client, mock_admin_user):
+    """Filtering orders by GRABMART, GRAB, or GRAB_MART matches orders stored on canonical GRAB channel."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as db:
+            store = Store(id="st-10001", code="10001", name="Nam An Market - 21 Thảo Điền", is_active=True)
+            ch_grab = Channel(id="ch-grab", code="GRAB", name="GrabMart Express", is_active=True)
+            ch_spf = Channel(id="ch-spf", code="SHOPEEFOOD", name="ShopeeFood VN", is_active=True)
+            db.add_all([store, ch_grab, ch_spf])
+            await db.flush()
+
+            grab_order = UnifiedOrder(
+                id="ord-grab-1",
+                order_code="NAM-GM-20261123-0001",
+                channel_id=ch_grab.id,
+                store_id=store.id,
+                channel_order_id="GRAB-A100",
+                display_order_id="A100",
+                status=UnifiedOrderStatus.PENDING,
+                subtotal_amount=200000.0,
+                discount_amount=0.0,
+                delivery_fee=15000.0,
+                total_amount=215000.0,
+            )
+            spf_order = UnifiedOrder(
+                id="ord-spf-1",
+                order_code="NAM-SF-20261123-0002",
+                channel_id=ch_spf.id,
+                store_id=store.id,
+                channel_order_id="SPF-B200",
+                display_order_id="B200",
+                status=UnifiedOrderStatus.PENDING,
+                subtotal_amount=100000.0,
+                discount_amount=0.0,
+                delivery_fee=10000.0,
+                total_amount=110000.0,
+            )
+            db.add_all([grab_order, spf_order])
+            await db.commit()
+
+            for code_filter in ("GRABMART", "GRAB", "GRAB_MART", "grabmart"):
+                items, total = await OrderService.list_orders(
+                    OrderFilterParams(channel_code=code_filter),
+                    db,
+                )
+                assert total == 1
+                assert len(items) == 1
+                assert items[0].order_code == "NAM-GM-20261123-0001"
+                assert items[0].channel.code == "GRAB"
+
+            spf_items, spf_total = await OrderService.list_orders(
+                OrderFilterParams(channel_code="SHOPEEFOOD"),
+                db,
+            )
+            assert spf_total == 1
+            assert spf_items[0].order_code == "NAM-SF-20261123-0002"
+    finally:
+        await engine.dispose()
+
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        html_res = client.get("/admin/orders")
+    assert html_res.status_code == 200
+    assert "c === 'GRABMART' || c === 'GRAB' || c === 'GRAB_MART'" in html_res.text

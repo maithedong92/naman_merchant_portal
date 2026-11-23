@@ -6,7 +6,7 @@ Implements strict Fail-Closed semantics (Section 4.3) for Pricing Snapshots.
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 import httpx
 
 from app.core.config import get_settings
@@ -84,6 +84,25 @@ class PoppiesClient:
             "User-Agent": "NAM-UMP/PoppiesMasterDataClient",
         }
 
+    @staticmethod
+    def _is_localhost_url(url: str) -> bool:
+        try:
+            host = (urlparse(str(url or "")).hostname or "").lower()
+            return host in ("localhost", "127.0.0.1", "::1")
+        except Exception:
+            return False
+
+    def _allow_local_fallbacks(self, *primary_urls: str) -> bool:
+        env = (getattr(settings, "ENVIRONMENT", "") or "").strip().lower()
+        if env != "production":
+            return True
+        return any(self._is_localhost_url(u) for u in primary_urls if u)
+
+    @staticmethod
+    def _dedupe_urls(urls: List[str]) -> List[str]:
+        seen = set()
+        return [u for u in urls if u and not (u in seen or seen.add(u))]
+
     async def toggle_channel_publish_status(
         self,
         sku: str,
@@ -109,12 +128,14 @@ class PoppiesClient:
         headers = self._get_headers()
         headers["Content-Type"] = "application/json"
 
-        urls_to_try = [
-            f"{self.pricing_base_url}/channel-publish-status",
-            "http://127.0.0.1:6515/api/v1/pricing/channel-publish-status",
-            "http://host.docker.internal:6515/api/v1/pricing/channel-publish-status",
-            "https://poppies.namanmarket.com/api/v1/pricing/channel-publish-status",
-        ]
+        raw_urls = [f"{self.pricing_base_url}/channel-publish-status"]
+        if self._allow_local_fallbacks(self.pricing_base_url):
+            raw_urls.extend([
+                "http://127.0.0.1:6515/api/v1/pricing/channel-publish-status",
+                "http://host.docker.internal:6515/api/v1/pricing/channel-publish-status",
+            ])
+        raw_urls.append("https://poppies.namanmarket.com/api/v1/pricing/channel-publish-status")
+        urls_to_try = self._dedupe_urls(raw_urls)
 
         last_err = None
         client = self._get_client()
@@ -137,15 +158,15 @@ class PoppiesClient:
                 last_err = ex
 
         logger.warning(
-            f"Poppies remote pricing API unreachable for SKU {sku} on {canonical_scope}: {last_err}. Saved locally."
+            f"Poppies remote pricing API unreachable for SKU {sku} on {canonical_scope}: {last_err}."
         )
         return {
-            "success": True,
+            "success": False,
             "sku": sku,
             "scopeType": scope_type,
             "scopeCode": canonical_scope,
             "isPublished": is_published,
-            "message": "Đã cập nhật trạng thái cục bộ trên Merchant Portal (Poppies ERP connection failed)",
+            "message": "Không thể kết nối tới Poppies Pricing API để đồng bộ trạng thái xuất bản.",
             "offline_mode": True,
         }
 
@@ -154,13 +175,17 @@ class PoppiesClient:
         Fetch standard 13 Canonical pricing channels from Poppies and apply
         Canonical vs Alias conflict consolidation (Section 2.2).
         """
-        urls_to_try = [
+        raw_urls = [
             f"{self.pos_pricing_base_url}/channels",
             f"{self.pricing_base_url}/channels",
-            "http://127.0.0.1:6515/api/v1/pos/pricing/channels",
-            "http://host.docker.internal:6515/api/v1/pos/pricing/channels",
-            "https://poppies.namanmarket.com/api/v1/pos/pricing/channels",
         ]
+        if self._allow_local_fallbacks(self.pos_pricing_base_url, self.pricing_base_url):
+            raw_urls.extend([
+                "http://127.0.0.1:6515/api/v1/pos/pricing/channels",
+                "http://host.docker.internal:6515/api/v1/pos/pricing/channels",
+            ])
+        raw_urls.append("https://poppies.namanmarket.com/api/v1/pos/pricing/channels")
+        urls_to_try = self._dedupe_urls(raw_urls)
         headers = self._get_headers()
         client = self._get_client()
         for url in urls_to_try:
@@ -198,14 +223,14 @@ class PoppiesClient:
         Fetch lightweight `/api/v1/pos/pricing/price-book` (~5 MB vs ~41 MB `/snapshots`)
         and normalize into snapshot schema while preserving Fail-Closed status codes.
         """
-        pricebook_urls = [
-            f"{self.pos_pricing_base_url}/price-book",
-            "http://host.docker.internal:6515/api/v1/pos/pricing/price-book",
-            "http://127.0.0.1:6515/api/v1/pos/pricing/price-book",
-            "https://poppies.namanmarket.com/api/v1/pos/pricing/price-book",
-        ]
-        seen_pb = set()
-        unique_pb_urls = [u for u in pricebook_urls if not (u in seen_pb or seen_pb.add(u))]
+        pricebook_urls = [f"{self.pos_pricing_base_url}/price-book"]
+        if self._allow_local_fallbacks(self.pos_pricing_base_url):
+            pricebook_urls.extend([
+                "http://host.docker.internal:6515/api/v1/pos/pricing/price-book",
+                "http://127.0.0.1:6515/api/v1/pos/pricing/price-book",
+            ])
+        pricebook_urls.append("https://poppies.namanmarket.com/api/v1/pos/pricing/price-book")
+        unique_pb_urls = self._dedupe_urls(pricebook_urls)
         pb_params: Dict[str, Any] = {
             "branch_code": branch_code,
             "channel_code": canonical_channel,
@@ -324,13 +349,14 @@ class PoppiesClient:
 
         urls_to_try: List[str] = self._get_ump_urls("pricing/snapshots") + [
             f"{self.pos_pricing_base_url}/snapshots",
-            "http://host.docker.internal:6515/api/v1/pos/pricing/snapshots",
-            "http://127.0.0.1:6515/api/v1/pos/pricing/snapshots",
-            "https://poppies.namanmarket.com/api/v1/pos/pricing/snapshots",
         ]
-        # Deduplicate while preserving order
-        seen_urls = set()
-        unique_urls = [u for u in urls_to_try if not (u in seen_urls or seen_urls.add(u))]
+        if self._allow_local_fallbacks(self.pos_pricing_base_url, self.base_url, self.pricing_base_url):
+            urls_to_try.extend([
+                "http://host.docker.internal:6515/api/v1/pos/pricing/snapshots",
+                "http://127.0.0.1:6515/api/v1/pos/pricing/snapshots",
+            ])
+        urls_to_try.append("https://poppies.namanmarket.com/api/v1/pos/pricing/snapshots")
+        unique_urls = self._dedupe_urls(urls_to_try)
 
         last_status = 503
         last_err_msg = "Không thể kết nối tới Poppies Pricing Snapshot Gateway."
@@ -413,26 +439,25 @@ class PoppiesClient:
             root = self._derive_api_v1_root(candidate_base)
             if root:
                 roots.append(root)
-        roots.extend([
-            "http://host.docker.internal:6515/api/v1",
-            "http://127.0.0.1:6515/api/v1",
-            "https://poppies.namanmarket.com/api/v1",
-        ])
-        candidates = [f"{r}/ump/{clean_suffix}" for r in roots]
-        seen = set()
-        return [u for u in candidates if not (u in seen or seen.add(u))]
+        if self._allow_local_fallbacks(self.pos_pricing_base_url, self.base_url, self.pricing_base_url):
+            roots.extend([
+                "http://host.docker.internal:6515/api/v1",
+                "http://127.0.0.1:6515/api/v1",
+            ])
+        roots.append("https://poppies.namanmarket.com/api/v1")
+        return self._dedupe_urls([f"{r}/ump/{clean_suffix}" for r in roots])
 
     def _get_master_data_urls(self, suffix: str) -> List[str]:
         """Return deduplicated candidate URLs for Poppies POS Master Data Gateway."""
         clean_suffix = suffix.lstrip("/")
-        candidates = [
-            f"{self.base_url}/{clean_suffix}",
-            f"http://127.0.0.1:6515/api/v1/pos/master-data/{clean_suffix}",
-            f"http://host.docker.internal:6515/api/v1/pos/master-data/{clean_suffix}",
-            f"https://poppies.namanmarket.com/api/v1/pos/master-data/{clean_suffix}",
-        ]
-        seen = set()
-        return [u for u in candidates if not (u in seen or seen.add(u))]
+        candidates = [f"{self.base_url}/{clean_suffix}"]
+        if self._allow_local_fallbacks(self.base_url):
+            candidates.extend([
+                f"http://127.0.0.1:6515/api/v1/pos/master-data/{clean_suffix}",
+                f"http://host.docker.internal:6515/api/v1/pos/master-data/{clean_suffix}",
+            ])
+        candidates.append(f"https://poppies.namanmarket.com/api/v1/pos/master-data/{clean_suffix}")
+        return self._dedupe_urls(candidates)
 
     async def get_health(self) -> Dict[str, Any]:
         """Check Poppies ERP UMP/Master Data API health probe (preferring `/api/v1/ump/health`)."""

@@ -26,6 +26,10 @@ else:
         pool_size=settings.DB_POOL_SIZE,
         max_overflow=settings.DB_MAX_OVERFLOW,
         pool_pre_ping=True,
+        connect_args={
+            "command_timeout": 30,
+            "server_settings": {"statement_timeout": "30000"},
+        },
     )
 
 # Async session factory

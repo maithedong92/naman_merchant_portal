@@ -3,7 +3,12 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import check_store_access, get_current_user, require_store_manager
+from app.api.deps import (
+    check_store_access_by_key,
+    get_current_user,
+    require_head_office_manager,
+    require_store_manager,
+)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.responses import APIResponse
@@ -49,7 +54,7 @@ async def get_product_channels_overview(
 @router.post("/channel-publish-status", response_model=APIResponse[ChannelPublishToggleResult])
 async def set_channel_publish_status(
     payload: PoppiesChannelPublishStatusRequest,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -80,17 +85,20 @@ async def sync_pricing_snapshot(
     Pull Multi-Channel Pricing & Exclusions Snapshot from Poppies ERP (`GET /api/v1/pos/pricing/snapshots`).
     Strictly Fail-Closed: on HTTP 5xx or timeout, returns HTTP 503/504 and retains Last-Known-Good cache.
     """
-    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
+    store = await check_store_access_by_key(db, current_user, branch_code)
+    effective_branch = (
+        store.code if store is not None and isinstance(getattr(store, "code", None), str) else branch_code
+    )
     res = await poppies_service.sync_channel_pricing_snapshot(
         db=db,
-        branch_code=branch_code,
+        branch_code=effective_branch,
         channel_code=channel_code,
         since_version=since_version,
         fmt=format,
     )
     return APIResponse.ok(
         data=res,
-        message=f"Đã đồng bộ Pricing Snapshot kênh {res['channel_code']} (chi nhánh {branch_code}).",
+        message=f"Đã đồng bộ Pricing Snapshot kênh {res['channel_code']} (chi nhánh {effective_branch}).",
     )
 
 
@@ -98,14 +106,13 @@ async def sync_pricing_snapshot(
 async def sync_and_match_pricing_from_poppies(
     branch_code: str = Query("10001", description="Mã chi nhánh đối chiếu giá bán"),
     sync_master_skus: bool = Query(False, description="Đồng bộ kèm Master SKU & CTTK nếu cần"),
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Đồng bộ & matching toàn bộ 14+ kênh bán hàng Canonical kèm Pricing & Exclusions Snapshots
     từ Poppies ERP về NAM-UMP.
     """
-    check_store_access(current_user, f"st-{branch_code}" if not branch_code.startswith("st-") else branch_code)
     res = await poppies_service.sync_and_match_all_from_poppies(
         db=db,
         branch_code=branch_code,

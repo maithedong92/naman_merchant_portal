@@ -2,9 +2,15 @@ from datetime import date, datetime, timezone
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.deps import get_current_user, get_db
+from app.core.database import Base
 from app.main import app
+from app.models.channel import Channel
+from app.models.order import UnifiedOrder, UnifiedOrderStatus
+from app.models.store import Store
 from app.models.user import User, UserRole
 from app.schemas.report import (
     ChannelAnalyticsItem,
@@ -14,7 +20,7 @@ from app.schemas.report import (
     ReconciliationOrderItem,
     StoreAnalyticsItem,
 )
-from app.services.report_service import report_service
+from app.services.report_service import ReportService, report_service
 
 
 @pytest.fixture
@@ -185,3 +191,58 @@ def test_export_reconciliation_csv(client, mock_admin_user):
         assert "NAMAN-001" in response.text
 
     app.dependency_overrides.clear()
+
+
+async def test_reports_grabmart_filter_matches_canonical_grab_channel(client, mock_admin_user):
+    """ReportService channel filter criteria match canonical GRAB orders when filtered with GRABMART."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with session_factory() as db:
+            store = Store(id="st-rep-10001", code="10001", name="Nam An Market - 21 Thảo Điền", is_active=True)
+            ch_grab = Channel(id="ch-rep-grab", code="GRAB", name="GrabMart Express", is_active=True)
+            ch_spf = Channel(id="ch-rep-spf", code="SHOPEEFOOD", name="ShopeeFood VN", is_active=True)
+            db.add_all([store, ch_grab, ch_spf])
+            await db.flush()
+
+            grab_order = UnifiedOrder(
+                id="rep-ord-grab-1",
+                order_code="NAM-GM-REP-001",
+                channel_id=ch_grab.id,
+                store_id=store.id,
+                channel_order_id="GRAB-REP-1",
+                status=UnifiedOrderStatus.DELIVERED,
+                total_amount=300000.0,
+            )
+            spf_order = UnifiedOrder(
+                id="rep-ord-spf-1",
+                order_code="NAM-SF-REP-002",
+                channel_id=ch_spf.id,
+                store_id=store.id,
+                channel_order_id="SPF-REP-2",
+                status=UnifiedOrderStatus.DELIVERED,
+                total_amount=150000.0,
+            )
+            db.add_all([grab_order, spf_order])
+            await db.commit()
+
+            for code_filter in ("GRABMART", "GRAB", "GRAB_MART"):
+                criteria = ReportService._build_filter_criteria(channel_code=code_filter)
+                stmt = (
+                    select(UnifiedOrder.order_code)
+                    .join(Channel, UnifiedOrder.channel_id == Channel.id)
+                    .join(Store, UnifiedOrder.store_id == Store.id)
+                    .where(*criteria)
+                )
+                matched_codes = list((await db.execute(stmt)).scalars().all())
+                assert matched_codes == ["NAM-GM-REP-001"]
+    finally:
+        await engine.dispose()
+
+    with patch("app.web.router._get_authenticated_web_user", new_callable=AsyncMock, return_value=mock_admin_user):
+        html_res = client.get("/admin/reports")
+    assert html_res.status_code == 200
+    assert "c === 'GRABMART' || c === 'GRAB' || c === 'GRAB_MART'" in html_res.text

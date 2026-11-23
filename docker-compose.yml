@@ -15,7 +15,17 @@ services:
     extra_hosts:
       # Allows the container to access services on the host machine if needed
       - "host.docker.internal:host-gateway"
-
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1024m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     expose:
       - "3002"
     networks:
@@ -33,6 +43,28 @@ services:
       - "127.0.0.1:3001:3001"
     volumes:
       - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3001/health-check || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       app:
         condition: service_healthy

@@ -823,7 +823,7 @@
             snapRows += `
                 <div class="flex items-center justify-between py-1.5 border-b border-slate-100 last:border-0">
                     <span class="font-mono font-bold text-slate-800">${escapeHtml(s.channel_code)}</span>
-                    <span class="text-slate-600">Khớp <strong>${(s.matched_skus_count || 0).toLocaleString()}</strong> SKU • <strong>${s.prices_updated || 0}</strong> giá riêng • <strong>${s.blocked_skus_count || 0}</strong> cấm bán</span>
+                    <span class="text-slate-600">Khớp <strong>${Number(s.matched_skus_count || 0).toLocaleString()}</strong> SKU • <strong>${Number(s.prices_updated || 0)}</strong> giá riêng • <strong>${Number(s.blocked_skus_count || 0)}</strong> cấm bán</span>
                 </div>
             `;
         });
@@ -837,14 +837,14 @@
         const catHtml = cat.total_fetched !== undefined
             ? `<div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                  <div class="font-bold text-slate-800">2. Hàng Hóa Master SKU & Tồn Kho CTTK</div>
-                 <div class="text-slate-600">Tổng đối soát: <strong>${(cat.total_fetched || 0).toLocaleString()}</strong> SKU (+${cat.products_created || 0} mới, cập nhật ${cat.products_updated || 0}) • Tồn kho cập nhật: <strong>${(cat.inventories_updated || 0).toLocaleString()}</strong> dòng</div>
+                 <div class="text-slate-600">Tổng đối soát: <strong>${Number(cat.total_fetched || 0).toLocaleString()}</strong> SKU (+${Number(cat.products_created || 0)} mới, cập nhật ${Number(cat.products_updated || 0)}) • Tồn kho cập nhật: <strong>${Number(cat.inventories_updated || 0).toLocaleString()}</strong> dòng</div>
                </div>`
             : '';
 
         body.innerHTML = `
             <div class="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
                 <div class="font-bold text-emerald-900">1. Đối Soát & Matching Kênh Chuẩn Poppies ERP</div>
-                <div class="text-emerald-800">Đã khớp chính xác <strong>${match.matched_channels_count || rec.total_poppies_channels || 0} / ${rec.total_poppies_channels || 0}</strong> kênh Canonical (+${rec.channels_created || 0} kênh mới, +${rec.store_mappings_created || 0} liên kết chi nhánh).</div>
+                <div class="text-emerald-800">Đã khớp chính xác <strong>${Number(match.matched_channels_count || rec.total_poppies_channels || 0)} / ${Number(rec.total_poppies_channels || 0)}</strong> kênh Canonical (+${Number(rec.channels_created || 0)} kênh mới, +${Number(rec.store_mappings_created || 0)} liên kết chi nhánh).</div>
             </div>
             ${mergedHtml}
             ${catHtml}

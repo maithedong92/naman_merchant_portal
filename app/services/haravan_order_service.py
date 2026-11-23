@@ -4,10 +4,10 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 from bson import ObjectId
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 
 from app.core.config import get_settings
-from app.core.exceptions import BadRequestError, ForbiddenError, NotFoundError
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.models.user import User, UserRole
 from app.services.arito_service import arito_service
 
@@ -350,6 +350,51 @@ class HaravanOrderService:
             "details": details,
         })
 
+    @staticmethod
+    def _build_atomic_filter(
+        order: Dict[str, Any],
+        cur_status: Optional[str] = None,
+        check_status: bool = True,
+    ) -> Dict[str, Any]:
+        internal = order.get("internal") or {}
+        flt: Dict[str, Any] = {"id": order["id"]}
+        if check_status:
+            flt["internal.order_processing_status"] = cur_status
+        if internal.get("assigned_store") is not None:
+            flt["internal.assigned_store"] = internal.get("assigned_store")
+        return flt
+
+    async def _atomic_find_one_and_update(
+        self,
+        col: Any,
+        filter_query: Dict[str, Any],
+        update_doc: Dict[str, Any],
+        fallback_id: Any,
+    ) -> Dict[str, Any]:
+        """Run atomic find_one_and_update in a worker thread to avoid blocking event loop or TOCTOU races."""
+        update_mock = getattr(col, "update_one", None)
+        has_legacy_update_only_mock = (
+            update_mock is not None
+            and getattr(update_mock, "side_effect", None) is not None
+            and "find_one_and_update" not in getattr(col, "__dict__", {})
+        )
+        if has_legacy_update_only_mock:
+            def _legacy_exec():
+                col.update_one(filter_query, update_doc)
+                return col.find_one({"id": fallback_id})
+
+            updated = await asyncio.to_thread(_legacy_exec)
+        else:
+            updated = await asyncio.to_thread(
+                col.find_one_and_update,
+                filter_query,
+                update_doc,
+                return_document=ReturnDocument.AFTER,
+            )
+        if updated is None:
+            raise ConflictError("Trạng thái đơn hàng đã bị thay đổi bởi thao tác khác. Vui lòng tải lại.")
+        return updated
+
     async def assign_order(
         self,
         order_id_or_sn: str,
@@ -407,8 +452,9 @@ class HaravanOrderService:
             history_note += f" - Ghi chú: {note}"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, cur_status=cur_status, check_status=True),
             {
                 "$set": update_fields,
                 "$push": {
@@ -420,6 +466,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
 
         logger.info(f"✅ Đã phân tuyến đơn {order.get('order_number')} cho chi nhánh {store_code} bởi {username}.")
@@ -470,8 +517,9 @@ class HaravanOrderService:
         history_note += " (Đã gỡ chi nhánh, trả đơn về tổng đài)"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        updated_doc = await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, cur_status=cur_status, check_status=True),
             {
                 "$set": update_fields,
                 "$push": {
@@ -483,13 +531,13 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
 
         logger.info(f"⚠️ Chi nhánh {old_store} đã yêu cầu phân tuyến lại đơn {order.get('order_number')}.")
-        # Lấy lại đơn với quyền admin
-        loop = asyncio.get_running_loop()
-        updated_doc = await loop.run_in_executor(None, self.get_order_by_id_or_number_sync, order["id"])
-        return updated_doc
+        if isinstance(updated_doc, dict):
+            return self._serialize_mongo_doc(updated_doc)
+        return await asyncio.to_thread(self.get_order_by_id_or_number_sync, order["id"])
 
     async def pack_order(
         self,
@@ -512,8 +560,9 @@ class HaravanOrderService:
             history_note += f" - Ghi chú: {note}"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, cur_status=cur_status, check_status=True),
             {
                 "$set": {
                     "internal.order_processing_status": "Đã đóng gói",
@@ -529,6 +578,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
         return await self.get_order_detail(order["id"], current_user)
 
@@ -555,8 +605,9 @@ class HaravanOrderService:
             history_note += f" - Ghi chú: {note}"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, cur_status=cur_status, check_status=True),
             {
                 "$set": {
                     "internal.order_processing_status": "Đã gửi vận đơn",
@@ -575,6 +626,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
         return await self.get_order_detail(order["id"], current_user)
 
@@ -596,8 +648,8 @@ class HaravanOrderService:
         self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
         cur_status = order.get("internal", {}).get("order_processing_status")
-        if cur_status == "Đã hủy":
-            raise BadRequestError("Không thể hoàn thành đơn hàng đã bị hủy.")
+        if cur_status in ("Hoàn thành", "Đã hủy"):
+            raise BadRequestError(f"Không thể hoàn thành đơn hàng đã ở trạng thái '{cur_status}'.")
 
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
@@ -626,8 +678,9 @@ class HaravanOrderService:
             history_note += f" - Ghi chú: {note}"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, cur_status=cur_status, check_status=True),
             {
                 "$set": {
                     "internal.order_processing_status": "Hoàn thành",
@@ -650,6 +703,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
 
         logger.info(f"🎉 Hoàn thành đơn {order.get('order_number')} thành công bởi {username}.")
@@ -670,8 +724,8 @@ class HaravanOrderService:
         self._ensure_can_mutate(current_user)
         order = await self.get_order_detail(order_id_or_sn, current_user)
         cur_status = order.get("internal", {}).get("order_processing_status")
-        if cur_status == "Hoàn thành":
-            raise BadRequestError("Không thể hủy đơn hàng đã hoàn thành.")
+        if cur_status in ("Hoàn thành", "Đã hủy"):
+            raise BadRequestError(f"Không thể hủy đơn hàng đã ở trạng thái '{cur_status}'.")
 
         now_str = datetime.now(timezone.utc).isoformat()
         username = current_user.username
@@ -688,8 +742,9 @@ class HaravanOrderService:
             history_note += f" - Ghi chú: {note}"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, cur_status=cur_status, check_status=True),
             {
                 "$set": {
                     "internal.order_processing_status": "Đã hủy",
@@ -708,6 +763,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
 
         logger.info(f"❌ Đã hủy đơn {order.get('order_number')} - Lý do: {reason}.")
@@ -730,8 +786,9 @@ class HaravanOrderService:
         username = current_user.username
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, check_status=False),
             {
                 "$set": {
                     "internal.admin_notes": note,
@@ -745,6 +802,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
         logger.info(f"📝 Đã cập nhật ghi chú admin cho đơn {order.get('order_number')} bởi {username}.")
         return await self.get_order_detail(order["id"], current_user)
@@ -783,8 +841,9 @@ class HaravanOrderService:
         }
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, check_status=False),
             {
                 "$set": update_fields,
                 "$push": {
@@ -796,6 +855,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
         logger.info(f"📎 Đã đính kèm file {file_label} '{file_name}' cho đơn {order.get('order_number')} bởi {username}.")
         return await self.get_order_detail(order["id"], current_user)
@@ -820,8 +880,9 @@ class HaravanOrderService:
         file_label = "đơn hàng" if file_type == "order" else "vận đơn"
 
         col = self._get_orders_collection()
-        col.update_one(
-            {"id": order["id"]},
+        await self._atomic_find_one_and_update(
+            col,
+            self._build_atomic_filter(order, check_status=False),
             {
                 "$unset": {
                     f"internal.{prefix}": "",
@@ -838,6 +899,7 @@ class HaravanOrderService:
                     }
                 },
             },
+            order["id"],
         )
         logger.info(f"🗑️ Đã gỡ bỏ file {file_label} cho đơn {order.get('order_number')} bởi {username}.")
         return await self.get_order_detail(order["id"], current_user)

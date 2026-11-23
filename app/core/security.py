@@ -153,10 +153,10 @@ def decode_token(token: str) -> Dict[str, Any]:
             message="Phiên đăng nhập hoặc token đã hết hạn.",
             details={"reason": "TOKEN_EXPIRED"}
         )
-    except InvalidTokenError as e:
+    except InvalidTokenError:
         raise UnauthorizedError(
             message="Mã xác thực không hợp lệ.",
-            details={"reason": "TOKEN_INVALID", "detail": str(e)}
+            details={"reason": "TOKEN_INVALID"}
         )
 
 
@@ -224,8 +224,11 @@ _SENSITIVE_HEADER_NAMES = {
     "cookie",
     "set-cookie",
     "x-api-key",
+    "x-pos-api-key",
     "x-poppies-webhook-key",
     "x-webhook-secret",
+    "x-foody-signature",
+    "x-signature",
 }
 
 

@@ -39,7 +39,7 @@ async def get_order_summary(
     effective_store_id = store_id
     has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
-        if not current_user.store_id and current_user.role == UserRole.STAFF.value:
+        if not current_user.store_id:
             return APIResponse.ok(
                 data=OrderSummaryResponse(
                     pending_count=0,
@@ -87,7 +87,7 @@ async def list_orders(
     effective_store_code = store_code
     has_global_access = has_cross_store_read_access(current_user)
     if not has_global_access:
-        if not current_user.store_id and current_user.role == UserRole.STAFF.value:
+        if not current_user.store_id:
             return APIResponse.ok(
                 data=PaginatedResponse(
                     items=[],

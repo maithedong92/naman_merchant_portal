@@ -3,18 +3,26 @@
 # Đặt file này trong thư mục Nginx của máy Host (ví dụ: /etc/nginx/conf.d/ hoặc nginx/conf.d/)
 # ==============================================================================
 
-# Rate limiting zone for webhook protection
+# Rate limiting zones for webhook and authentication protection
 limit_req_zone $binary_remote_addr zone=naman_webhook_limit:10m rate=30r/s;
+limit_req_zone $binary_remote_addr zone=naman_auth_limit:10m rate=30r/m;
 
 # 1. HTTP Redirect to HTTPS
 server {
     listen 80;
     listen [::]:80;
-    server_name portal.namanmarket.com;
+    server_name ump.namanmarket.com;
+    server_tokens off;
 
     # Allow ACME Challenge for SSL renewal
-    location /.well-known/acme-challenge/ {
+    location ^~ /.well-known/acme-challenge/ {
         root /var/www/certbot;
+    }
+
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
     }
 
     location / {
@@ -27,7 +35,8 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
-    server_name portal.namanmarket.com;
+    server_name ump.namanmarket.com;
+    server_tokens off;
 
     # SSL Certificates (Nam An Wildcard or Let's Encrypt on Host)
     ssl_certificate /etc/nginx/ssl/star_namanmarket_com_cert.pem;
@@ -41,22 +50,58 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
-    # Security Headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # Security headers (CSP, X-Frame-Options, HSTS, etc.) are set by container Nginx & FastAPI backend
 
-    # Max payload size (supports product catalog and images)
-    client_max_body_size 50M;
+    # Default max payload size (2M; 20M allowed only on explicit file upload endpoint)
+    client_max_body_size 2M;
 
     # Logging
     access_log /var/log/nginx/naman_portal_access.log;
     error_log /var/log/nginx/naman_portal_error.log warn;
 
-    # Webhook endpoints with rate limit protection
-    location /api/v1/shopeefood/webhooks/ {
+    # Block dotfiles and hidden paths (.env, .git, etc.)
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+
+    # Authentication endpoints with brute-force rate limit protection
+    location = /api/v1/auth/login {
+        limit_req zone=naman_auth_limit burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /api/v1/auth/refresh {
+        limit_req zone=naman_auth_limit burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /admin/login {
+        limit_req zone=naman_auth_limit burst=10 nodelay;
+        limit_req_status 429;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    # Webhook endpoints & root webhook aliases with rate limit protection
+    location ^~ /api/v1/shopeefood/webhooks/ {
         limit_req zone=naman_webhook_limit burst=20 nodelay;
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -66,7 +111,7 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
-    location /api/v1/grabmart/webhooks/ {
+    location ^~ /api/v1/grabmart/webhooks/ {
         limit_req zone=naman_webhook_limit burst=20 nodelay;
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -76,7 +121,7 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
-    location /api/v1/shopeemart/webhooks/ {
+    location ^~ /api/v1/shopeemart/webhooks/ {
         limit_req zone=naman_webhook_limit burst=20 nodelay;
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
@@ -84,6 +129,64 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location ^~ /shopeefoodapi/ {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location ^~ /grabmart/ {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location ^~ /shopeemart/ {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /oauth/token {
+        limit_req zone=naman_webhook_limit burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    # Allow 20M uploads exclusively on Haravan order attachment uploads
+    location ~ ^/api/v1/haravan/orders/.+/files/upload$ {
+        client_max_body_size 20M;
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
     }
 
     # Reverse proxy all requests to Docker Nginx container exposed on port 3001

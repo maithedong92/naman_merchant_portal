@@ -185,7 +185,7 @@ class GrabOrderItem(BaseModel):
     id: str = Field(..., description="Partner Item SKU")
     grabItemID: Optional[str] = None
     name: Optional[str] = None
-    quantity: int = 1
+    quantity: int = Field(1, ge=1)
     price: int = 0
     tax: Optional[int] = 0
     specifications: Optional[str] = None

@@ -48,7 +48,10 @@ class FileService:
     async def close(self) -> None:
         """Close the shared httpx.AsyncClient on application shutdown."""
         if self._client is not None and not self._client.is_closed:
-            await self._client.aclose()
+            try:
+                await self._client.aclose()
+            except RuntimeError:
+                pass
         self._client = None
 
     def clean_file_url(self, file_url: Optional[str]) -> str:
@@ -67,7 +70,7 @@ class FileService:
         if not url_str:
             return ""
 
-        # Nếu là URL có scheme hoặc bắt đầu bằng // -> Kiểm tra chặt hostname để chống SSRF
+        # Nếu là URL có scheme hoặc bắt đầu bằng // -> Ép HTTPS và chỉ cho phép namanapi.namanmarket.com
         if url_str.startswith(("http://", "https://", "//")) or "://" in url_str:
             try:
                 parsed = urllib.parse.urlparse(url_str)
@@ -76,15 +79,33 @@ class FileService:
             if parsed.scheme not in ("http", "https"):
                 logger.warning(f"Từ chối URL tệp có scheme không hợp lệ: {url_str}")
                 return ""
+            if parsed.username or parsed.password:
+                logger.warning("Từ chối URL tệp chứa thông tin xác thực nhúng.")
+                return ""
             hostname = (parsed.hostname or "").lower()
             if hostname not in self.ALLOWED_HOSTS:
                 logger.warning(f"Chặn SSRF: URL tệp trỏ tới host không được phép '{hostname}'")
                 return ""
-            return url_str
+            raw_path = parsed.path or "/"
+            if ".." in raw_path.split("/"):
+                logger.warning(f"Từ chối URL tệp chứa traversal: {raw_path}")
+                return ""
+            norm_path = posixpath.normpath(raw_path)
+            if raw_path.endswith("/") and not norm_path.endswith("/"):
+                norm_path += "/"
+            if not norm_path.startswith(("/orders/", "/images/", "/files/", "/uploads/")):
+                logger.warning(f"Từ chối URL tệp ngoài whitelist đường dẫn: {raw_path}")
+                return ""
+            rebuilt = f"https://{hostname}{norm_path}"
+            if parsed.query:
+                rebuilt = f"{rebuilt}?{parsed.query}"
+            return rebuilt
 
         # Chuẩn hóa dấu phân cách thư mục
         path = url_str.replace("\\", "/")
         path = re.sub(r"^[A-Za-z]:/", "", path)  # Bỏ ổ đĩa Windows C:/ nếu có
+        if ".." in path.split("/"):
+            return ""
         filename = os.path.basename(path)
         if not filename or filename in (".", ".."):
             return ""
@@ -95,14 +116,39 @@ class FileService:
             return f"{self.download_image_url}{filename}"
         elif path.startswith("/"):
             norm_path = posixpath.normpath(path)
-            if not norm_path.startswith("/") or norm_path.startswith("//"):
-                norm_path = "/" + filename
+            if not norm_path.startswith(("/orders/", "/images/", "/files/")) or norm_path.startswith("//"):
+                logger.warning(f"Từ chối relative path ngoài whitelist: {path}")
+                return ""
             return f"{self.base_url}{norm_path}"
         else:
             return f"{self.download_file_url}{filename}"
 
-    def validate_file(self, filename: str, file_size: int) -> Tuple[bool, str]:
-        """Kiểm tra tính hợp lệ của định dạng và dung lượng file."""
+    @staticmethod
+    def _matches_magic_bytes(ext: str, file_bytes: bytes) -> bool:
+        head = file_bytes[:512].lstrip().lower()
+        if any(marker in head for marker in (b"<svg", b"<html", b"<!doctype html", b"<script")):
+            return False
+        if ext == ".pdf":
+            return file_bytes.startswith(b"%PDF-")
+        if ext == ".png":
+            return file_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+        if ext in (".jpg", ".jpeg"):
+            return file_bytes.startswith(b"\xff\xd8\xff")
+        if ext == ".webp":
+            return len(file_bytes) >= 12 and file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"
+        if ext == ".gif":
+            return file_bytes.startswith((b"GIF87a", b"GIF89a"))
+        if ext == ".bmp":
+            return file_bytes.startswith(b"BM")
+        return False
+
+    def validate_file(
+        self,
+        filename: str,
+        file_size: int,
+        file_bytes: Optional[bytes] = None,
+    ) -> Tuple[bool, str]:
+        """Kiểm tra tính hợp lệ của định dạng, magic bytes và dung lượng file."""
         safe_name = os.path.basename(str(filename or "").replace("\\", "/")).strip()
         if not safe_name:
             return False, "Tên tệp không được để trống."
@@ -120,6 +166,9 @@ class FileService:
         if file_size > self.MAX_FILE_SIZE:
             max_mb = self.MAX_FILE_SIZE / (1024 * 1024)
             return False, f"Dung lượng tệp vượt quá giới hạn cho phép ({max_mb:.0f}MB)."
+
+        if file_bytes is not None and not self._matches_magic_bytes(ext, file_bytes):
+            return False, "Nội dung tệp không hợp lệ hoặc không khớp định dạng khai báo."
 
         return True, ""
 
@@ -142,7 +191,7 @@ class FileService:
             return False, "", "Loại tệp không hợp lệ. Chỉ chấp nhận 'order' hoặc 'tracking'."
 
         safe_name = os.path.basename(str(filename or "attachment.bin").replace("\\", "/")).strip() or "attachment.bin"
-        valid, err = self.validate_file(safe_name, len(file_bytes))
+        valid, err = self.validate_file(safe_name, len(file_bytes), file_bytes=file_bytes)
         if not valid:
             return False, "", err
 
@@ -189,7 +238,7 @@ class FileService:
 
     async def download_file_bytes(self, file_url: str) -> Tuple[bool, bytes, str, str]:
         """
-        Tải nội dung nhị phân của file để phục vụ proxy download.
+        Tải nội dung nhị phân của file để phục vụ proxy download (stream có giới hạn dung lượng, chặn redirect).
         Returns:
             (success: bool, content: bytes, content_type: str, filename: str)
         """
@@ -199,13 +248,31 @@ class FileService:
 
         try:
             client = self._get_client()
-            res = await client.get(target_url)
-            if res.status_code == 200:
+            async with client.stream("GET", target_url, follow_redirects=False) as res:
+                if res.status_code != 200:
+                    return False, b"", "", f"HTTP {res.status_code}"
+
+                content_length = res.headers.get("content-length")
+                if content_length:
+                    try:
+                        if int(content_length) > self.MAX_FILE_SIZE:
+                            return False, b"", "", "Dung lượng tệp vượt quá giới hạn cho phép."
+                    except ValueError:
+                        pass
+
+                chunks = bytearray()
+                total_read = 0
+                async for chunk in res.aiter_bytes():
+                    if not chunk:
+                        continue
+                    total_read += len(chunk)
+                    if total_read > self.MAX_FILE_SIZE:
+                        return False, b"", "", "Dung lượng tệp vượt quá giới hạn cho phép."
+                    chunks.extend(chunk)
+
                 content_type = res.headers.get("content-type", "application/octet-stream")
                 filename = os.path.basename(target_url.split("?")[0]) or "downloaded_file"
-                return True, res.content, content_type, filename
-            else:
-                return False, b"", "", f"HTTP {res.status_code}"
+                return True, bytes(chunks), content_type, filename
         except Exception as exc:
             logger.error(f"Lỗi khi tải file từ URL '{target_url}': {exc}")
             return False, b"", "", "Không thể tải tệp từ máy chủ lưu trữ."

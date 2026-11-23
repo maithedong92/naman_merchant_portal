@@ -27,13 +27,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /root/.local /usr/local
 ENV PATH=/usr/local/bin:$PATH
 
-# Copy application source code
+# Copy application source code & migrations
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini .
 COPY pyproject.toml .
 
-# Run as non-root user
+# Keep bytecode out of read-only app directories and flush logs immediately
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Run as non-root user; keep application code read-only and only /app/data writable
 RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
-    && mkdir -p /app/data && chown -R appuser:appgroup /app
+    && mkdir -p /app/data \
+    && chown -R root:appgroup /app \
+    && chmod -R a-w /app/app /app/alembic /app/alembic.ini /app/pyproject.toml \
+    && chown -R appuser:appgroup /app/data \
+    && chmod 750 /app/data
 
 USER appuser
 
@@ -44,5 +54,5 @@ EXPOSE 3002
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:3002/api/v1/health/db || exit 1
 
-# Start FastAPI application via Uvicorn on custom port 3002
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3002", "--workers", "2"]
+# Start FastAPI application via Uvicorn on custom port 3002 behind trusted reverse proxies
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3002", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips=127.0.0.1,172.16.0.0/12"]

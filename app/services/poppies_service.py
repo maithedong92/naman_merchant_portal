@@ -264,35 +264,9 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
             f"limit={limit}, offset={offset}, fetch_all={fetch_all}"
         )
 
-        # 1. Load all physical stores from database
-        stores_stmt = select(Store).order_by(Store.code)
-        stores_res = await db.execute(stores_stmt)
-        all_stores = stores_res.scalars().all()
-        store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
-
-        # 2. Cache existing categories, products, and inventories to avoid N+1 queries
-        cat_stmt = select(Category)
-        cat_res = await db.execute(cat_stmt)
-        existing_categories = cat_res.scalars().all()
-        cat_cache: Dict[str, Category] = {c.code: c for c in existing_categories}
-        cat_name_cache: Dict[str, Category] = {
-            c.name.strip().lower(): c for c in existing_categories
-        }
-
-        prod_res_all = await db.execute(select(Product))
-        prod_cache: Dict[str, Product] = {p.sku: p for p in prod_res_all.scalars().all()}
-
-        inv_res_all = await db.execute(select(StoreInventory))
-        inv_cache: Dict[Tuple[str, str], StoreInventory] = {
-            (str(i.store_id), str(i.product_id)): i for i in inv_res_all.scalars().all()
-        }
-
+        # 1. Fetch all requested Poppies snapshot HTTP pages BEFORE opening DB row locks
+        fetched_pages: List[Tuple[int, Dict[str, Any]]] = []
         total_fetched = 0
-        products_created = 0
-        products_updated = 0
-        categories_created = 0
-        inventories_updated = 0
-
         current_offset = offset
         page_count = 0
 
@@ -326,178 +300,8 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
             if not items:
                 break
 
+            fetched_pages.append((current_offset, snap_res))
             total_fetched += len(items)
-
-            for item in items:
-                sku_code = str(item.get("skuCode") or "").strip()
-                if not sku_code:
-                    continue
-
-                product_name = str(
-                    item.get("productName") or item.get("shortName") or sku_code
-                ).strip()
-                raw_barcode = str(item.get("barcode") or "").strip()
-                barcodes_list = item.get("barcodes", [])
-                if not raw_barcode and barcodes_list and isinstance(barcodes_list, list):
-                    raw_barcode = str(barcodes_list[0].get("barcode") or "").strip()
-
-                unit_name = str(item.get("unitName") or "Cái").strip() or "Cái"
-                pricing = item.get("pricing") or {}
-                base_price = float(
-                    pricing.get("baseSalePriceVat") or pricing.get("baseNetSalePrice") or 0.0
-                )
-
-                ecommerce = item.get("ecommerce") or {}
-                image_url = ecommerce.get("imageUrl")
-
-                raw_conv_rate = item.get("conversionRate")
-                if raw_conv_rate is None:
-                    raw_conv_rate = item.get("conversion_rate")
-                if raw_conv_rate is None and isinstance(ecommerce, dict):
-                    raw_conv_rate = ecommerce.get("conversionRate")
-                    if raw_conv_rate is None:
-                        raw_conv_rate = ecommerce.get("conversion_rate")
-
-                raw_conv_source = item.get("conversionRateSource") or item.get("conversion_rate_source")
-                if raw_conv_source is None and isinstance(ecommerce, dict):
-                    raw_conv_source = ecommerce.get("conversionRateSource") or ecommerce.get(
-                        "conversion_rate_source"
-                    )
-                conv_source = str(raw_conv_source or "DEFAULT").strip().upper()[:32] or "DEFAULT"
-
-                is_active = str(item.get("status") or "01").strip() == "01"
-                is_fresh = bool(item.get("isFresh", False))
-
-                # Category Resolution
-                cat_name = str(item.get("categoryName") or "Bách Hóa Tổng Hợp").strip()
-                cat_code = slugify_category_code(cat_name)
-                category = cat_cache.get(cat_code) or cat_name_cache.get(cat_name.lower())
-
-                if not category:
-                    category = Category(
-                        code=cat_code,
-                        name=cat_name,
-                        sequence=len(cat_cache) + 1,
-                    )
-                    db.add(category)
-                    await db.flush()
-                    cat_cache[cat_code] = category
-                    cat_name_cache[cat_name.lower()] = category
-                    categories_created += 1
-
-                product = prod_cache.get(sku_code)
-
-                metadata = {
-                    "posCode": item.get("posCode"),
-                    "codeType": item.get("codeType"),
-                    "isFresh": is_fresh,
-                    "brandName": item.get("brandName"),
-                    "subcategoryName": item.get("subcategoryName"),
-                    "countryOrigin": item.get("countryOrigin"),
-                    "weightVolume": item.get("weightVolume"),
-                    "pricing": pricing,
-                    "tthh": item.get("tthh"),
-                    "ecommerce": ecommerce,
-                    "synced_from_poppies_at": datetime.now(timezone.utc).isoformat(),
-                }
-
-                if not product:
-                    product = Product(
-                        sku=sku_code,
-                        barcode=raw_barcode or None,
-                        name=product_name,
-                        description=item.get("shortName") or product_name,
-                        unit=unit_name,
-                        base_price=base_price,
-                        conversion_rate=normalize_conversion_rate(raw_conv_rate),
-                        conversion_rate_source=conv_source,
-                        image_url=image_url,
-                        category_id=category.id,
-                        is_active=is_active,
-                        metadata_json=metadata,
-                    )
-                    db.add(product)
-                    await db.flush()
-                    prod_cache[sku_code] = product
-                    products_created += 1
-                else:
-                    product.barcode = raw_barcode or product.barcode
-                    product.name = product_name
-                    product.unit = unit_name
-                    product.base_price = base_price
-                    if raw_conv_rate is not None:
-                        product.conversion_rate = normalize_conversion_rate(raw_conv_rate)
-                        product.conversion_rate_source = conv_source
-                    if image_url:
-                        product.image_url = image_url
-                    product.category_id = category.id
-                    product.is_active = is_active
-                    product.metadata_json = metadata
-                    products_updated += 1
-
-                # Multi-Store Inventory Calculation (respecting tthh.khoaRieng & status=="01")
-                inv_cttk = item.get("inventoryCttk") or {}
-                cttk_details: List[Dict[str, Any]] = inv_cttk.get("details", [])
-
-                store_stock_sums: Dict[str, float] = {}
-                for d in cttk_details:
-                    sc = str(d.get("storeCode") or "").strip()
-                    sl = float(d.get("slTon") or 0.0)
-                    store_stock_sums[sc] = store_stock_sums.get(sc, 0.0) + sl
-
-                tthh_info = item.get("tthh") or {}
-                khoa_rieng_dict = tthh_info.get("khoaRieng") or {}
-
-                for sc, store_obj in store_map_by_code.items():
-                    qty = store_stock_sums.get(sc, 0.0)
-                    is_branch_locked = bool(khoa_rieng_dict.get(sc, False))
-
-                    inv_key = (str(store_obj.id), str(product.id))
-                    store_inv = inv_cache.get(inv_key)
-
-                    if not store_inv:
-                        avail_qty = (
-                            InventoryService.compute_available_stock(qty, 0.0, 2.0)
-                            if (not is_branch_locked and is_active)
-                            else 0.0
-                        )
-                        is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
-                        store_inv = StoreInventory(
-                            store_id=store_obj.id,
-                            product_id=product.id,
-                            sku=product.sku,
-                            total_stock=max(0.0, qty),
-                            reserved_stock=0.0,
-                            available_stock=avail_qty,
-                            safety_stock=2.0,
-                            is_out_of_stock=is_oos,
-                            last_synced_at=datetime.now(timezone.utc),
-                        )
-                        db.add(store_inv)
-                        inv_cache[inv_key] = store_inv
-                    else:
-                        avail_qty = (
-                            InventoryService.compute_available_stock(
-                                qty,
-                                float(store_inv.reserved_stock or 0.0),
-                                float(store_inv.safety_stock or 0.0),
-                            )
-                            if (not is_branch_locked and is_active)
-                            else 0.0
-                        )
-                        is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
-                        store_inv.total_stock = max(0.0, qty)
-                        store_inv.available_stock = avail_qty
-                        store_inv.is_out_of_stock = is_oos
-                        store_inv.last_synced_at = datetime.now(timezone.utc)
-
-                    inventories_updated += 1
-
-            await db.commit()
-            logger.info(
-                f"Committed Poppies batch: offset={current_offset}, items={len(items)}, "
-                f"total_fetched={total_fetched}/{total_available}"
-            )
 
             if (
                 not fetch_all
@@ -507,6 +311,215 @@ class PoppiesMasterDataSyncService(PoppiesMatchingMixin, PoppiesPricingGovernanc
                 break
 
             current_offset += len(items)
+
+        products_created = 0
+        products_updated = 0
+        categories_created = 0
+        inventories_updated = 0
+
+        if fetched_pages:
+            # 2. Load physical stores & reference caches and lock StoreInventory rows in deterministic order
+            stores_stmt = select(Store).order_by(Store.code)
+            stores_res = await db.execute(stores_stmt)
+            all_stores = stores_res.scalars().all()
+            store_map_by_code: Dict[str, Store] = {s.code: s for s in all_stores}
+
+            cat_stmt = select(Category)
+            cat_res = await db.execute(cat_stmt)
+            existing_categories = cat_res.scalars().all()
+            cat_cache: Dict[str, Category] = {c.code: c for c in existing_categories}
+            cat_name_cache: Dict[str, Category] = {
+                c.name.strip().lower(): c for c in existing_categories
+            }
+
+            prod_res_all = await db.execute(select(Product))
+            prod_cache: Dict[str, Product] = {p.sku: p for p in prod_res_all.scalars().all()}
+
+            inv_res_all = await db.execute(
+                select(StoreInventory)
+                .order_by(StoreInventory.store_id.asc(), StoreInventory.sku.asc())
+                .with_for_update()
+            )
+            inv_cache: Dict[Tuple[str, str], StoreInventory] = {
+                (str(i.store_id), str(i.product_id)): i for i in inv_res_all.scalars().all()
+            }
+
+            for batch_offset, snap_res in fetched_pages:
+                items = snap_res.get("items", [])
+                total_available = snap_res.get("total", 0)
+
+                for item in items:
+                    sku_code = str(item.get("skuCode") or "").strip()
+                    if not sku_code:
+                        continue
+
+                    product_name = str(
+                        item.get("productName") or item.get("shortName") or sku_code
+                    ).strip()
+                    raw_barcode = str(item.get("barcode") or "").strip()
+                    barcodes_list = item.get("barcodes", [])
+                    if not raw_barcode and barcodes_list and isinstance(barcodes_list, list):
+                        raw_barcode = str(barcodes_list[0].get("barcode") or "").strip()
+
+                    unit_name = str(item.get("unitName") or "Cái").strip() or "Cái"
+                    pricing = item.get("pricing") or {}
+                    base_price = float(
+                        pricing.get("baseSalePriceVat") or pricing.get("baseNetSalePrice") or 0.0
+                    )
+
+                    ecommerce = item.get("ecommerce") or {}
+                    image_url = ecommerce.get("imageUrl")
+
+                    raw_conv_rate = item.get("conversionRate")
+                    if raw_conv_rate is None:
+                        raw_conv_rate = item.get("conversion_rate")
+                    if raw_conv_rate is None and isinstance(ecommerce, dict):
+                        raw_conv_rate = ecommerce.get("conversionRate")
+                        if raw_conv_rate is None:
+                            raw_conv_rate = ecommerce.get("conversion_rate")
+
+                    raw_conv_source = item.get("conversionRateSource") or item.get("conversion_rate_source")
+                    if raw_conv_source is None and isinstance(ecommerce, dict):
+                        raw_conv_source = ecommerce.get("conversionRateSource") or ecommerce.get(
+                            "conversion_rate_source"
+                        )
+                    conv_source = str(raw_conv_source or "DEFAULT").strip().upper()[:32] or "DEFAULT"
+
+                    is_active = str(item.get("status") or "01").strip() == "01"
+                    is_fresh = bool(item.get("isFresh", False))
+
+                    # Category Resolution
+                    cat_name = str(item.get("categoryName") or "Bách Hóa Tổng Hợp").strip()
+                    cat_code = slugify_category_code(cat_name)
+                    category = cat_cache.get(cat_code) or cat_name_cache.get(cat_name.lower())
+
+                    if not category:
+                        category = Category(
+                            code=cat_code,
+                            name=cat_name,
+                            sequence=len(cat_cache) + 1,
+                        )
+                        db.add(category)
+                        await db.flush()
+                        cat_cache[cat_code] = category
+                        cat_name_cache[cat_name.lower()] = category
+                        categories_created += 1
+
+                    product = prod_cache.get(sku_code)
+
+                    metadata = {
+                        "posCode": item.get("posCode"),
+                        "codeType": item.get("codeType"),
+                        "isFresh": is_fresh,
+                        "brandName": item.get("brandName"),
+                        "subcategoryName": item.get("subcategoryName"),
+                        "countryOrigin": item.get("countryOrigin"),
+                        "weightVolume": item.get("weightVolume"),
+                        "pricing": pricing,
+                        "tthh": item.get("tthh"),
+                        "ecommerce": ecommerce,
+                        "synced_from_poppies_at": datetime.now(timezone.utc).isoformat(),
+                    }
+
+                    if not product:
+                        product = Product(
+                            sku=sku_code,
+                            barcode=raw_barcode or None,
+                            name=product_name,
+                            description=item.get("shortName") or product_name,
+                            unit=unit_name,
+                            base_price=base_price,
+                            conversion_rate=normalize_conversion_rate(raw_conv_rate),
+                            conversion_rate_source=conv_source,
+                            image_url=image_url,
+                            category_id=category.id,
+                            is_active=is_active,
+                            metadata_json=metadata,
+                        )
+                        db.add(product)
+                        await db.flush()
+                        prod_cache[sku_code] = product
+                        products_created += 1
+                    else:
+                        product.barcode = raw_barcode or product.barcode
+                        product.name = product_name
+                        product.unit = unit_name
+                        product.base_price = base_price
+                        if raw_conv_rate is not None:
+                            product.conversion_rate = normalize_conversion_rate(raw_conv_rate)
+                            product.conversion_rate_source = conv_source
+                        if image_url:
+                            product.image_url = image_url
+                        product.category_id = category.id
+                        product.is_active = is_active
+                        product.metadata_json = metadata
+                        products_updated += 1
+
+                    # Multi-Store Inventory Calculation (respecting tthh.khoaRieng & status=="01")
+                    inv_cttk = item.get("inventoryCttk") or {}
+                    cttk_details: List[Dict[str, Any]] = inv_cttk.get("details", [])
+
+                    store_stock_sums: Dict[str, float] = {}
+                    for d in cttk_details:
+                        sc = str(d.get("storeCode") or "").strip()
+                        sl = float(d.get("slTon") or 0.0)
+                        store_stock_sums[sc] = store_stock_sums.get(sc, 0.0) + sl
+
+                    tthh_info = item.get("tthh") or {}
+                    khoa_rieng_dict = tthh_info.get("khoaRieng") or {}
+
+                    for sc, store_obj in store_map_by_code.items():
+                        qty = store_stock_sums.get(sc, 0.0)
+                        is_branch_locked = bool(khoa_rieng_dict.get(sc, False))
+
+                        inv_key = (str(store_obj.id), str(product.id))
+                        store_inv = inv_cache.get(inv_key)
+
+                        if not store_inv:
+                            avail_qty = (
+                                InventoryService.compute_available_stock(qty, 0.0, 2.0)
+                                if (not is_branch_locked and is_active)
+                                else 0.0
+                            )
+                            is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
+                            store_inv = StoreInventory(
+                                store_id=store_obj.id,
+                                product_id=product.id,
+                                sku=product.sku,
+                                total_stock=max(0.0, qty),
+                                reserved_stock=0.0,
+                                available_stock=avail_qty,
+                                safety_stock=2.0,
+                                is_out_of_stock=is_oos,
+                                last_synced_at=datetime.now(timezone.utc),
+                            )
+                            db.add(store_inv)
+                            inv_cache[inv_key] = store_inv
+                        else:
+                            avail_qty = (
+                                InventoryService.compute_available_stock(
+                                    qty,
+                                    float(store_inv.reserved_stock or 0.0),
+                                    float(store_inv.safety_stock or 0.0),
+                                )
+                                if (not is_branch_locked and is_active)
+                                else 0.0
+                            )
+                            is_oos = avail_qty <= 0.0 or is_branch_locked or not is_active
+                            store_inv.total_stock = max(0.0, qty)
+                            store_inv.available_stock = avail_qty
+                            store_inv.is_out_of_stock = is_oos
+                            store_inv.last_synced_at = datetime.now(timezone.utc)
+
+                        inventories_updated += 1
+
+                await db.flush()
+                logger.info(
+                    f"Prepared Poppies batch: offset={batch_offset}, items={len(items)}, "
+                    f"total_fetched={total_fetched}/{total_available}"
+                )
+
+            await db.commit()
 
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         result_summary = {

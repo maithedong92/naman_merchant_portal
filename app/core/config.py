@@ -22,18 +22,15 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 3002
     ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "http://localhost:3003",
-        "https://portal.namanmarket.com"
+        "https://ump.namanmarket.com"
     ]
     TRUSTED_PROXY_CIDRS: List[str] = [
         "127.0.0.1/32",
         "::1/128",
-        "10.0.0.0/8",
         "172.16.0.0/12",
-        "192.168.0.0/16",
     ]
+    PUBLIC_BASE_URL: str = ""
+    SECRETS_ENCRYPTION_KEY: str = ""
 
     # Database
     DATABASE_URL: str = Field(
@@ -90,6 +87,8 @@ class Settings(BaseSettings):
     SHOPEEMART_PARTNER_KEY: str = ""
     SHOPEEMART_SHOP_ID: str = ""
     SHOPEEMART_BASE_URL: str = "https://partner.shopeemobile.com"
+    SHOPEEMART_POLL_ENABLED: bool = True
+    SHOPEEMART_POLL_INTERVAL_SECONDS: int = 180
 
     # MongoDB & Haravan Omnichannel Sync Settings
     MONGO_URI: str = ""
@@ -128,6 +127,59 @@ class Settings(BaseSettings):
 
     # Virtual Stock Reservation Settings
     VIRTUAL_STOCK_STRICT_MODE: bool = False
+
+    def validate_production_security(self) -> None:
+        """Fail fast at startup if production configuration uses missing or placeholder secrets."""
+        if self.ENVIRONMENT.lower() != "production" or self.DEBUG:
+            return
+
+        errors: List[str] = []
+        placeholder_markers = ("change_in_production", "change_me", "your_")
+
+        jwt_secret = (self.JWT_SECRET_KEY or "").strip()
+        if (
+            not jwt_secret
+            or len(jwt_secret) < 32
+            or any(marker in jwt_secret.lower() for marker in placeholder_markers)
+        ):
+            errors.append(
+                "JWT_SECRET_KEY must be at least 32 characters and not use placeholder values"
+            )
+
+        internal_secret = (self.INTERNAL_API_SECRET or "").strip()
+        if not internal_secret or any(
+            marker in internal_secret.lower() for marker in ("change_me", "your_")
+        ):
+            errors.append(
+                "INTERNAL_API_SECRET must be configured and not use placeholder values"
+            )
+
+        origins = [
+            str(origin).strip()
+            for origin in (self.ALLOWED_ORIGINS or [])
+            if str(origin).strip()
+        ]
+        if not origins:
+            errors.append("ALLOWED_ORIGINS must not be empty in production")
+        else:
+            for origin in origins:
+                lower_origin = origin.lower()
+                if "*" in lower_origin:
+                    errors.append("ALLOWED_ORIGINS must not contain wildcard '*'")
+                    break
+                if (
+                    "http://localhost" in lower_origin
+                    or "http://127.0.0.1" in lower_origin
+                ):
+                    errors.append(
+                        "ALLOWED_ORIGINS must not contain http://localhost or http://127.0.0.1 in production"
+                    )
+                    break
+
+        if errors:
+            raise RuntimeError(
+                "Production security validation failed: " + "; ".join(errors)
+            )
 
 
 @lru_cache()

@@ -15,6 +15,7 @@ from app.schemas.channel import (
     ChannelFeatureStatus,
     ChannelFeatureUpdate,
     ChannelResponse,
+    sanitize_channel_config,
 )
 from app.services.channel_registry import channel_registry
 from app.services.channel_service import channel_service
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/channels", tags=["Sales Channels"])
 def _format_channel_response(channel: Channel) -> ChannelResponse:
     features_dict = channel_service.extract_features(channel)
     resp = ChannelResponse.model_validate(channel)
+    resp.config = sanitize_channel_config(resp.config)
     resp.features = ChannelFeatureStatus(**features_dict)
     return resp
 

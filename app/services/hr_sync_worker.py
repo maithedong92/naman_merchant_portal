@@ -184,6 +184,10 @@ class HRSyncWorker:
                 )
                 return result
             except Exception as ex:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
                 self._last_run_at = datetime.now(timezone.utc)
                 self._last_error = str(ex)
                 logger.error(f"❌ HR Sync Cronjob ({trigger}) lỗi: {ex}")

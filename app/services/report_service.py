@@ -21,6 +21,7 @@ from app.schemas.report import (
     ReconciliationOrderItem,
     StoreAnalyticsItem,
 )
+from app.services.poppies_channels import get_channel_family_codes
 
 logger = logging.getLogger("naman_portal.reports")
 
@@ -54,7 +55,7 @@ class ReportService:
         if val is None:
             return ""
         s = str(val)
-        if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        if s and (s[0] in ("=", "+", "-", "@", "\t", "\r", "\n") or s.lstrip(" \t\r\n")[:1] in ("=", "+", "-", "@")):
             return f"'{s}"
         return s
 
@@ -77,7 +78,11 @@ class ReportService:
             criteria.append(UnifiedOrder.order_time <= to_dt)
 
         if channel_code:
-            criteria.append(Channel.code == channel_code.upper())
+            family_codes = get_channel_family_codes(channel_code)
+            if family_codes:
+                criteria.append(Channel.code.in_(family_codes))
+            else:
+                criteria.append(Channel.code == channel_code.upper())
 
         if store_code:
             criteria.append(Store.code == str(store_code))
@@ -178,8 +183,10 @@ class ReportService:
                 ch_code = "HARAVAN"
                 ch_name = "Haravan Omnichannel"
 
-            if channel_code and ch_code != channel_code.upper():
-                continue
+            if channel_code:
+                allowed_codes = set(get_channel_family_codes(channel_code) or [channel_code.upper()])
+                if ch_code.upper() not in allowed_codes:
+                    continue
 
             assigned_store = str(internal.get("assigned_store") or "").strip()
             if store_code and assigned_store != str(store_code):

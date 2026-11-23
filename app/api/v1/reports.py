@@ -3,7 +3,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, has_cross_store_read_access
+from app.api.deps import (
+    get_current_user,
+    has_financial_global_read_access,
+    require_financial_reader,
+)
 from app.core.database import get_db
 from app.core.responses import APIResponse
 from app.models.user import User, UserRole
@@ -29,9 +33,9 @@ async def get_analytics_report(
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = has_cross_store_read_access(current_user)
+    has_global_access = has_financial_global_read_access(current_user)
     if not has_global_access:
-        if not current_user.store_code:
+        if not current_user.store_id or not current_user.store_code:
             return APIResponse.ok(
                 data=FullAnalyticsReport(
                     filter_from=from_date.isoformat() if from_date else None,
@@ -72,13 +76,13 @@ async def get_reconciliation_orders(
     search: Optional[str] = Query(None, description="Tìm theo mã đơn hoặc tên khách hàng"),
     page: int = Query(1, ge=1, description="Số trang hiện tại"),
     page_size: int = Query(20, ge=1, le=100, description="Số bản ghi trên mỗi trang"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_financial_reader),
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = has_cross_store_read_access(current_user)
+    has_global_access = has_financial_global_read_access(current_user)
     if not has_global_access:
-        if not current_user.store_code:
+        if not current_user.store_id or not current_user.store_code:
             return APIResponse.ok(
                 data=PaginatedResponse(items=[], meta=PaginationMeta.create(page=page, page_size=page_size, total_items=0)),
                 message="Người dùng chưa được phân công chi nhánh."
@@ -115,13 +119,13 @@ async def export_reconciliation_csv(
     to_date: Optional[date] = Query(None, description="Đến ngày (YYYY-MM-DD)"),
     channel_code: Optional[str] = Query(None, description="Lọc theo kênh bán hàng"),
     store_code: Optional[str] = Query(None, description="Lọc theo chi nhánh"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_financial_reader),
     db: AsyncSession = Depends(get_db),
 ):
     effective_store_code = store_code
-    has_global_access = has_cross_store_read_access(current_user)
+    has_global_access = has_financial_global_read_access(current_user)
     if not has_global_access:
-        if not current_user.store_code:
+        if not current_user.store_id or not current_user.store_code:
             return Response(content="\ufeffMã Đơn,Thời Gian,Kênh Bán,Chi Nhánh,Doanh Thu\n", media_type="text/csv")
         effective_store_code = current_user.store_code
 

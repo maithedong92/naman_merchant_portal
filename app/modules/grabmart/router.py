@@ -113,32 +113,29 @@ async def get_partner_oauth_token(request: Request):
     except Exception as ex:
         logger.debug(f"Parsing body in get_partner_oauth_token: {ex}")
 
-    configured_secret = (settings.GRABMART_CLIENT_SECRET or "").strip()
     partner_webhook_secret = (getattr(settings, "GRABMART_PARTNER_CLIENT_SECRET", "") or "").strip()
-    partner_client_id = (getattr(settings, "GRABMART_PARTNER_CLIENT_ID", "naman_grabmart_pos") or "").strip()
+    partner_client_id = (getattr(settings, "GRABMART_PARTNER_CLIENT_ID", "") or "").strip()
 
-    if client_id == partner_client_id and partner_webhook_secret:
-        expected_secret = partner_webhook_secret
-    else:
-        expected_secret = partner_webhook_secret or configured_secret
-
-    if not expected_secret or "your_grab" in expected_secret:
-        logger.error("GrabMart OAuth rejected: GRABMART_CLIENT_SECRET / GRABMART_PARTNER_CLIENT_SECRET chưa được cấu hình.")
+    if not partner_client_id or not partner_webhook_secret or "your_grab" in partner_webhook_secret:
+        logger.error("GrabMart OAuth rejected: GRABMART_PARTNER_CLIENT_ID / GRABMART_PARTNER_CLIENT_SECRET chưa được cấu hình.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="GrabMart OAuth credentials not configured",
         )
 
+    provided_client_id = (str(client_id) if client_id is not None else "").strip()
     provided_secret = (str(client_secret) if client_secret is not None else "").strip()
-    if not provided_secret or not secrets.compare_digest(provided_secret, expected_secret):
-        logger.warning(f"GrabMart OAuth token request rejected: invalid client_secret for client_id={client_id}")
+    id_valid = bool(provided_client_id) and secrets.compare_digest(provided_client_id, partner_client_id)
+    secret_valid = bool(provided_secret) and secrets.compare_digest(provided_secret, partner_webhook_secret)
+    if not (id_valid and secret_valid):
+        logger.warning(f"GrabMart OAuth token request rejected: invalid credentials for client_id={provided_client_id!r}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid GrabMart client credentials",
         )
 
-    logger.info(f"GrabMart requested partner OAuth token for client_id: {client_id}")
-    access_token = create_partner_token("grabmart", client_id or "grabmart_client", expires_seconds=86400)
+    logger.info(f"GrabMart requested partner OAuth token for client_id: {provided_client_id}")
+    access_token = create_partner_token("grabmart", provided_client_id, expires_seconds=86400)
     return GrabOAuthTokenResponse(
         access_token=access_token,
         token_type="Bearer",
@@ -234,8 +231,13 @@ async def receive_grabmart_order_state(
             response = await adapter.handle_order_state_webhook(headers, raw_body, db)
             return response
         else:
-            logger.warning("GrabMart order state received in offline DB mode.")
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
+            logger.error("GrabMart order state rejected: database connection unavailable.")
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"status": "ERROR", "message": "Database temporarily unavailable"},
+            )
+    except HTTPException:
+        raise
     except Exception as ex:
         logger.error(f"Error handling GrabMart order state webhook: {str(ex)}", exc_info=True)
         if db is not None:
@@ -257,7 +259,10 @@ async def receive_grabmart_order_state(
                 )
             except Exception as log_ex:
                 logger.error(f"Failed to record operational error: {log_ex}")
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "ERROR", "message": "Temporary error processing GrabMart order state"},
+        )
 
 
 @router.get(
@@ -284,59 +289,80 @@ async def get_mart_menu_webhook(
     Handles merchantID and partnerMerchantID from either headers or query params.
     Resilient design: falls back to standard catalog if database connection is offline.
     """
-    grab_merchant_id = merchantID or merchant_id_query or "GM-THAO-DIEN"
+    grab_merchant_id = (merchantID or merchant_id_query or "").strip()
+    explicit_partner_code = (partnerMerchantID or partner_merchant_id_query or "").strip()
     partner_store_code = (
-        partnerMerchantID
-        or partner_merchant_id_query
-        or STORE_CODE_BY_GRAB_MERCHANT.get(grab_merchant_id)
-        or "10001"
-    )
+        explicit_partner_code
+        or STORE_CODE_BY_GRAB_MERCHANT.get(grab_merchant_id, "")
+    ).strip()
+
+    if not grab_merchant_id and not partner_store_code:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Store mapping not found for GrabMart merchant",
+        )
+
     logger.info(f"GrabMart requested menu for merchantID: {grab_merchant_id}, partnerMerchantID: {partner_store_code}")
 
-    # Check cache first (only if partnerMerchantID matches)
-    cached_menu = adapter.get_cached_menu(grab_merchant_id)
-    if cached_menu and cached_menu.get("partnerMerchantID") == partner_store_code:
-        return cached_menu
+    # Check cache first (only if partnerMerchantID matches when provided/resolved)
+    if grab_merchant_id:
+        cached_menu = adapter.get_cached_menu(grab_merchant_id)
+        if cached_menu and (not partner_store_code or cached_menu.get("partnerMerchantID") == partner_store_code):
+            return cached_menu
 
-    store_id = "default_store"
-    if db is not None:
-        try:
-            # Resolve store by mapping or code (Canonical GRAB + Legacy GRABMART aware)
-            stmt = (
-                select(StoreChannelMapping)
-                .join(Channel)
-                .options(selectinload(StoreChannelMapping.store))
-                .where(
-                    Channel.code.in_(get_channel_family_codes("GRAB")),
-                    (StoreChannelMapping.partner_store_id == grab_merchant_id)
-                    | (StoreChannelMapping.partner_store_id == partner_store_code)
-                )
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable for GrabMart menu lookup",
+        )
+
+    store_id: Optional[str] = None
+    try:
+        candidate_ids = [v for v in (grab_merchant_id, partner_store_code) if v]
+        # Resolve store by mapping or code (Canonical GRAB + Legacy GRABMART aware)
+        stmt = (
+            select(StoreChannelMapping)
+            .join(Channel)
+            .options(selectinload(StoreChannelMapping.store))
+            .where(
+                Channel.code.in_(get_channel_family_codes("GRAB")),
+                StoreChannelMapping.partner_store_id.in_(candidate_ids),
             )
-            res = await db.execute(stmt)
-            mapping = res.scalars().first()
+        )
+        res = await db.execute(stmt)
+        mapping = res.scalars().first()
 
-            if mapping:
-                store_id = mapping.store_id
-                if mapping.store and mapping.store.code:
-                    partner_store_code = mapping.store.code
-            else:
-                # Check by Store code directly (e.g. "10001")
-                store_by_code_res = await db.execute(select(Store).where(Store.code == partner_store_code, Store.is_active == True))
-                store_by_code = store_by_code_res.scalars().first()
-                if store_by_code:
-                    store_id = store_by_code.id
-                else:
-                    # Fallback to first active store
-                    store_res = await db.execute(select(Store).where(Store.is_active == True).limit(1))
-                    first_store = store_res.scalars().first()
-                    store_id = first_store.id if first_store else "default_store"
-        except Exception as ex:
-            logger.warning(f"Failed to query store for GrabMart menu: {ex}. Using default store.")
+        if mapping:
+            store_id = mapping.store_id
+            if mapping.store and mapping.store.code:
+                partner_store_code = mapping.store.code
+        elif partner_store_code:
+            # Check by Store code directly (e.g. "10001")
+            store_by_code_res = await db.execute(
+                select(Store).where(Store.code == partner_store_code, Store.is_active == True)
+            )
+            store_by_code = store_by_code_res.scalars().first()
+            if store_by_code:
+                store_id = store_by_code.id
+    except HTTPException:
+        raise
+    except Exception as ex:
+        logger.error(f"Failed to query store for GrabMart menu: {ex}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to resolve GrabMart store mapping",
+        )
+
+    if not store_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Store mapping not found for GrabMart merchant",
+        )
 
     menu_payload = await adapter.build_catalog_menu(
         store_id=store_id,
-        partner_store_id=grab_merchant_id,
-        partner_merchant_id=partner_store_code,
+        partner_store_id=grab_merchant_id or partner_store_code,
+        partner_merchant_id=partner_store_code or grab_merchant_id,
         db=db,
     )
     return menu_payload

@@ -527,7 +527,7 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                 endpoint="/shopeemart/webhooks/order",
                 request_payload={"order_sn": order_sn, "shop_id": shop_id, "error": str(ex)},
             )
-            return {"code": 500, "message": str(ex)}
+            return {"code": 500, "message": "Lỗi xử lý webhook đơn hàng ShopeeMart."}
 
     # ==========================================================================
     # 4. Outbound Status Transition (Ready to Ship / Cancel)
@@ -664,6 +664,7 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         total_checked = 0
         newly_created = 0
         status_synced = 0
+        errors: List[Dict[str, str]] = []
 
         for s_id in target_shops:
             try:
@@ -705,12 +706,23 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
                             status_synced += 1
             except Exception as ex:
                 logger.warning(f"Polling ShopeeMart orders for shop {s_id} encountered error: {ex}")
+                errors.append({"shop_id": str(s_id), "error": str(ex)})
+                await self._record_operational_error(
+                    db=db,
+                    error_code="SHOPEEMART_ORDER_POLL_ERROR",
+                    message=f"Lỗi polling đơn hàng ShopeeMart cho shop {s_id}: {str(ex)}",
+                    severity=ErrorSeverity.WARNING,
+                    endpoint="/api/v1/shopeemart/orders/poll",
+                    request_payload={"shop_id": str(s_id), "hours_back": hours_back},
+                )
 
         return {
             "shops_polled": target_shops,
             "total_checked": total_checked,
             "newly_created": newly_created,
             "status_synced": status_synced,
+            "errors": errors,
+            "has_errors": len(errors) > 0,
         }
 
     # ==========================================================================
@@ -726,13 +738,24 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         endpoint: str,
         request_payload: Optional[Dict[str, Any]] = None,
     ):
-        """Record operational error to database for real-time visibility in /system-status."""
+        """Record operational error in an isolated session so caller sessions are never rolled back."""
         try:
-            if db is not None:
-                try:
-                    await db.rollback()
-                except Exception:
-                    pass
+            if isinstance(db, AsyncSession):
+                from app.core.database import AsyncSessionLocal
+                async with AsyncSessionLocal() as err_session:
+                    await error_service.log_error(
+                        db=err_session,
+                        error_code=error_code,
+                        message=message,
+                        severity=severity,
+                        module="SHOPEEMART",
+                        stack_trace=traceback.format_exc(),
+                        endpoint=endpoint,
+                        http_method="POST",
+                        request_payload=request_payload,
+                    )
+                    await err_session.commit()
+                    return
             await error_service.log_error(
                 db=db,
                 error_code=error_code,

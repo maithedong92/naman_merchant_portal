@@ -9,32 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#ecfdf5',
-                            100: '#d1fae5',
-                            500: '#10b981',
-                            600: '#059669',
-                            700: '#047857',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['"Plus Jakarta Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
-                    },
-                    boxShadow: {
-                        'apple-card': '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.04)',
-                        'apple-dropdown': '0 20px 40px -15px rgba(15, 23, 42, 0.12), 0 0 1px 1px rgba(15, 23, 42, 0.05)',
-                    }
-                }
-            }
-        }
-    </script>
+    <link rel="stylesheet" href="/static/css/tailwind.css">
 </head>
 <body class="min-h-full flex items-center justify-center bg-slate-50 text-slate-900 px-4 py-12 font-sans antialiased">
 
@@ -50,7 +25,7 @@
             <p class="text-sm font-medium text-slate-500 mt-1">Cổng Quản Trị & Điều Phối Đa Kênh (NAM-UMP)</p>
             <div class="inline-flex items-center space-x-2 mt-3 px-3 py-1 bg-white text-slate-600 text-xs font-semibold rounded-full border border-slate-200 shadow-xs">
                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>Bảo mật JWT • Cổng chuẩn 3002</span>
+                <span>Xác thực bảo mật nội bộ</span>
             </div>
         </div>
 
@@ -108,6 +83,28 @@
     </div>
 
     <script>
+        function resolveSafeRedirect(raw, fallback) {
+            if (typeof raw !== 'string' || !raw || /[\x00-\x1f\x7f\\]/.test(raw)) {
+                return fallback;
+            }
+            const trimmed = raw.trim();
+            if (!trimmed || trimmed.startsWith('//')) {
+                return fallback;
+            }
+            try {
+                const parsed = new URL(trimmed, window.location.origin);
+                if (parsed.origin !== window.location.origin) {
+                    return fallback;
+                }
+                if (!/^\/(admin(\/|$)|system-status(\/|$))/.test(parsed.pathname)) {
+                    return fallback;
+                }
+                return parsed.pathname + parsed.search + parsed.hash;
+            } catch (err) {
+                return fallback;
+            }
+        }
+
         async function handleLogin(e) {
             e.preventDefault();
             const errEl = document.getElementById('error-alert');
@@ -127,7 +124,10 @@
                 const res = await fetch('/api/v1/auth/login', {
                     method: 'POST',
                     credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     body: JSON.stringify({ username, password })
                 });
                 const data = await res.json();
@@ -136,20 +136,19 @@
                     throw new Error(data.message || "Tài khoản hoặc mật khẩu không chính xác.");
                 }
 
-                // Clear any legacy localStorage JWTs; auth relies on HttpOnly cookies set by /api/v1/auth/login
+                // Clear any legacy localStorage JWTs/profile; auth relies on HttpOnly cookies set by /api/v1/auth/login
                 localStorage.removeItem("naman_access_token");
                 localStorage.removeItem("naman_refresh_token");
+                localStorage.removeItem("naman_user_profile");
                 if (data.data && data.data.user) {
-                    localStorage.setItem("naman_user_profile", JSON.stringify(data.data.user));
+                    sessionStorage.setItem("naman_user_profile", JSON.stringify(data.data.user));
                 }
 
                 // Redirect: Super Admin -> /admin, Store/MKT/Staff -> /admin/orders (Validate local path to block Open Redirect)
                 const urlParams = new URLSearchParams(window.location.search);
                 const userObj = (data.data && data.data.user) || {};
                 const defaultTarget = (userObj.role === 'SUPER_ADMIN' || userObj.is_superuser) ? '/admin' : '/admin/orders';
-                const redirect = urlParams.get('redirect');
-                const isSafeRedirect = redirect && redirect.startsWith('/') && !redirect.startsWith('//') && !redirect.includes('\\') && !redirect.includes(':');
-                const safeRedirect = isSafeRedirect ? redirect : defaultTarget;
+                const safeRedirect = resolveSafeRedirect(urlParams.get('redirect'), defaultTarget);
                 window.location.href = safeRedirect;
             } catch (err) {
                 errEl.textContent = err.message;

@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_optional_db
 from app.core.config import get_settings
+from app.core.exceptions import UnauthorizedError
 from app.core.security import decode_token
 from app.models.user import User, UserRole
 
@@ -36,18 +38,24 @@ async def _get_authenticated_web_user(
     token = request.cookies.get("naman_access_token")
     if not token or db is None:
         return None
-    payload = decode_token(token)
-    if not payload or payload.get("type") != "access":
-        return None
-    user_id = payload.get("sub")
-    if not user_id:
+    try:
+        payload = decode_token(token)
+        if not payload or payload.get("type") != "access":
+            return None
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+
+        raw_ver = payload.get("ver", 0)
+        token_ver = int(0 if raw_ver is None else raw_ver)
+
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+    except (UnauthorizedError, ValueError, TypeError, SQLAlchemyError):
         return None
 
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user or not user.is_active:
+    if not user or not user.is_active or getattr(user, "portal_disabled", False):
         return None
-    token_ver = int(payload.get("ver", 0) or 0)
     current_ver = int(getattr(user, "token_version", 0) or 0)
     if token_ver != current_ver:
         return None
@@ -110,6 +118,8 @@ async def admin_dashboard(
     user = await _get_authenticated_web_user(request, db)
     if not user:
         return _login_redirect(request)
+    if user.role in (UserRole.STAFF.value, UserRole.READ_ONLY.value):
+        return RedirectResponse(url="/admin/orders", status_code=302, headers=NO_STORE_HEADERS)
     return _render_protected_page(
         request,
         "admin_dashboard.html",
@@ -196,7 +206,7 @@ async def admin_login_page(
     user = await _get_authenticated_web_user(request, db)
     if user:
         return RedirectResponse(url="/admin", status_code=302, headers=NO_STORE_HEADERS)
-    return templates.TemplateResponse(
+    resp = templates.TemplateResponse(
         request=request,
         name="login.html",
         context={
@@ -206,6 +216,9 @@ async def admin_login_page(
         },
         headers=NO_STORE_HEADERS,
     )
+    if request.cookies.get("naman_access_token"):
+        resp.delete_cookie("naman_access_token", path="/")
+    return resp
 
 
 # ==============================================================================

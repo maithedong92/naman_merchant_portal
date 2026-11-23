@@ -16,13 +16,17 @@ logger = logging.getLogger("naman_portal.health")
 @router.get("/health", response_model=APIResponse[dict])
 async def health_check():
     """Liveness probe: verifies the FastAPI application is running."""
-    return APIResponse.ok(
-        data={
+    data: dict = {"status": "UP"}
+    if settings.DEBUG:
+        data = {
+            "status": "UP",
             "app_name": settings.APP_NAME,
             "version": settings.APP_VERSION,
             "environment": settings.ENVIRONMENT,
             "registered_channels": channel_registry.list_channels(),
-        },
+        }
+    return APIResponse.ok(
+        data=data,
         message="Hệ thống Nam An Merchant Portal đang hoạt động bình thường."
     )
 

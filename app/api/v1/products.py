@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_store_manager
+from app.api.deps import get_current_user, require_head_office_manager
 from app.core.database import get_db
 from app.core.responses import APIResponse
 from app.models.user import User
@@ -35,7 +35,7 @@ async def list_categories(
 @router.post("/categories", response_model=APIResponse[CategoryResponse], status_code=201)
 async def create_category(
     payload: CategoryCreate,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new product category."""
@@ -78,7 +78,7 @@ async def list_products(
 @router.post("", response_model=APIResponse[ProductResponse], status_code=201)
 async def create_product(
     payload: ProductCreate,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new master product SKU."""
@@ -113,7 +113,7 @@ async def toggle_product_channel_by_sku(
     sku: str,
     channel_code: str,
     payload: ProductChannelPublishToggleRequest,
-    current_user: User = Depends(require_store_manager),
+    current_user: User = Depends(require_head_office_manager),
     db: AsyncSession = Depends(get_db)
 ):
     """Toggle publish status for 1 SKU on 1 channel and synchronize with Poppies ERP."""

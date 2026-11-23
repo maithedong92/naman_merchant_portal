@@ -440,38 +440,41 @@ async def propagate_channel_menu_to_external_channel(
 
     scm_rows = await _extract_orm_scalars(await _safe_execute(db, scm_stmt), StoreChannelMapping)
     seen_outlets: Set[Tuple[str, str]] = set()
-    summaries: List[Dict[str, Any]] = []
-
+    outlet_targets: List[Tuple[str, str]] = []
     for scm in scm_rows:
-        key = (str(scm.store_id), str(scm.partner_store_id))
-        if key in seen_outlets:
+        target_pair = (str(scm.store_id), str(scm.partner_store_id))
+        if target_pair in seen_outlets:
             continue
-        seen_outlets.add(key)
+        seen_outlets.add(target_pair)
+        outlet_targets.append(target_pair)
+
+    summaries: List[Dict[str, Any]] = []
+    for target_store_id, target_partner_store_id in outlet_targets:
         try:
             res = await adapter.sync_menu(
-                store_id=str(scm.store_id),
-                partner_store_id=str(scm.partner_store_id),
+                store_id=target_store_id,
+                partner_store_id=target_partner_store_id,
                 db=db,
             )
             summaries.append(
                 {
                     "channel_code": canon_code,
                     "adapter": adapter.channel_code,
-                    "store_id": str(scm.store_id),
-                    "partner_store_id": str(scm.partner_store_id),
+                    "store_id": target_store_id,
+                    "partner_store_id": target_partner_store_id,
                     "success": res.success,
                     "total_synced": res.total_synced,
                     "message": res.message,
                 }
             )
         except Exception as ex:
-            logger.error(f"Lỗi đồng bộ menu kênh {canon_code} (store={scm.partner_store_id}): {ex}")
+            logger.error(f"Lỗi đồng bộ menu kênh {canon_code} (store={target_partner_store_id}): {ex}")
             summaries.append(
                 {
                     "channel_code": canon_code,
                     "adapter": adapter.channel_code,
-                    "store_id": str(scm.store_id),
-                    "partner_store_id": str(scm.partner_store_id),
+                    "store_id": target_store_id,
+                    "partner_store_id": target_partner_store_id,
                     "success": False,
                     "total_synced": 0,
                     "message": str(ex),

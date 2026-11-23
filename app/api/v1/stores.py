@@ -8,6 +8,7 @@ from app.api.deps import (
     check_store_access,
     get_current_user,
     has_cross_store_read_access,
+    has_financial_global_read_access,
     require_super_admin,
 )
 from app.core.database import get_db
@@ -85,7 +86,7 @@ async def list_all_store_channel_mappings(
         )
         .order_by(StoreChannelMapping.created_at.desc())
     )
-    if not has_cross_store_read_access(current_user):
+    if not has_financial_global_read_access(current_user):
         if not current_user.store_id:
             return APIResponse.ok(data=[])
         stmt = stmt.where(StoreChannelMapping.store_id == current_user.store_id)

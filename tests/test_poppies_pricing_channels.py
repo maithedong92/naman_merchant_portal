@@ -801,10 +801,9 @@ async def test_master_data_sync_falls_back_to_store_pricing_snapshot_on_500():
     mock_db = _make_mock_db()
     st_10001 = Store(id="st-1", code="10001", name="Thảo Điền", is_active=True)
 
-    # Sequence of db.execute calls:
-    # 1-4: sync_master_data_from_poppies initial queries before page 1 get_snapshot fails
-    # 5-6: sync_catalog_from_store_pricing_snapshot Category & Product queries
-    # 7-9: sync_stock_cttk_realtime Store, Product, StoreInventory queries
+    # Sequence of db.execute calls (HTTP fetch fails on page 1 before opening DB locks):
+    # 1-2: sync_catalog_from_store_pricing_snapshot Category & Product queries
+    # 3-5: sync_stock_cttk_realtime Store, Product, StoreInventory queries
     added_products: list[Product] = []
 
     def _capture_add(obj):
@@ -814,10 +813,6 @@ async def test_master_data_sync_falls_back_to_store_pricing_snapshot_on_500():
 
     mock_db.add.side_effect = _capture_add
     mock_db.execute.side_effect = [
-        _scalars_result([st_10001]),  # sync_master_data stores
-        _scalars_result([]),          # sync_master_data categories
-        _scalars_result([]),          # sync_master_data products
-        _scalars_result([]),          # sync_master_data inventories
         _scalar_result(Category(id="cat-pop", code="POPPIES_MASTER", name="Poppies")),  # fallback category
         _scalars_result([]),          # fallback products
         _scalars_result([st_10001]),  # cttk stores

@@ -85,7 +85,7 @@ async def trigger_haravan_sync(
 )
 async def check_arito_inventory(
     skus: str = Query(..., max_length=5000, description="Danh sách SKU cách nhau bởi dấu phẩy, ví dụ: '001020,001021'"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_order_dispatcher),
 ):
     sku_list = [s.strip() for s in skus.split(",") if s.strip()][:200]
     stock_data = await arito_service.get_inventory_by_skus(sku_list)
@@ -530,8 +530,9 @@ async def download_order_file_proxy(
     if not success:
         return Response(content=f"Không thể tải file: {filename}", status_code=502)
 
-    encoded_filename = urllib.parse.quote(filename)
-    ascii_filename = re.sub(r'[^\x20-\x7E]', '_', filename)
+    safe_filename = os.path.basename(str(filename or "attachment").replace("\\", "/")).strip() or "attachment"
+    encoded_filename = urllib.parse.quote(safe_filename)
+    ascii_filename = re.sub(r'[^\x20-\x7E]|[";\\/\r\n]', '_', safe_filename)
     headers = {
         "Content-Disposition": f'inline; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}',
         "X-Content-Type-Options": "nosniff",

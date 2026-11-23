@@ -64,6 +64,7 @@ scratch/
 .coverage
 htmlcov/
 data/
+.ag-kit-backups/
 
 # AI Agent directories
 .agent/

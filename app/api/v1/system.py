@@ -4,8 +4,10 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_super_admin
+from app.api.deps import require_super_admin
+from app.core.config import get_settings
 from app.core.database import get_db
+from app.core.exceptions import ForbiddenError
 from app.core.responses import APIResponse
 from app.models.operational_error import ErrorSeverity, ErrorStatus
 from app.models.user import User
@@ -19,6 +21,7 @@ from app.services.error_service import error_service
 
 router = APIRouter(prefix="/system", tags=["System Health & Operations"])
 logger = logging.getLogger("naman_portal.system")
+settings = get_settings()
 
 
 @router.get(
@@ -28,7 +31,7 @@ logger = logging.getLogger("naman_portal.system")
     description="Kiểm tra kết nối PostgreSQL, trạng thái các kênh bán lẻ (ShopeeFood, GrabMart, ShopeeMart) và tổng kết lỗi vận hành.",
 )
 async def get_system_health(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     health = await error_service.get_system_health(db)
@@ -149,6 +152,8 @@ async def trigger_test_error(
     current_user: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if settings.ENVIRONMENT.lower() == "production" and not settings.DEBUG:
+        raise ForbiddenError("Endpoint kích hoạt lỗi thử nghiệm bị vô hiệu hóa trong môi trường Production.")
     try:
         raise RuntimeError(f"Simulated operational error: {message}")
     except Exception as ex:
