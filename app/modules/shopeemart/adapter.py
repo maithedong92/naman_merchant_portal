@@ -637,9 +637,11 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
         now_ts = int(_time.time())
         time_from = now_ts - (max(1, min(hours_back, 336)) * 3600)
 
-        target_shops: List[str] = []
+        await shopeemart_client.hydrate_from_db(db)
+
+        raw_shops: List[str] = []
         if shop_id:
-            target_shops.append(str(shop_id))
+            raw_shops.append(str(shop_id))
         else:
             stmt = (
                 select(StoreChannelMapping)
@@ -648,10 +650,16 @@ class ShopeeMartChannelAdapter(BaseChannelAdapter):
             )
             res = await db.execute(stmt)
             for m in res.scalars().all():
-                if m.partner_store_id and m.partner_store_id not in target_shops:
-                    target_shops.append(str(m.partner_store_id))
-            if not target_shops and shopeemart_client.default_shop_id:
-                target_shops.append(str(shopeemart_client.default_shop_id))
+                if m.partner_store_id and m.partner_store_id not in raw_shops:
+                    raw_shops.append(str(m.partner_store_id))
+            if not raw_shops and shopeemart_client.default_shop_id:
+                raw_shops.append(str(shopeemart_client.default_shop_id))
+
+        target_shops: List[str] = []
+        for rs in raw_shops:
+            resolved = shopeemart_client._pick_best_shop_id(rs)
+            if resolved and resolved not in target_shops:
+                target_shops.append(resolved)
 
         total_checked = 0
         newly_created = 0

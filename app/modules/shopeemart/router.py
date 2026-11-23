@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import (
     check_store_access,
@@ -224,10 +225,15 @@ async def handle_shopee_auth_callback(
             if ch_obj:
                 cfg = dict(ch_obj.config or {})
                 tokens_map = dict(cfg.get("shop_tokens") or {})
-                tokens_map[effective_shop_id] = shopeemart_client._token_cache.get(effective_shop_id, {})
+                fresh_entry = dict(shopeemart_client._token_cache.get(effective_shop_id, {}))
+                fresh_entry.pop("unlinked", None)
+                if effective_shop_id in shopeemart_client._token_cache and isinstance(shopeemart_client._token_cache[effective_shop_id], dict):
+                    shopeemart_client._token_cache[effective_shop_id].pop("unlinked", None)
+                tokens_map[effective_shop_id] = fresh_entry
                 cfg["shop_tokens"] = tokens_map
                 cfg["default_shop_id"] = effective_shop_id
                 ch_obj.config = cfg
+                flag_modified(ch_obj, "config")
                 await db.commit()
         except Exception as db_ex:
             logger.warning(f"Could not save Shopee token into Channel.config: {db_ex}")

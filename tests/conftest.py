@@ -3,6 +3,7 @@ import os
 # Set test environment defaults BEFORE importing app modules
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "True"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 os.environ["JWT_SECRET_KEY"] = "pytest_super_secure_jwt_secret_key_32bytes_min"
 os.environ["POPPIES_WEBHOOK_KEY"] = "naman_pos_api_secret_key_2026"
 os.environ["SHOPEEFOOD_MENU_USERNAME"] = "namanmarket"

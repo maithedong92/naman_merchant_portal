@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 import httpx
 
 from app.core.config import get_settings
@@ -23,6 +24,7 @@ settings = get_settings()
 TOKEN_STORE_PATH = Path("data/shopeemart_tokens.json")
 CREDENTIALS_STORE_PATH = Path("data/shopeemart_credentials.json")
 MAX_IMAGE_DOWNLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
+TOKEN_REFRESH_ADVISORY_LOCK_KEY = 20261123
 
 
 def _redact_url_secrets(text: str) -> str:
@@ -228,12 +230,13 @@ class ShopeeMartClient:
         path = "/api/v2/shop/auth_partner"
         sign = self.generate_public_sign(path, timestamp)
 
+        encoded_redirect = quote(redirect_url, safe="")
         auth_url = (
             f"{self.base_url}{path}?"
             f"partner_id={self.partner_id}&"
             f"timestamp={timestamp}&"
             f"sign={sign}&"
-            f"redirect={redirect_url}"
+            f"redirect={encoded_redirect}"
         )
         return ShopeeMartAuthUrlResponse(
             auth_url=auth_url,
@@ -299,38 +302,30 @@ class ShopeeMartClient:
             shop_id=int(shop_id)
         )
 
-    async def refresh_access_token(self, shop_id: Optional[str] = None) -> ShopeeMartTokenResponse:
-        """
-        Proactively refresh an expiring Shopee access token using its refresh token.
-        Endpoint: POST /api/v2/auth/access_token/get
-        """
-        self._load_token_cache()
-        if self.is_configured and not self._token_cache:
-            await self.hydrate_from_db()
+    async def _do_refresh_access_token_locked(self, shop_id: Optional[str] = None) -> ShopeeMartTokenResponse:
+        """Execute Shopee OAuth refresh under advisory lock after re-hydrating latest DB tokens."""
+        await self.hydrate_from_db()
 
         target_shop = self._pick_best_shop_id(shop_id)
         if not target_shop:
             raise ValueError("Shop ID is required to refresh ShopeeMart token.")
         cached = self._token_cache.get(target_shop)
 
-        if not self.is_configured:
-            # Sandbox simulation
-            mock_resp = ShopeeMartTokenResponse(
-                access_token="mock_refreshed_access_token_sandbox",
-                refresh_token="mock_refreshed_refresh_token_sandbox",
-                expire_in=14400,
-                shop_id=int(target_shop) if target_shop.isdigit() else None
-            )
-            self._save_token_cache(target_shop, mock_resp.access_token, mock_resp.refresh_token, mock_resp.expire_in)
-            return mock_resp
-
         if not cached or not cached.get("refresh_token"):
-            await self.hydrate_from_db()
-            target_shop = self._pick_best_shop_id(shop_id)
-            cached = self._token_cache.get(target_shop) if target_shop else None
-            if not cached or not cached.get("refresh_token"):
-                raise ValueError(f"No refresh_token found in cache for ShopeeMart shop {target_shop}")
+            raise ValueError(f"No refresh_token found in cache for ShopeeMart shop {target_shop}")
 
+        # Another worker may have already rotated & persisted a fresh token while we waited
+        now = time.time()
+        exp_ts = float(cached.get("expires_at") or 0)
+        if not cached.get("unlinked") and cached.get("access_token") and exp_ts > (now + 300):
+            return ShopeeMartTokenResponse(
+                access_token=str(cached["access_token"]),
+                refresh_token=str(cached.get("refresh_token") or ""),
+                expire_in=max(1, int(exp_ts - now)),
+                shop_id=int(target_shop) if target_shop.isdigit() else None,
+            )
+
+        attempted_refresh_token = str(cached["refresh_token"])
         timestamp = int(time.time())
         path = "/api/v2/auth/access_token/get"
         sign = self.generate_public_sign(path, timestamp)
@@ -341,7 +336,7 @@ class ShopeeMartClient:
             "sign": sign,
         }
         body = {
-            "refresh_token": cached["refresh_token"],
+            "refresh_token": attempted_refresh_token,
             "shop_id": int(target_shop),
             "partner_id": int(self.partner_id),
         }
@@ -358,6 +353,22 @@ class ShopeeMartClient:
                 self._mark_shop_unlinked(target_shop)
                 await self._persist_tokens_to_db()
             elif "refresh_token" in err_code.lower() or "refresh_token" in err_msg.lower():
+                await self.hydrate_from_db()
+                latest = self._token_cache.get(target_shop) or {}
+                latest_exp = float(latest.get("expires_at") or 0)
+                if (
+                    not latest.get("unlinked")
+                    and latest.get("access_token")
+                    and latest.get("refresh_token")
+                    and latest.get("refresh_token") != attempted_refresh_token
+                    and latest_exp > (time.time() + 60)
+                ):
+                    return ShopeeMartTokenResponse(
+                        access_token=str(latest["access_token"]),
+                        refresh_token=str(latest["refresh_token"]),
+                        expire_in=max(1, int(latest_exp - time.time())),
+                        shop_id=int(target_shop) if target_shop.isdigit() else None,
+                    )
                 cached["refresh_token"] = ""
                 cached["expires_at"] = 0
                 self._write_token_cache_file()
@@ -365,7 +376,7 @@ class ShopeeMartClient:
             raise RuntimeError(f"ShopeeMart Token Refresh Error [{err_code}]: {err_msg}")
 
         access_token = data.get("access_token", "")
-        refresh_token = data.get("refresh_token", cached["refresh_token"])
+        refresh_token = data.get("refresh_token", attempted_refresh_token)
         expire_in = int(data.get("expire_in", 14400))
 
         self._save_token_cache(target_shop, access_token, refresh_token, expire_in)
@@ -378,12 +389,75 @@ class ShopeeMartClient:
             shop_id=int(target_shop)
         )
 
+    async def refresh_access_token(self, shop_id: Optional[str] = None) -> ShopeeMartTokenResponse:
+        """
+        Proactively refresh an expiring Shopee access token using its refresh token.
+        Endpoint: POST /api/v2/auth/access_token/get
+        Uses a PostgreSQL advisory lock so concurrent Uvicorn workers cannot burn rotating refresh_tokens.
+        """
+        self._load_token_cache()
+
+        if not self.is_configured:
+            target_shop = self._pick_best_shop_id(shop_id)
+            if not target_shop:
+                raise ValueError("Shop ID is required to refresh ShopeeMart token.")
+            # Sandbox simulation
+            mock_resp = ShopeeMartTokenResponse(
+                access_token="mock_refreshed_access_token_sandbox",
+                refresh_token="mock_refreshed_refresh_token_sandbox",
+                expire_in=14400,
+                shop_id=int(target_shop) if target_shop.isdigit() else None
+            )
+            self._save_token_cache(target_shop, mock_resp.access_token, mock_resp.refresh_token, mock_resp.expire_in)
+            return mock_resp
+
+        try:
+            from sqlalchemy import text
+            from app.core.database import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as lock_session:
+                is_pg = (
+                    getattr(lock_session, "bind", None) is not None
+                    and lock_session.bind.dialect.name == "postgresql"
+                )
+                if not is_pg:
+                    return await self._do_refresh_access_token_locked(shop_id=shop_id)
+
+                await lock_session.execute(
+                    text("SELECT pg_advisory_lock(:lock_id)"),
+                    {"lock_id": TOKEN_REFRESH_ADVISORY_LOCK_KEY},
+                )
+                try:
+                    return await self._do_refresh_access_token_locked(shop_id=shop_id)
+                finally:
+                    try:
+                        await lock_session.execute(
+                            text("SELECT pg_advisory_unlock(:lock_id)"),
+                            {"lock_id": TOKEN_REFRESH_ADVISORY_LOCK_KEY},
+                        )
+                    except Exception:
+                        pass
+        except Exception as lock_ex:
+            # Re-raise Shopee/config errors directly; fall back only if DB lock layer itself failed
+            if isinstance(lock_ex, (ValueError, RuntimeError)):
+                raise
+            logger.debug(f"Proceeding without PostgreSQL advisory lock during Shopee token refresh: {lock_ex}")
+            return await self._do_refresh_access_token_locked(shop_id=shop_id)
+
+    def _is_valid_live_entry(self, entry: Any) -> bool:
+        if not isinstance(entry, dict) or entry.get("unlinked"):
+            return False
+        tok = str(entry.get("access_token") or "")
+        if tok.startswith("mock_"):
+            return False
+        return True
+
     def _active_token_shops(self) -> List[str]:
         """Return shop_ids in _token_cache that are not marked unlinked, preferring default_shop_id first."""
         candidates: List[Tuple[int, float, str]] = []
         clean_default = self._sanitize_shop_id(self.default_shop_id)
         for sid, info in self._token_cache.items():
-            if not isinstance(info, dict) or info.get("unlinked"):
+            if not self._is_valid_live_entry(info):
                 continue
             clean_sid = self._sanitize_shop_id(sid)
             if not clean_sid:
@@ -407,7 +481,7 @@ class ShopeeMartClient:
         req_clean = self._sanitize_shop_id(requested_shop_id)
         if req_clean and req_clean in self._token_cache:
             entry = self._token_cache.get(req_clean)
-            if isinstance(entry, dict) and not entry.get("unlinked"):
+            if self._is_valid_live_entry(entry):
                 return req_clean
 
         active_shops = self._active_token_shops()
@@ -484,6 +558,7 @@ class ShopeeMartClient:
             return
         try:
             from sqlalchemy import select
+            from sqlalchemy.orm.attributes import flag_modified
             from app.core.database import AsyncSessionLocal
             from app.models.channel import Channel
 
@@ -502,6 +577,7 @@ class ShopeeMartClient:
                     if clean_def:
                         cfg["default_shop_id"] = clean_def
                     ch.config = cfg
+                    flag_modified(ch, "config")
                     await session.commit()
         except Exception as ex:
             logger.debug(f"Could not persist ShopeeMart tokens to PostgreSQL: {ex}")

@@ -5,18 +5,28 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import StaticPool
 from app.core.config import get_settings
 
 settings = get_settings()
 
-# Configure async engine for PostgreSQL
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DB_ECHO,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_pre_ping=True,
-)
+# Configure async engine (SQLite for isolated tests, pooled PostgreSQL for runtime)
+_is_sqlite = str(settings.DATABASE_URL).startswith("sqlite")
+if _is_sqlite:
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=settings.DB_ECHO,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+else:
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=settings.DB_ECHO,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_pre_ping=True,
+    )
 
 # Async session factory
 AsyncSessionLocal = async_sessionmaker(
